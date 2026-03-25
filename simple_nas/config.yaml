@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Einfaches NAS mit Samba-Freigaben und Web-GUI zur Laufwerkverwaltung"
-version: "1.0.2"
+version: "1.0.3"
 slug: "simple_nas"
 init: false
 arch:
