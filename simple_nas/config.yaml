@@ -1,0 +1,28 @@
+name: "Simple NAS"
+description: "Einfaches NAS mit Samba-Freigaben und Web-GUI zur Laufwerkverwaltung"
+version: "1.0.0"
+slug: "simple_nas"
+init: false
+arch:
+  - aarch64
+  - amd64
+  - armv7
+startup: services
+boot: auto
+ingress: true
+ingress_port: 8099
+# host_network nötig damit Samba-Broadcasts (NetBIOS) im LAN funktionieren
+host_network: true
+privileged:
+  - SYS_ADMIN
+  - SYS_RAWIO
+options:
+  workgroup: "WORKGROUP"
+  log_level: "info"
+schema:
+  workgroup: str
+  log_level: list(trace|debug|info|notice|warning|error|fatal)
+map:
+  - share:rw
+  - media:rw
+  - ssl:ro
