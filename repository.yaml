@@ -1,0 +1,10 @@
+name: Simple NAS
+url: https://github.com/gregorwolf1973/simple_nas
+maintainer: gregorwolf1973
+```
+
+2. Dann einen neuen Ordner `simple_nas/` anlegen und alle bestehenden Dateien (`Dockerfile`, `config.yaml`, `build.yaml`, `run.sh`, `app/`) **dort hineinverschieben** (auf GitHub: Datei öffnen → Bearbeiten → Dateiname oben ändern zu `simple_nas/Dockerfile` etc.)
+
+3. Danach in HA die Repository-URL nochmal hinzufügen:
+```
+   https://github.com/gregorwolf1973/simple_nas
