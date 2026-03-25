@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Einfaches NAS mit Samba-Freigaben und Web-GUI zur Laufwerkverwaltung"
-version: "1.0.3"
+version: "1.0.4"
 slug: "simple_nas"
 init: false
 arch:
@@ -12,11 +12,9 @@ boot: auto
 ingress: true
 ingress_port: 8099
 host_network: true
-privileged:
-  - SYS_ADMIN
-  - SYS_RAWIO
-devices:
-  - /dev
+# full_access = Docker --privileged → nötig damit Block-Devices mountbar sind
+# Ohne full_access blockt die cgroup device whitelist den Kernel-open() auf /dev/sdXX
+full_access: true
 options:
   workgroup: "WORKGROUP"
   log_level: "info"
