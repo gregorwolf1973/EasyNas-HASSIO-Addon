@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<base href="./">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simple NAS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0d0f14;
+    --surface:   #141720;
+    --surface2:  #1c2030;
+    --border:    #2a2f3e;
+    --accent:    #00d4aa;
+    --accent2:   #0088ff;
+    --warn:      #ff9500;
+    --danger:    #ff3b47;
+    --text:      #c8d0e0;
+    --text-dim:  #5c6580;
+    --text-bright: #eef2ff;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+    --radius:    6px;
+    --gutter:    20px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 14px; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 var(--gutter);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: 56px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .logo svg { width: 22px; height: 22px; }
+  .header-status { display: flex; gap: 12px; margin-left: auto; align-items: center; }
+  .status-pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 99px;
+    border: 1px solid;
+    display: flex; align-items: center; gap: 5px;
+    letter-spacing: 0.05em;
+  }
+  .status-pill.ok   { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .status-pill.off  { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* ── Nav tabs ── */
+  nav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 0;
+    padding: 0 var(--gutter);
+    overflow-x: auto;
+  }
+  nav button {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 14px 18px;
+    transition: color .15s, border-color .15s;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+    display: flex; align-items: center; gap: 7px;
+  }
+  nav button:hover { color: var(--text); }
+  nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  nav button svg { width: 15px; height: 15px; }
+
+  /* ── Main layout ── */
+  main { flex: 1; padding: var(--gutter); max-width: 1200px; width: 100%; margin: 0 auto; }
+
+  /* ── Panels ── */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .page-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-bottom: 4px;
+  }
+  .page-sub {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: var(--gutter);
+  }
+
+  /* ── Cards / Grid ── */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-bottom: var(--gutter); }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    transition: border-color .2s;
+  }
+  .card:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+  .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  .card-title { font-weight: 600; color: var(--text-bright); font-size: 14px; }
+  .card-sub { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .card-actions { display: flex; gap: 6px; }
+
+  /* ── Status overview ── */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: var(--gutter); }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .stat-value { font-family: var(--mono); font-size: 24px; color: var(--text-bright); font-weight: 600; }
+  .stat-unit { font-size: 13px; color: var(--text-dim); margin-left: 3px; }
+
+  /* ── Progress bar ── */
+  .progress-wrap { margin-top: 10px; }
+  .progress-bar-bg { background: var(--surface2); border-radius: 99px; height: 5px; overflow: hidden; margin-top: 5px; }
+  .progress-bar-fill { height: 100%; border-radius: 99px; background: var(--accent); transition: width .5s ease; }
+  .progress-bar-fill.warn { background: var(--warn); }
+  .progress-bar-fill.danger { background: var(--danger); }
+  .progress-label { font-size: 11px; color: var(--text-dim); display: flex; justify-content: space-between; }
+
+  /* ── Drive list ── */
+  .drive-list { display: flex; flex-direction: column; gap: 10px; }
+  .drive-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .drive-icon { width: 36px; height: 36px; flex-shrink: 0; color: var(--text-dim); }
+  .drive-info { flex: 1; min-width: 0; }
+  .drive-name { font-weight: 600; color: var(--text-bright); font-size: 14px; }
+  .drive-meta { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 3px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .tag {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 6px;
+    color: var(--text-dim);
+  }
+  .tag.accent { border-color: var(--accent); color: var(--accent); }
+  .tag.warn { border-color: var(--warn); color: var(--warn); }
+  .drive-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+  /* ── Buttons ── */
+  .btn {
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 7px 14px;
+    transition: background .15s, border-color .15s, color .15s;
+    white-space: nowrap;
+  }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #000; }
+  .btn-primary:hover { background: color-mix(in srgb, var(--accent) 80%, white); }
+  .btn-ghost { background: transparent; color: var(--text); }
+  .btn-ghost:hover { background: var(--surface2); border-color: var(--text-dim); }
+  .btn-danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+  .btn-danger:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
+  .btn-icon { padding: 6px; display: flex; align-items: center; justify-content: center; }
+  .btn-icon svg { width: 14px; height: 14px; }
+
+  /* ── Forms / Modals ── */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.7);
+    z-index: 500;
+    align-items: center;
+    justify-content: center;
+    padding: var(--gutter);
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    width: 100%;
+    max-width: 460px;
+    animation: slide-up .2s ease;
+  }
+  @keyframes slide-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  .modal-title { font-size: 16px; font-weight: 600; color: var(--text-bright); margin-bottom: 18px; }
+  .form-group { margin-bottom: 14px; }
+  label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; letter-spacing: 0.04em; }
+  input[type=text], input[type=password], select, textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    padding: 9px 12px;
+    transition: border-color .15s;
+    outline: none;
+    appearance: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  select option { background: var(--surface); }
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+  .toggle-label { font-size: 13px; color: var(--text); }
+  .toggle-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .toggle {
+    position: relative; width: 36px; height: 20px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 99px; cursor: pointer; transition: background .2s;
+    flex-shrink: 0;
+  }
+  .toggle input { display: none; }
+  .toggle-knob {
+    position: absolute; top: 2px; left: 2px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--text-dim); transition: transform .2s, background .2s;
+  }
+  input:checked + .toggle-knob { transform: translateX(16px); background: var(--accent); }
+  input:checked ~ .toggle { /* handled differently, see JS */ }
+  .toggle.on { background: color-mix(in srgb, var(--accent) 20%, var(--surface2)); border-color: var(--accent); }
+
+  .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+  /* ── Mount modal ── */
+  .mount-path-preview {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    margin-top: 5px;
+    padding: 6px 10px;
+    background: var(--bg);
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  /* ── Toast ── */
+  #toast-container {
+    position: fixed; bottom: 24px; right: 24px;
+    display: flex; flex-direction: column; gap: 8px;
+    z-index: 999;
+  }
+  .toast {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 10px 16px;
+    font-size: 13px;
+    color: var(--text);
+    animation: toast-in .2s ease;
+    max-width: 320px;
+  }
+  .toast.error { border-left-color: var(--danger); }
+  @keyframes toast-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+  /* ── Empty state ── */
+  .empty { text-align: center; padding: 40px 20px; color: var(--text-dim); }
+  .empty svg { width: 40px; height: 40px; margin: 0 auto 12px; display: block; opacity: .3; }
+  .empty p { font-size: 13px; }
+
+  /* ── Separator ── */
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px; margin-top: var(--gutter);
+  }
+  .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); }
+
+  /* ── Spinner ── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; display: inline-block; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="5" rx="1"/><rect x="2" y="10" width="20" height="5" rx="1"/><rect x="2" y="17" width="20" height="5" rx="1"/><circle cx="18" cy="5.5" r="1" fill="currentColor" stroke="none"/><circle cx="18" cy="12.5" r="1" fill="currentColor" stroke="none"/><circle cx="18" cy="19.5" r="1" fill="currentColor" stroke="none"/></svg>
+    SIMPLE NAS
+  </div>
+  <div class="header-status" id="header-status">
+    <span class="status-pill off" id="smbd-pill"><span class="dot"></span>smbd</span>
+    <span class="status-pill off" id="nmbd-pill"><span class="dot"></span>nmbd</span>
+  </div>
+</header>
+
+<nav>
+  <button class="active" onclick="switchTab('overview')" id="tab-overview">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    Übersicht
+  </button>
+  <button onclick="switchTab('drives')" id="tab-drives">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="17" cy="12" r="2"/><line x1="2" y1="12" x2="7" y2="12"/></svg>
+    Laufwerke
+  </button>
+  <button onclick="switchTab('shares')" id="tab-shares">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><line x1="15.18" y1="10.22" x2="8.82" y2="13.78"/><line x1="15.18" y1="21.78" x2="8.82" y2="18.22"/></svg>
+    Freigaben
+  </button>
+  <button onclick="switchTab('users')" id="tab-users">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    Benutzer
+  </button>
+</nav>
+
+<main>
+
+  <!-- ══ OVERVIEW ══ -->
+  <div class="panel active" id="panel-overview">
+    <div class="page-title">Systemübersicht</div>
+    <div class="page-sub">Status und Ressourcenverbrauch</div>
+
+    <div class="stat-grid" id="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">CPU-Last</div>
+        <div class="stat-value" id="stat-cpu">–<span class="stat-unit">%</span></div>
+        <div class="progress-wrap">
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="bar-cpu" style="width:0%"></div></div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Arbeitsspeicher</div>
+        <div class="stat-value" id="stat-mem">–<span class="stat-unit">%</span></div>
+        <div class="progress-wrap">
+          <div class="progress-label"><span id="mem-used">–</span><span id="mem-total">–</span></div>
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="bar-mem" style="width:0%"></div></div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">System-Datenträger</div>
+        <div class="stat-value" id="stat-disk">–<span class="stat-unit">%</span></div>
+        <div class="progress-wrap">
+          <div class="progress-label"><span id="disk-used">–</span><span id="disk-total">–</span></div>
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="bar-disk" style="width:0%"></div></div>
+        </div>
+      </div>
+      <div class="stat-card" style="display:flex;flex-direction:column;justify-content:space-between;">
+        <div class="stat-label">Samba-Dienste</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-family:var(--mono);font-size:13px;">smbd</span>
+            <span class="status-pill off" id="smbd-status"><span class="dot"></span><span>–</span></span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-family:var(--mono);font-size:13px;">nmbd</span>
+            <span class="status-pill off" id="nmbd-status"><span class="dot"></span><span>–</span></span>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:12px;width:100%;" onclick="restartSamba()">
+          Samba neu starten
+        </button>
+      </div>
+    </div>
+
+    <div class="section-header" style="margin-top:0">
+      <div class="section-title">Aktive Freigaben</div>
+      <button class="btn btn-ghost btn-sm" onclick="switchTab('shares')">Alle anzeigen →</button>
+    </div>
+    <div id="overview-shares"><div class="empty"><p>Keine Freigaben konfiguriert</p></div></div>
+  </div>
+
+  <!-- ══ DRIVES ══ -->
+  <div class="panel" id="panel-drives">
+    <div class="page-title">Laufwerke</div>
+    <div class="page-sub">Erkannte Datenträger ein- und aushängen</div>
+    <div class="drive-list" id="drive-list">
+      <div class="empty"><span class="spinner"></span></div>
+    </div>
+  </div>
+
+  <!-- ══ SHARES ══ -->
+  <div class="panel" id="panel-shares">
+    <div class="section-header" style="margin-top:0">
+      <div>
+        <div class="page-title">Freigaben</div>
+        <div class="page-sub">Samba-Netzwerkfreigaben verwalten</div>
+      </div>
+      <button class="btn btn-primary" onclick="openShareModal()">+ Neue Freigabe</button>
+    </div>
+    <div class="grid" id="shares-grid">
+      <div class="empty" style="grid-column:1/-1"><span class="spinner"></span></div>
+    </div>
+  </div>
+
+  <!-- ══ USERS ══ -->
+  <div class="panel" id="panel-users">
+    <div class="section-header" style="margin-top:0">
+      <div>
+        <div class="page-title">Benutzer</div>
+        <div class="page-sub">Samba-Benutzer und Passwörter verwalten</div>
+      </div>
+      <button class="btn btn-primary" onclick="openUserModal()">+ Neuer Benutzer</button>
+    </div>
+    <div class="grid" id="users-grid">
+      <div class="empty" style="grid-column:1/-1"><span class="spinner"></span></div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ══ MODAL: Mount Drive ══ -->
+<div class="modal-overlay" id="modal-mount">
+  <div class="modal">
+    <div class="modal-title">Laufwerk einhängen</div>
+    <div class="form-group">
+      <label>GERÄT</label>
+      <input type="text" id="mount-device" readonly style="color:var(--accent);font-family:var(--mono);">
+    </div>
+    <div class="form-group">
+      <label>EINHÄNGEPUNKT NAME</label>
+      <input type="text" id="mount-name" placeholder="z.B. festplatte1" oninput="updateMountPreview()">
+      <div class="mount-path-preview" id="mount-preview">/mnt/festplatte1</div>
+    </div>
+    <div class="form-group">
+      <label>DATEISYSTEM</label>
+      <select id="mount-fstype">
+        <option value="auto">Automatisch erkennen</option>
+        <option value="ext4">ext4</option>
+        <option value="ext3">ext3</option>
+        <option value="ntfs-3g">NTFS</option>
+        <option value="vfat">FAT32</option>
+        <option value="exfat">exFAT</option>
+        <option value="btrfs">btrfs</option>
+        <option value="xfs">XFS</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-mount')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="doMount()">Einhängen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Share ══ -->
+<div class="modal-overlay" id="modal-share">
+  <div class="modal">
+    <div class="modal-title" id="share-modal-title">Neue Freigabe</div>
+    <input type="hidden" id="share-edit-name">
+    <div class="form-group">
+      <label>NAME DER FREIGABE</label>
+      <input type="text" id="share-name" placeholder="z.B. Dokumente">
+    </div>
+    <div class="form-group">
+      <label>PFAD</label>
+      <input type="text" id="share-path" placeholder="/mnt/festplatte1/docs">
+    </div>
+    <div class="form-group">
+      <label>BESCHREIBUNG (optional)</label>
+      <input type="text" id="share-comment" placeholder="Meine Dokumente">
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Schreibzugriff</div>
+        <div class="toggle-sub">Benutzer können Dateien erstellen & ändern</div>
+      </div>
+      <label class="toggle" id="toggle-writable">
+        <input type="checkbox" id="share-writable" checked onchange="updateToggle('toggle-writable', this)">
+        <div class="toggle-knob"></div>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Öffentlich (kein Passwort)</div>
+        <div class="toggle-sub">Jeder im Netzwerk kann zugreifen</div>
+      </div>
+      <label class="toggle" id="toggle-public">
+        <input type="checkbox" id="share-public" onchange="updateToggle('toggle-public', this)">
+        <div class="toggle-knob"></div>
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-share')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveShare()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: User ══ -->
+<div class="modal-overlay" id="modal-user">
+  <div class="modal">
+    <div class="modal-title" id="user-modal-title">Neuer Benutzer</div>
+    <input type="hidden" id="user-edit-name">
+    <div class="form-group" id="user-name-group">
+      <label>BENUTZERNAME</label>
+      <input type="text" id="user-name" placeholder="nas_user" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label id="user-pw-label">PASSWORT</label>
+      <input type="password" id="user-password" placeholder="••••••••" autocomplete="new-password">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-user')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveUser()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Toast container ══ -->
+<div id="toast-container"></div>
+
+<script>
+// ─────────────── utils ───────────────
+function fmt(bytes) {
+  if (bytes === null || bytes === undefined) return '–';
+  const gb = bytes / 1e9;
+  if (gb >= 1) return gb.toFixed(1) + ' GB';
+  const mb = bytes / 1e6;
+  return mb.toFixed(0) + ' MB';
+}
+function toast(msg, err = false) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (err ? ' error' : '');
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch('api' + path, opts);  // relative URL – works under HA Ingress
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || 'Fehler');
+  return data;
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function updateToggle(id, cb) {
+  document.getElementById(id).classList.toggle('on', cb.checked);
+}
+
+// ─────────────── tabs ───────────────
+function switchTab(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'drives') loadDrives();
+  if (name === 'shares') loadShares();
+  if (name === 'users')  loadUsers();
+}
+
+// ─────────────── status ───────────────
+async function loadStatus() {
+  try {
+    const s = await api('GET', '/status');
+    // Pills in header
+    ['smbd', 'nmbd'].forEach(svc => {
+      const on = s[svc];
+      ['pill', 'status'].forEach(sfx => {
+        const el = document.getElementById(svc + '-' + sfx);
+        if (!el) return;
+        el.className = 'status-pill ' + (on ? 'ok' : 'off');
+        el.querySelector('span:last-child').textContent = on ? 'aktiv' : 'inaktiv';
+      });
+    });
+    // CPU
+    const cpu = s.cpu_percent;
+    document.getElementById('stat-cpu').innerHTML = `${cpu}<span class="stat-unit">%</span>`;
+    const barCpu = document.getElementById('bar-cpu');
+    barCpu.style.width = cpu + '%';
+    barCpu.className = 'progress-bar-fill' + (cpu > 85 ? ' danger' : cpu > 60 ? ' warn' : '');
+
+    // Memory
+    const m = s.memory;
+    document.getElementById('stat-mem').innerHTML = `${m.percent}<span class="stat-unit">%</span>`;
+    document.getElementById('mem-used').textContent = fmt(m.used);
+    document.getElementById('mem-total').textContent = fmt(m.total);
+    const barMem = document.getElementById('bar-mem');
+    barMem.style.width = m.percent + '%';
+    barMem.className = 'progress-bar-fill' + (m.percent > 85 ? ' danger' : m.percent > 65 ? ' warn' : '');
+
+    // Disk
+    const d = s.disk;
+    document.getElementById('stat-disk').innerHTML = `${d.percent}<span class="stat-unit">%</span>`;
+    document.getElementById('disk-used').textContent = fmt(d.used);
+    document.getElementById('disk-total').textContent = fmt(d.total);
+    const barDisk = document.getElementById('bar-disk');
+    barDisk.style.width = d.percent + '%';
+    barDisk.className = 'progress-bar-fill' + (d.percent > 85 ? ' danger' : d.percent > 65 ? ' warn' : '');
+  } catch (e) { console.error(e); }
+}
+
+async function restartSamba() {
+  try {
+    await api('POST', '/samba/restart');
+    toast('Samba wird neu gestartet…');
+    setTimeout(loadStatus, 2000);
+  } catch (e) { toast(e.message, true); }
+}
+
+// ─────────────── drives ───────────────
+async function loadDrives() {
+  const list = document.getElementById('drive-list');
+  list.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+  try {
+    const drives = await api('GET', '/drives');
+    if (!drives.length) {
+      list.innerHTML = '<div class="empty"><p>Keine Laufwerke gefunden</p></div>';
+      return;
+    }
+    list.innerHTML = drives.map(d => driveCard(d)).join('');
+  } catch (e) {
+    list.innerHTML = `<div class="empty"><p style="color:var(--danger)">${e.message}</p></div>`;
+  }
+}
+
+function driveCard(d) {
+  const isMounted = !!d.mountpoint;
+  const isDisk = d.type === 'disk';
+  const icon = isDisk
+    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="17" cy="12" r="2"/><line x1="2" y1="12" x2="7" y2="12"/></svg>`
+    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>`;
+
+  const label = d.label ? `<span class="tag accent">${d.label}</span>` : '';
+  const fs = d.fstype ? `<span class="tag">${d.fstype}</span>` : '';
+  const rm = d.removable ? `<span class="tag warn">Wechseldatenträger</span>` : '';
+
+  const mountedInfo = isMounted
+    ? `<span style="font-family:var(--mono);font-size:11px;color:var(--accent)">${d.mountpoint}</span>`
+    : `<span style="color:var(--text-dim);font-size:11px">nicht eingehängt</span>`;
+
+  const actionBtn = isDisk ? '' : isMounted
+    ? `<button class="btn btn-ghost btn-sm" onclick="doUnmount('${d.path}','${d.mountpoint}')">Aushängen</button>`
+    : (d.fstype
+        ? `<button class="btn btn-primary btn-sm" onclick="openMountModal('${d.path}','${d.fstype}')">Einhängen</button>`
+        : `<span style="font-size:11px;color:var(--text-dim)">kein Dateisystem</span>`);
+
+  const model = d.model ? `<span>${d.model.trim()}</span>` : '';
+
+  return `
+  <div class="drive-item">
+    <svg class="drive-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">${isDisk
+      ? '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="17" cy="12" r="2"/><line x1="2" y1="12" x2="7" y2="12"/>'
+      : '<path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>'}
+    </svg>
+    <div class="drive-info">
+      <div class="drive-name">${d.path} ${d.size ? `<span style="font-size:12px;color:var(--text-dim);font-weight:400">${d.size}</span>` : ''}</div>
+      <div class="drive-meta">${model}${label}${fs}${rm}</div>
+      <div style="margin-top:5px">${mountedInfo}</div>
+    </div>
+    <div class="drive-actions">${actionBtn}</div>
+  </div>`;
+}
+
+function openMountModal(device, fstype) {
+  document.getElementById('mount-device').value = device;
+  const name = device.replace('/dev/', '');
+  document.getElementById('mount-name').value = name;
+  document.getElementById('mount-preview').textContent = '/mnt/' + name;
+  const sel = document.getElementById('mount-fstype');
+  sel.value = fstype || 'auto';
+  openModal('modal-mount');
+}
+function updateMountPreview() {
+  const n = document.getElementById('mount-name').value.trim() || 'laufwerk';
+  document.getElementById('mount-preview').textContent = '/mnt/' + n.replace(/[^a-zA-Z0-9_\-]/g,'_');
+}
+async function doMount() {
+  const device = document.getElementById('mount-device').value;
+  const name   = document.getElementById('mount-name').value.trim();
+  const fstype = document.getElementById('mount-fstype').value;
+  try {
+    const r = await api('POST', '/drives/mount', { device, mountpoint: name, fstype });
+    toast(`Eingehängt: ${r.mountpoint}`);
+    closeModal('modal-mount');
+    loadDrives();
+  } catch (e) { toast(e.message, true); }
+}
+async function doUnmount(device, mountpoint) {
+  if (!confirm(`Laufwerk ${mountpoint} aushängen?`)) return;
+  try {
+    await api('POST', '/drives/unmount', { device, mountpoint });
+    toast('Laufwerk ausgehängt');
+    loadDrives();
+  } catch (e) { toast(e.message, true); }
+}
+
+// ─────────────── shares ───────────────
+async function loadShares() {
+  const grid = document.getElementById('shares-grid');
+  grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><span class="spinner"></span></div>';
+  try {
+    const shares = await api('GET', '/shares');
+    renderSharesGrid(shares, grid);
+    // Also update overview
+    renderOverviewShares(shares);
+  } catch (e) {
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1;color:var(--danger)">${e.message}</div>`;
+  }
+}
+
+function renderSharesGrid(shares, container) {
+  if (!shares.length) {
+    container.innerHTML = `<div class="empty" style="grid-column:1/-1">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
+      <p>Noch keine Freigaben erstellt</p></div>`;
+    return;
+  }
+  container.innerHTML = shares.map(s => {
+    const u = s.usage;
+    const bar = u ? `<div class="progress-wrap" style="margin-top:10px">
+      <div class="progress-label"><span>${fmt(u.used)}</span><span>${fmt(u.total)}</span></div>
+      <div class="progress-bar-bg"><div class="progress-bar-fill ${u.percent>85?' danger':u.percent>65?' warn':''}" style="width:${u.percent}%"></div></div>
+    </div>` : '';
+    return `<div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${s.name}</div>
+          <div class="card-sub">${s.path}</div>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-ghost btn-sm btn-icon" title="Bearbeiten" onclick='openShareModal(${JSON.stringify(s)})'>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="btn btn-danger btn-sm btn-icon" title="Löschen" onclick="deleteShare('${s.name}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+          </button>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${s.public ? '<span class="tag warn">Öffentlich</span>' : '<span class="tag">Privat</span>'}
+        ${s.writable ? '<span class="tag accent">Schreibzugriff</span>' : '<span class="tag">Nur lesen</span>'}
+      </div>
+      ${s.comment ? `<div style="font-size:12px;color:var(--text-dim);margin-top:8px">${s.comment}</div>` : ''}
+      ${bar}
+    </div>`;
+  }).join('');
+}
+
+function renderOverviewShares(shares) {
+  const el = document.getElementById('overview-shares');
+  if (!shares.length) { el.innerHTML = '<div class="empty"><p>Keine Freigaben konfiguriert</p></div>'; return; }
+  const mini = {display:'flex',flexDirection:'column',gap:'8px'};
+  el.innerHTML = shares.slice(0,4).map(s => `
+    <div class="drive-item" style="padding:10px 14px">
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:13px;color:var(--text-bright)">${s.name}</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">${s.path}</div>
+      </div>
+      ${s.public ? '<span class="tag warn">Öffentlich</span>' : '<span class="tag">Privat</span>'}
+      ${s.writable ? '<span class="tag accent">R/W</span>' : '<span class="tag">R/O</span>'}
+    </div>`).join('');
+}
+
+function openShareModal(share) {
+  document.getElementById('share-edit-name').value = share ? share.name : '';
+  document.getElementById('share-modal-title').textContent = share ? 'Freigabe bearbeiten' : 'Neue Freigabe';
+  document.getElementById('share-name').value = share ? share.name : '';
+  document.getElementById('share-name').readOnly = !!share;
+  document.getElementById('share-path').value = share ? share.path : '';
+  document.getElementById('share-comment').value = share ? (share.comment||'') : '';
+
+  const writable = share ? share.writable : true;
+  const publ = share ? share.public : false;
+  document.getElementById('share-writable').checked = writable;
+  document.getElementById('share-public').checked = publ;
+  document.getElementById('toggle-writable').classList.toggle('on', writable);
+  document.getElementById('toggle-public').classList.toggle('on', publ);
+  openModal('modal-share');
+}
+
+async function saveShare() {
+  const editName = document.getElementById('share-edit-name').value;
+  const body = {
+    name:     document.getElementById('share-name').value.trim(),
+    path:     document.getElementById('share-path').value.trim(),
+    comment:  document.getElementById('share-comment').value.trim(),
+    writable: document.getElementById('share-writable').checked,
+    public:   document.getElementById('share-public').checked,
+  };
+  try {
+    if (editName) {
+      await api('PUT', '/shares/' + editName, body);
+      toast('Freigabe aktualisiert');
+    } else {
+      await api('POST', '/shares', body);
+      toast('Freigabe erstellt');
+    }
+    closeModal('modal-share');
+    loadShares();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function deleteShare(name) {
+  if (!confirm(`Freigabe "${name}" löschen?`)) return;
+  try {
+    await api('DELETE', '/shares/' + name);
+    toast('Freigabe gelöscht');
+    loadShares();
+  } catch (e) { toast(e.message, true); }
+}
+
+// ─────────────── users ───────────────
+async function loadUsers() {
+  const grid = document.getElementById('users-grid');
+  grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><span class="spinner"></span></div>';
+  try {
+    const users = await api('GET', '/users');
+    if (!users.length) {
+      grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        <p>Noch keine Benutzer angelegt</p></div>`;
+      return;
+    }
+    grid.innerHTML = users.map(u => `
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title" style="font-family:var(--mono)">${u.username}</div>
+            <div class="card-sub">Samba-Benutzer</div>
+          </div>
+          <div class="card-actions">
+            <button class="btn btn-ghost btn-sm btn-icon" title="Passwort ändern" onclick="openUserModal('${u.username}')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </button>
+            <button class="btn btn-danger btn-sm btn-icon" title="Löschen" onclick="deleteUser('${u.username}')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1;color:var(--danger)">${e.message}</div>`;
+  }
+}
+
+function openUserModal(username) {
+  document.getElementById('user-edit-name').value = username || '';
+  document.getElementById('user-modal-title').textContent = username ? 'Passwort ändern' : 'Neuer Benutzer';
+  document.getElementById('user-name').value = username || '';
+  document.getElementById('user-password').value = '';
+  document.getElementById('user-name-group').style.display = username ? 'none' : 'block';
+  openModal('modal-user');
+}
+
+async function saveUser() {
+  const editName = document.getElementById('user-edit-name').value;
+  const username = editName || document.getElementById('user-name').value.trim();
+  const password = document.getElementById('user-password').value;
+  if (!username || !password) { toast('Bitte Benutzername und Passwort ausfüllen', true); return; }
+  try {
+    if (editName) {
+      await api('PUT', '/users/' + editName, { password });
+      toast('Passwort geändert');
+    } else {
+      await api('POST', '/users', { username, password });
+      toast('Benutzer erstellt');
+    }
+    closeModal('modal-user');
+    loadUsers();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function deleteUser(username) {
+  if (!confirm(`Benutzer "${username}" löschen?`)) return;
+  try {
+    await api('DELETE', '/users/' + username);
+    toast('Benutzer gelöscht');
+    loadUsers();
+  } catch (e) { toast(e.message, true); }
+}
+
+// ─────────────── init ───────────────
+window.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-overlay')) e.target.classList.remove('open');
+});
+
+(async () => {
+  await loadStatus();
+  try { const s = await api('GET', '/shares'); renderOverviewShares(s); } catch {}
+  setInterval(loadStatus, 10000);
+})();
+</script>
+</body>
+</html>
