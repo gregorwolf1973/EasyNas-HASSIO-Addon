@@ -1,7 +1,0 @@
-configuration:
-  workgroup:
-    name: Arbeitsgruppe
-    description: Windows-Arbeitsgruppenname (Standard: WORKGROUP)
-  log_level:
-    name: Log-Level
-    description: Samba Log-Ausführlichkeit
