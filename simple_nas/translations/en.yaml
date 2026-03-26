@@ -1,0 +1,7 @@
+configuration:
+  workgroup:
+    name: Workgroup
+    description: Windows workgroup name (default: WORKGROUP)
+  log_level:
+    name: Log Level
+    description: Samba log verbosity
