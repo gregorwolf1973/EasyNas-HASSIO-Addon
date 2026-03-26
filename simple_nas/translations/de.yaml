@@ -1,0 +1,10 @@
+configuration:
+  workgroup:
+    name: Arbeitsgruppe
+    description: Windows-Arbeitsgruppenname (Standard WORKGROUP)
+  log_level:
+    name: Log-Level
+    description: Samba Log-Ausführlichkeit
+  web_port:
+    name: Web-GUI Port
+    description: Port für die Web-Oberfläche (Standard 8099). Hinweis - bei Änderung funktioniert der HA-Ingress-Button 'Öffnen' möglicherweise nicht mehr. Zugriff dann direkt über http://DEINE-HA-IP:PORT.
