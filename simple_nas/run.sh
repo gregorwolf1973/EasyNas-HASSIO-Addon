@@ -118,15 +118,13 @@ if command -v avahi-daemon > /dev/null 2>&1; then
     if [ $? -eq 0 ]; then
         bashio::log.info "Avahi daemon gestartet"
         sleep 1
-        # Explicitly publish SMB service (more reliable in containers)
-        NAS_HOST=$(hostname 2>/dev/null || echo "nas")
-        avahi-publish -s "${NAS_HOST} (Simple NAS)" _smb._tcp 445 &
-        bashio::log.info "Avahi mDNS: _smb._tcp auf Port 445 als '${NAS_HOST} (Simple NAS)' published"
+        # Explicitly publish SMB service with friendly name (container hostname is ugly)
+        avahi-publish -s "Simple NAS" _smb._tcp 445 &
+        bashio::log.info "Avahi mDNS: _smb._tcp auf Port 445 als 'Simple NAS' published"
     else
         bashio::log.warning "Avahi daemon Fehler: ${AVAHI_ERR}"
         # Try avahi-publish directly (works if HA OS already runs avahi)
-        NAS_HOST=$(hostname 2>/dev/null || echo "nas")
-        avahi-publish -s "${NAS_HOST} (Simple NAS)" _smb._tcp 445 &
+        avahi-publish -s "Simple NAS" _smb._tcp 445 &
         bashio::log.info "Avahi: service via avahi-publish published (nutzt System-Avahi)"
     fi
 else
@@ -135,8 +133,8 @@ fi
 
 # 3) WSDD – WS-Discovery (Windows 10/11 Netzwerk-Browser)
 if command -v wsdd > /dev/null 2>&1; then
-    python3 /usr/local/bin/wsdd --workgroup "${WORKGROUP}" &
-    bashio::log.info "WSDD gestartet (WS-Discovery für Windows 10/11)"
+    python3 /usr/local/bin/wsdd --workgroup "${WORKGROUP}" --hostname "SimpleNAS" &
+    bashio::log.info "WSDD gestartet (WS-Discovery für Windows 10/11, hostname=SimpleNAS)"
 else
     bashio::log.warning "wsdd nicht installiert"
 fi
