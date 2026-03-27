@@ -114,9 +114,21 @@ if command -v avahi-daemon > /dev/null 2>&1; then
     sed -i 's/^#*use-ipv6=.*/use-ipv6=no/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
     sed -i 's/^rlimit-nproc=.*/#rlimit-nproc=3/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
 
-    avahi-daemon --daemonize --no-chroot 2>/dev/null && \
-        bashio::log.info "Avahi gestartet (mDNS discovery für Linux/macOS)" || \
-        bashio::log.warning "Avahi konnte nicht gestartet werden"
+    AVAHI_ERR=$(avahi-daemon --daemonize --no-chroot 2>&1)
+    if [ $? -eq 0 ]; then
+        bashio::log.info "Avahi daemon gestartet"
+        sleep 1
+        # Explicitly publish SMB service (more reliable in containers)
+        NAS_HOST=$(hostname 2>/dev/null || echo "nas")
+        avahi-publish -s "${NAS_HOST} (Simple NAS)" _smb._tcp 445 &
+        bashio::log.info "Avahi mDNS: _smb._tcp auf Port 445 als '${NAS_HOST} (Simple NAS)' published"
+    else
+        bashio::log.warning "Avahi daemon Fehler: ${AVAHI_ERR}"
+        # Try avahi-publish directly (works if HA OS already runs avahi)
+        NAS_HOST=$(hostname 2>/dev/null || echo "nas")
+        avahi-publish -s "${NAS_HOST} (Simple NAS)" _smb._tcp 445 &
+        bashio::log.info "Avahi: service via avahi-publish published (nutzt System-Avahi)"
+    fi
 else
     bashio::log.warning "avahi-daemon nicht installiert"
 fi
