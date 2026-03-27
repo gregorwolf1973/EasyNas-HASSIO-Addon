@@ -8,6 +8,10 @@ export WORKGROUP
 WORKGROUP=$(bashio::config 'workgroup')
 bashio::log.info "Workgroup: ${WORKGROUP}"
 
+export NAS_NAME
+NAS_NAME=$(bashio::config 'nas_name')
+bashio::log.info "NAS Name: ${NAS_NAME}"
+
 export WEB_PORT
 WEB_PORT=$(bashio::config 'web_port')
 bashio::log.info "Web GUI Port: ${WEB_PORT}"
@@ -20,7 +24,7 @@ for f in shares users mounts groups backups; do
 done
 
 # Generate smb.conf
-python3 /app/generate_smb_conf.py "$WORKGROUP"
+python3 /app/generate_smb_conf.py "$WORKGROUP" "$NAS_NAME"
 
 # Restore system users and groups from persistent JSON files
 # (Container is ephemeral - Linux users are lost on restart)
@@ -119,12 +123,12 @@ if command -v avahi-daemon > /dev/null 2>&1; then
         bashio::log.info "Avahi daemon gestartet"
         sleep 1
         # Explicitly publish SMB service with friendly name (container hostname is ugly)
-        avahi-publish -s "Simple NAS" _smb._tcp 445 &
-        bashio::log.info "Avahi mDNS: _smb._tcp auf Port 445 als 'Simple NAS' published"
+        avahi-publish -s "${NAS_NAME}" _smb._tcp 445 &
+        bashio::log.info "Avahi mDNS: _smb._tcp auf Port 445 als '${NAS_NAME}' published"
     else
         bashio::log.warning "Avahi daemon Fehler: ${AVAHI_ERR}"
         # Try avahi-publish directly (works if HA OS already runs avahi)
-        avahi-publish -s "Simple NAS" _smb._tcp 445 &
+        avahi-publish -s "${NAS_NAME}" _smb._tcp 445 &
         bashio::log.info "Avahi: service via avahi-publish published (nutzt System-Avahi)"
     fi
 else
@@ -133,8 +137,8 @@ fi
 
 # 3) WSDD – WS-Discovery (Windows 10/11 Netzwerk-Browser)
 if command -v wsdd > /dev/null 2>&1; then
-    python3 /usr/local/bin/wsdd --workgroup "${WORKGROUP}" --hostname "SimpleNAS" &
-    bashio::log.info "WSDD gestartet (WS-Discovery für Windows 10/11, hostname=SimpleNAS)"
+    python3 /usr/local/bin/wsdd --workgroup "${WORKGROUP}" --hostname "${NAS_NAME}" &
+    bashio::log.info "WSDD gestartet (WS-Discovery für Windows 10/11, hostname=${NAS_NAME})"
 else
     bashio::log.warning "wsdd nicht installiert"
 fi

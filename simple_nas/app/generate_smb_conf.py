@@ -8,6 +8,7 @@ GROUPS_FILE = "/data/groups.json"
 SMB_CONF    = "/etc/samba/smb.conf"
 
 workgroup = sys.argv[1] if len(sys.argv) > 1 else "WORKGROUP"
+nas_name  = sys.argv[2] if len(sys.argv) > 2 else "SimpleNAS"
 
 shares, users, groups = [], [], []
 try:
@@ -22,7 +23,7 @@ except Exception: pass
 
 conf = f"""[global]
    workgroup = {workgroup}
-   server string = Simple NAS
+   server string = {nas_name}
    server role = standalone server
    log file = /var/log/samba/%m.log
    max log size = 1000
