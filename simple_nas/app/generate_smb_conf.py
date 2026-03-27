@@ -23,6 +23,7 @@ except Exception: pass
 
 conf = f"""[global]
    workgroup = {workgroup}
+   netbios name = {nas_name}
    server string = {nas_name}
    server role = standalone server
    log file = /var/log/samba/%m.log
