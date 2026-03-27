@@ -43,6 +43,11 @@ conf = f"""[global]
    printcap name = /dev/null
    disable spoolss = yes
    log level = 2
+   # Network browser visibility
+   local master = yes
+   preferred master = yes
+   os level = 65
+   wins support = yes
 
 """
 

@@ -35,8 +35,8 @@ RUN mkdir -p /etc/samba /var/log/samba /var/run/samba /data/shares /data/mounts 
 COPY smb.service /etc/avahi/services/smb.service
 
 # Avahi config: allow running in container without chroot
-RUN sed -i 's/#enable-dbus=yes/enable-dbus=yes/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true && \
-    sed -i 's/#allow-interfaces=eth0/allow-interfaces=eth0/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
+# Do not restrict to a single interface so it works regardless of HA network setup
+RUN sed -i 's/#enable-dbus=yes/enable-dbus=yes/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
 
 # Copy application files and set permissions
 COPY app/ /app/
