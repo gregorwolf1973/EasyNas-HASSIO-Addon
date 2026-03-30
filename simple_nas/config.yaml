@@ -11,7 +11,7 @@ arch:
 startup: services
 boot: auto
 ingress: true
-ingress_port: 8099
+ingress_port: 8100
 panel_icon: "mdi:nas"
 panel_title: "Simple NAS"
 host_network: true
