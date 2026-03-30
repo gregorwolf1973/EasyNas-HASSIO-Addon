@@ -716,5 +716,5 @@ if __name__ == "__main__":
     for fpath, default in [(SHARES_FILE, []), (USERS_FILE, []), (MOUNTS_FILE, []), (GROUPS_FILE, []), (BACKUPS_FILE, [])]:
         if not os.path.exists(fpath):
             save_json(fpath, default)
-    port = int(os.environ.get("WEB_PORT", 8099))
+    port = int(os.environ.get("WEB_PORT", 8100))
     app.run(host="0.0.0.0", port=port, debug=False)
