@@ -25,7 +25,7 @@ options:
   workgroup: "WORKGROUP"
   nas_name: "SimpleNAS"
   log_level: "info"
-  web_port: 8099
+  web_port: 8100
 schema:
   workgroup: str
   nas_name: str
