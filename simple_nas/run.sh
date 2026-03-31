@@ -82,6 +82,7 @@ PYEOF
 
 # Ensure Samba runtime directories
 mkdir -p /var/log/samba /var/run/samba
+ln -sf /config /homeassistant
 
 # Start privileged mount helper daemon (communicates via FIFO)
 bashio::log.info "Starting mount helper..."
