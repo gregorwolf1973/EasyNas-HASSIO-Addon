@@ -35,3 +35,4 @@ map:
   - share:rw
   - media:rw
   - ssl:ro
+  - config:rw
