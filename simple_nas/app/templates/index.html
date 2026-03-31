@@ -610,7 +610,7 @@
 // ── Utils ──
 function fmt(b){if(b==null)return'–';const g=b/1e9;if(g>=1)return g.toFixed(1)+' GB';return(b/1e6).toFixed(0)+' MB';}
 function toast(m,e=false){const el=document.createElement('div');el.className='toast'+(e?' error':'');el.textContent=m;document.getElementById('toast-container').appendChild(el);setTimeout(()=>el.remove(),3500);}
-async function api(method,path,body){const o={method,headers:{'Content-Type':'application/json'}};if(body)o.body=JSON.stringify(body);const r=await fetch('api'+path,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Fehler');return d;}
+async function api(method,path,body){const o={method,headers:{'Content-Type':'application/json'}};if(body)o.body=JSON.stringify(body);const base=window.location.pathname.replace(/\/+$/,'');const r=await fetch(base+'/api'+path,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Fehler');return d;}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 function openModal(id){document.getElementById(id).classList.add('open');}
 function updateToggle(id,cb){document.getElementById(id).classList.toggle('on',cb.checked);}
@@ -904,7 +904,7 @@ function fileActionBtns(e){
   const p=e.path.replace(/'/g,"\\'");
   const n=e.name.replace(/'/g,"\\'");
   let btns='';
-  if(!e.is_dir)btns+='<button title="Download" onclick="event.stopPropagation();window.open(\'api/files/download?path='+encodeURIComponent(e.path)+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>';
+  if(!e.is_dir)btns+='<button title="Download" onclick="event.stopPropagation();window.open(location.pathname.replace(/\/+$/,\'\')+\'/api/files/download?path='+encodeURIComponent(e.path)+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>';
   btns+='<button title="Umbenennen" onclick="event.stopPropagation();renameFile(\''+p+'\',\''+n+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
   btns+='<button title="Kopieren" onclick="event.stopPropagation();openFileAction(\'copy\',\''+p+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>';
   btns+='<button title="Verschieben" onclick="event.stopPropagation();openFileAction(\'move\',\''+p+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>';
@@ -946,7 +946,7 @@ async function uploadFiles(fileList){
   for(const f of fileList){
     const fd=new FormData();fd.append('file',f);fd.append('path',_filesPath);
     try{
-      const r=await fetch('api/files/upload',{method:'POST',body:fd});
+      const base=window.location.pathname.replace(/\/+$/,'');const r=await fetch(base+'/api/files/upload',{method:'POST',body:fd});
       const d=await r.json();if(!r.ok)throw new Error(d.error||'Upload fehlgeschlagen');
       toast('Hochgeladen: '+f.name);
     }catch(e){toast(e.message,true);}
