@@ -429,21 +429,32 @@ def api_browse():
         for name in sorted(os.listdir(path)):
             full = os.path.join(path, name)
             try:
-                if not os.path.isdir(full): continue
-                entries.append({"name": name, "path": full, "readable": os.access(full, os.R_OK)})
-            except Exception: pass
+                if not os.path.isdir(full): continue  # folgt Symlinks automatisch → korrekt
+                entries.append({
+                    "name": name, "path": full,
+                    "readable": os.access(full, os.R_OK),
+                    "is_symlink": os.path.islink(full),
+                })
+            except Exception:
+                # Symlink-Fallback: Eintrag trotzdem anzeigen
+                entries.append({
+                    "name": name, "path": full,
+                    "readable": False,
+                    "is_symlink": True,
+                })
     except PermissionError:
         # Fallback: use ls via subprocess (runs as root)
         try:
             result = subprocess.run(
-                ["ls", "-1", "-d", path + "/*/"],
+                ["ls", "-1a", path],          # -a statt Glob, damit Symlinks auftauchen
                 capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
-                for line in result.stdout.strip().split("\n"):
-                    line = line.rstrip("/")
-                    if line:
-                        name = os.path.basename(line)
-                        entries.append({"name": name, "path": line, "readable": True})
+                for name in result.stdout.strip().split("\n"):
+                    name = name.strip()
+                    if not name or name in (".", ".."): continue
+                    full = os.path.join(path, name)
+                    if os.path.isdir(full):   # folgt Symlinks → Symlink-Dirs werden inkludiert
+                        entries.append({"name": name, "path": full, "readable": True, "is_symlink": os.path.islink(full)})
         except Exception:
             return jsonify({"error": "Kein Zugriff auf " + path}), 403
     except FileNotFoundError:
@@ -457,6 +468,7 @@ def api_browse():
         cur = parent
     return jsonify({"path": path, "parent": os.path.dirname(path) if path != "/" else None,
                      "breadcrumb": parts, "entries": entries})
+
 
 @app.route("/api/mkdir", methods=["POST"])
 def api_mkdir():
@@ -483,16 +495,29 @@ def api_files():
         for name in sorted(os.listdir(path)):
             full = os.path.join(path, name)
             try:
-                st = os.stat(full)
-                is_dir = os.path.isdir(full)
+                is_dir = os.path.isdir(full)  # folgt Symlinks automatisch
+                try:
+                    st = os.stat(full)         # folgt Symlink
+                    size = st.st_size if not is_dir else None
+                    mtime = st.st_mtime
+                except OSError:
+                    st = os.lstat(full)        # Fallback: Symlink selbst lesen
+                    size = None
+                    mtime = st.st_mtime
                 entries.append({
                     "name": name, "path": full, "is_dir": is_dir,
-                    "size": st.st_size if not is_dir else None,
-                    "modified": st.st_mtime,
+                    "size": size,
+                    "modified": mtime,
                     "readable": os.access(full, os.R_OK),
+                    "is_symlink": os.path.islink(full),
                 })
             except Exception:
-                pass
+                # Letzter Fallback: Eintrag trotzdem anzeigen statt überspringen
+                entries.append({
+                    "name": name, "path": full, "is_dir": True,
+                    "size": None, "modified": 0, "readable": False,
+                    "is_symlink": False,
+                })
     except PermissionError:
         return jsonify({"error": "Kein Zugriff"}), 403
     except FileNotFoundError:
@@ -507,6 +532,7 @@ def api_files():
         cur = parent
     return jsonify({"path": path, "parent": os.path.dirname(path) if path != "/" else None,
                      "breadcrumb": parts, "entries": entries})
+
 
 @app.route("/api/files/delete", methods=["POST"])
 def api_files_delete():
