@@ -864,7 +864,7 @@ async function promptNewFolder(){
 }
 
 // ── File Manager ──
-let _filesPath='/media';
+let _filesPath='/';
 function fmtSize(b){if(b==null)return'';if(b>1e9)return(b/1e9).toFixed(1)+' GB';if(b>1e6)return(b/1e6).toFixed(1)+' MB';if(b>1e3)return(b/1e3).toFixed(1)+' KB';return b+' B';}
 function fmtTime(ts){if(!ts)return'';const d=new Date(ts*1000);return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'})+' '+d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});}
 
