@@ -26,11 +26,17 @@ options:
   nas_name: "SimpleNAS"
   log_level: "info"
   web_port: 8100
+  admin_password_enabled: false
+  admin_username: "admin"
+  admin_password: ""
 schema:
   workgroup: str
   nas_name: str
   log_level: list(trace|debug|info|notice|warning|error|fatal)
   web_port: port
+  admin_password_enabled: bool
+  admin_username: str
+  admin_password: str
 map:
   - share:rw
   - media:rw

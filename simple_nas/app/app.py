@@ -5,7 +5,8 @@ import os
 import subprocess
 import re
 import shutil
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, session, redirect, url_for
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024 * 1024  # 10 GB max upload
@@ -15,7 +16,76 @@ SHARES_FILE = f"{DATA_DIR}/shares.json"
 USERS_FILE  = f"{DATA_DIR}/users.json"
 MOUNTS_FILE = f"{DATA_DIR}/mounts.json"
 GROUPS_FILE = f"{DATA_DIR}/groups.json"
+ADMIN_AUTH_FILE = f"{DATA_DIR}/admin_auth.json"
 WORKGROUP   = os.environ.get("WORKGROUP", "WORKGROUP")
+
+# ─────────────────────────── admin auth ─────────────────────────
+
+_admin_auth = {"enabled": False}
+
+def _setup_admin_auth():
+    """Read admin auth settings from env vars (set by HA from config.yaml) and store hashed password."""
+    global _admin_auth
+    import secrets
+
+    enabled = os.environ.get("ADMIN_PASSWORD_ENABLED", "false").lower() in ("true", "1", "yes")
+    if not enabled:
+        _admin_auth = {"enabled": False}
+        return
+
+    username = os.environ.get("ADMIN_USERNAME", "admin").strip() or "admin"
+    password = os.environ.get("ADMIN_PASSWORD", "").strip()
+    if not password:
+        _admin_auth = {"enabled": False}
+        return
+
+    os.makedirs(DATA_DIR, exist_ok=True)
+    auth = load_json(ADMIN_AUTH_FILE, {})
+    if not auth.get("secret_key"):
+        auth["secret_key"] = secrets.token_hex(32)
+    auth["enabled"] = True
+    auth["username"] = username
+    auth["password_hash"] = generate_password_hash(password)
+    save_json(ADMIN_AUTH_FILE, auth)
+
+    app.secret_key = auth["secret_key"]
+    _admin_auth = auth
+
+
+# Run setup at import time (covers both __main__ and WSGI server invocations)
+_setup_admin_auth()
+
+
+@app.before_request
+def check_auth():
+    if not _admin_auth.get("enabled"):
+        return
+    if request.endpoint in ("login", "logout"):
+        return
+    if not session.get("authenticated"):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "Unauthorized"}), 401
+        return redirect(url_for("login"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        if (username == _admin_auth.get("username") and
+                check_password_hash(_admin_auth.get("password_hash", ""), password)):
+            session["authenticated"] = True
+            return redirect(url_for("index"))
+        error = "Ungültige Anmeldedaten / Invalid credentials"
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 # ─────────────────────────── helpers ────────────────────────────
 
@@ -742,5 +812,6 @@ if __name__ == "__main__":
     for fpath, default in [(SHARES_FILE, []), (USERS_FILE, []), (MOUNTS_FILE, []), (GROUPS_FILE, []), (BACKUPS_FILE, [])]:
         if not os.path.exists(fpath):
             save_json(fpath, default)
+    _setup_admin_auth()
     port = int(os.environ.get("WEB_PORT", 8100))
     app.run(host="0.0.0.0", port=port, debug=False)

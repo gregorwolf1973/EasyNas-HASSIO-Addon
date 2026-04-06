@@ -17,3 +17,21 @@ Verwandelt deinen Home Assistant Server in einen vollwertigen Netzwerkspeicher (
    https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon
    ```
 4. **Simple NAS** erscheint im Store → Installieren → Starten
+
+---
+
+## Add-ons (English)
+
+### [Simple NAS](./simple_nas)
+
+Turns your Home Assistant server into a full-featured network storage (NAS) with Samba shares and a web interface.
+
+## Installation
+
+1. In Home Assistant: **Settings → Add-ons → Add-on Store**
+2. Top right **⋮ → Repositories**
+3. Enter this URL:
+   ```
+   https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon
+   ```
+4. **Simple NAS** appears in the store → Install → Start
