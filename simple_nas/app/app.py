@@ -804,7 +804,7 @@ def api_run_backup(job_id):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", admin_enabled=_admin_auth.get("enabled", False))
 
 if __name__ == "__main__":
     os.makedirs(DATA_DIR, exist_ok=True)
