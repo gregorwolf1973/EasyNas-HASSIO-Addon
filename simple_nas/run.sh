@@ -16,6 +16,15 @@ export WEB_PORT
 WEB_PORT=$(bashio::config 'web_port')
 bashio::log.info "Web GUI Port: ${WEB_PORT}"
 
+export ADMIN_PASSWORD_ENABLED
+ADMIN_PASSWORD_ENABLED=$(bashio::config 'admin_password_enabled')
+
+export ADMIN_USERNAME
+ADMIN_USERNAME=$(bashio::config 'admin_username')
+
+export ADMIN_PASSWORD
+ADMIN_PASSWORD=$(bashio::config 'admin_password')
+
 # Initialize persistent data files
 for f in shares users mounts groups backups; do
     if [ ! -f "/data/${f}.json" ]; then
