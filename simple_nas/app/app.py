@@ -58,7 +58,7 @@ def _base():
 
 def _client_ip():
     """Return the real client IP, looking through proxy headers."""
-    return request.headers.get("X-Forwarded-For", _client_ip()).split(",")[0].strip()
+    return request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
 
 
 @app.before_request
