@@ -52,10 +52,6 @@ def _setup_admin_auth():
     _admin_auth = auth
 
 
-# Run setup at import time (covers both __main__ and WSGI server invocations)
-_setup_admin_auth()
-
-
 @app.before_request
 def check_auth():
     if not _admin_auth.get("enabled"):
@@ -99,6 +95,9 @@ def load_json(path, default):
 def save_json(path, data):
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
+
+# Run setup at import time (covers both __main__ and WSGI server invocations)
+_setup_admin_auth()
 
 def backup_samba_passwords():
     """Copy Samba password database to /data/ for persistence across restarts."""
