@@ -10,6 +10,11 @@ Verwandelt deinen Home Assistant Server in einen vollwertigen Netzwerkspeicher (
 
 ## Installation
 
+[![Repository zu Home Assistant hinzufügen](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fgregorwolf1973%2FEasyNas-HASSIO-Addon)
+
+Auf den Button klicken → Repository wird automatisch in Home Assistant hinzugefügt → **Simple NAS** im Add-on Store installieren → Starten.
+
+Oder manuell:
 1. In Home Assistant: **Einstellungen → Add-ons → Add-on Store**
 2. Oben rechts **⋮ → Repositories**
 3. Diese URL eintragen:
@@ -28,6 +33,11 @@ Turns your Home Assistant server into a full-featured network storage (NAS) with
 
 ## Installation
 
+[![Add to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fgregorwolf1973%2FEasyNas-HASSIO-Addon)
+
+Click the button → repository is automatically added to Home Assistant → install **Simple NAS** from the Add-on Store → Start.
+
+Or manually:
 1. In Home Assistant: **Settings → Add-ons → Add-on Store**
 2. Top right **⋮ → Repositories**
 3. Enter this URL:

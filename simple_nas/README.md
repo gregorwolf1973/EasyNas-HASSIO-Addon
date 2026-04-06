@@ -26,6 +26,11 @@ Ein schlankes NAS-Add-on für Home Assistant OS. Verwandelt deinen Raspberry Pi 
 
 ### Methode 1: GitHub Repository (empfohlen)
 
+[![Repository zu Home Assistant hinzufügen](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fgregorwolf1973%2FEasyNas-HASSIO-Addon)
+
+Auf den Button klicken → Repository wird automatisch hinzugefügt → weiter mit Schritt 4.
+
+Oder manuell:
 1. In Home Assistant: **Einstellungen → Add-ons → Add-on Store**
 2. Oben rechts **⋮ → Repositories**
 3. URL eintragen: `https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon`
@@ -231,6 +236,11 @@ A lightweight NAS add-on for Home Assistant OS. Turns your Raspberry Pi (or othe
 
 ### Method 1: GitHub Repository (recommended)
 
+[![Add to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fgregorwolf1973%2FEasyNas-HASSIO-Addon)
+
+Click the button → repository is automatically added → continue with step 4.
+
+Or manually:
 1. In Home Assistant: **Settings → Add-ons → Add-on Store**
 2. Top right **⋮ → Repositories**
 3. Enter URL: `https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon`
