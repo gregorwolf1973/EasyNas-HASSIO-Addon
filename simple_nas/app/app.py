@@ -71,7 +71,6 @@ def check_auth():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    import logging
     error = None
     if request.method == "POST":
         username = request.form.get("username", "").strip()
@@ -79,17 +78,16 @@ def login():
         if (username == _admin_auth.get("username") and
                 check_password_hash(_admin_auth.get("password_hash", ""), password)):
             session["authenticated"] = True
-            logging.info(f"[AUTH] Login successful: user='{username}' ip={request.remote_addr}")
+            print(f"[AUTH] Login successful: user='{username}' ip={request.remote_addr}", flush=True)
             return redirect(_base() + "/")
-        logging.warning(f"[AUTH FAIL] Login failed: user='{username}' ip={request.remote_addr}")
+        print(f"[AUTH FAIL] Login failed: user='{username}' ip={request.remote_addr}", flush=True)
         error = "Ungültige Anmeldedaten / Invalid credentials"
     return render_template("login.html", error=error)
 
 
 @app.route("/logout")
 def logout():
-    import logging
-    logging.info(f"[AUTH] Logout: ip={request.remote_addr}")
+    print(f"[AUTH] Logout: ip={request.remote_addr}", flush=True)
     session.clear()
     return redirect(_base() + "/login")
 
