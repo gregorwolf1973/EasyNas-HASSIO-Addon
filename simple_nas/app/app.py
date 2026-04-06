@@ -56,6 +56,10 @@ def _base():
     """Return the HA Ingress base path (e.g. /api/hassio_ingress/TOKEN) or '' for direct access."""
     return request.headers.get("X-Ingress-Path", "").rstrip("/")
 
+def _client_ip():
+    """Return the real client IP, looking through proxy headers."""
+    return request.headers.get("X-Forwarded-For", _client_ip()).split(",")[0].strip()
+
 
 @app.before_request
 def check_auth():
@@ -78,16 +82,16 @@ def login():
         if (username == _admin_auth.get("username") and
                 check_password_hash(_admin_auth.get("password_hash", ""), password)):
             session["authenticated"] = True
-            print(f"[AUTH] Login successful: user='{username}' ip={request.remote_addr}", flush=True)
+            print(f"[AUTH] Login successful: user='{username}' ip={_client_ip()}", flush=True)
             return redirect(_base() + "/")
-        print(f"[AUTH FAIL] Login failed: user='{username}' ip={request.remote_addr}", flush=True)
+        print(f"[AUTH FAIL] Login failed: user='{username}' ip={_client_ip()}", flush=True)
         error = "Ungültige Anmeldedaten / Invalid credentials"
     return render_template("login.html", error=error)
 
 
 @app.route("/logout")
 def logout():
-    print(f"[AUTH] Logout: ip={request.remote_addr}", flush=True)
+    print(f"[AUTH] Logout: ip={_client_ip()}", flush=True)
     session.clear()
     return redirect(_base() + "/login")
 
