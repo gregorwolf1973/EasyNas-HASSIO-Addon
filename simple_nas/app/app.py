@@ -505,6 +505,11 @@ def api_browse():
     path = request.args.get("path", "/").strip()
     path = os.path.abspath(path)
     if not path.startswith("/"): path = "/"
+    for _pre in ("/homeassistant/addons_config/", "/config/addons_config/"):
+        if path.startswith(_pre):
+            path = "/addon_configs/" + path[len(_pre):]; break
+        if path == _pre.rstrip("/"):
+            path = "/addon_configs"; break
     entries = []
     try:
         for name in sorted(os.listdir(path)):
@@ -565,12 +570,24 @@ def api_mkdir():
 
 # ─────────────────────────── file manager API ───────────────────
 
+def _remap_path(path):
+    """HA only exposes addon_configs at /addon_configs/ inside the container.
+    /homeassistant/addons_config/... and /config/addons_config/... are not
+    accessible, so redirect to the real mount point."""
+    for prefix in ("/homeassistant/addons_config/", "/config/addons_config/"):
+        if path.startswith(prefix):
+            return "/addon_configs/" + path[len(prefix):]
+        if path == prefix.rstrip("/"):
+            return "/addon_configs"
+    return path
+
 @app.route("/api/files")
 def api_files():
     """List files and directories (unlike /browse which is dirs only)."""
     path = request.args.get("path", "/").strip()
     path = os.path.abspath(path)
     if not path.startswith("/"): path = "/"
+    path = _remap_path(path)
     entries = []
     try:
         for name in sorted(os.listdir(path)):
