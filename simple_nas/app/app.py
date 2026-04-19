@@ -503,7 +503,7 @@ def api_restart_samba():
 @app.route("/api/browse")
 def api_browse():
     path = request.args.get("path", "/").strip()
-    path = os.path.realpath(path)
+    path = os.path.abspath(path)
     if not path.startswith("/"): path = "/"
     entries = []
     try:
@@ -569,7 +569,7 @@ def api_mkdir():
 def api_files():
     """List files and directories (unlike /browse which is dirs only)."""
     path = request.args.get("path", "/").strip()
-    path = os.path.realpath(path)
+    path = os.path.abspath(path)
     if not path.startswith("/"): path = "/"
     entries = []
     try:
