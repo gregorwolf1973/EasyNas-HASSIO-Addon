@@ -696,6 +696,32 @@ def api_files_download():
         return jsonify({"error": "Datei nicht gefunden"}), 404
     return send_file(path, as_attachment=True)
 
+@app.route("/api/files/content")
+def api_files_content():
+    path = request.args.get("path", "").strip()
+    if not path or not os.path.isfile(path):
+        return jsonify({"error": "Datei nicht gefunden"}), 404
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+        return jsonify({"ok": True, "content": content})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/files/write", methods=["POST"])
+def api_files_write():
+    body = request.get_json(force=True)
+    path = body.get("path", "").strip()
+    content = body.get("content", "")
+    if not path:
+        return jsonify({"error": "path required"}), 400
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ─────────────────────────── backup API ─────────────────────────
 
 BACKUPS_FILE = f"{DATA_DIR}/backups.json"

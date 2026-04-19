@@ -497,6 +497,14 @@
   <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-backup')">Abbrechen</button><button class="btn btn-primary" onclick="saveBackup()">Speichern</button></div>
 </div></div>
 
+<!-- ══ MODAL: File editor ══ -->
+<div class="modal-overlay" id="modal-fileedit"><div class="modal" style="width:min(860px,96vw);max-height:90vh;display:flex;flex-direction:column;">
+  <div class="modal-title" id="fileedit-title">Bearbeiten</div>
+  <input type="hidden" id="fileedit-path">
+  <textarea id="fileedit-content" spellcheck="false" style="flex:1;min-height:420px;font-family:monospace;font-size:13px;resize:vertical;tab-size:2;"></textarea>
+  <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-fileedit')">Abbrechen</button><button class="btn btn-primary" onclick="saveFileEdit()">Speichern</button></div>
+</div></div>
+
 <!-- ══ MODAL: File action (copy/move) ══ -->
 <div class="modal-overlay" id="modal-fileaction"><div class="modal">
   <div class="modal-title" id="fileaction-title">Kopieren</div>
@@ -903,11 +911,15 @@ async function loadFiles(path){
   }catch(e){list.innerHTML='<div style="padding:20px;text-align:center;color:var(--danger)">'+e.message+'</div>';}
 }
 
+const _TEXT_EXT=new Set(['txt','md','yaml','yml','json','sh','py','js','ts','html','css','conf','cfg','ini','log','xml','csv','env','toml','properties','gitignore','dockerfile','bashrc','profile','sql','php','rb','rs','go','java','c','cpp','h']);
+function _isTextFile(name){const ext=name.split('.').pop().toLowerCase();return _TEXT_EXT.has(ext);}
+
 function fileActionBtns(e){
   const p=e.path.replace(/'/g,"\\'");
   const n=e.name.replace(/'/g,"\\'");
   let btns='';
   if(!e.is_dir)btns+='<button title="Download" onclick="event.stopPropagation();window.open(location.pathname.replace(/\/+$/,\'\')+\'/api/files/download?path='+encodeURIComponent(e.path)+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>';
+  if(!e.is_dir&&_isTextFile(e.name))btns+='<button title="Bearbeiten" onclick="event.stopPropagation();openFileEdit(\''+p+'\',\''+n+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/><polyline points="15 3 21 9"/></svg></button>';
   btns+='<button title="Umbenennen" onclick="event.stopPropagation();renameFile(\''+p+'\',\''+n+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
   btns+='<button title="Kopieren" onclick="event.stopPropagation();openFileAction(\'copy\',\''+p+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>';
   btns+='<button title="Verschieben" onclick="event.stopPropagation();openFileAction(\'move\',\''+p+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>';
@@ -923,6 +935,24 @@ async function renameFile(path,oldName){
 async function deleteFile(path,name){
   if(!confirm('\"'+name+'\" wirklich löschen?'))return;
   try{await api('POST','/files/delete',{path});toast('Gelöscht');loadFiles();}catch(e){toast(e.message,true);}
+}
+async function openFileEdit(path,name){
+  document.getElementById('fileedit-title').textContent='Bearbeiten: '+name;
+  document.getElementById('fileedit-path').value=path;
+  document.getElementById('fileedit-content').value='Lade...';
+  openModal('modal-fileedit');
+  try{
+    const base=window.location.pathname.replace(/\/+$/,'');
+    const r=await fetch(base+'/api/files/content?path='+encodeURIComponent(path));
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Fehler');
+    document.getElementById('fileedit-content').value=d.content;
+  }catch(e){document.getElementById('fileedit-content').value='';toast(e.message,true);closeModal('modal-fileedit');}
+}
+async function saveFileEdit(){
+  const path=document.getElementById('fileedit-path').value;
+  const content=document.getElementById('fileedit-content').value;
+  try{await api('POST','/files/write',{path,content});toast('Gespeichert');closeModal('modal-fileedit');}catch(e){toast(e.message,true);}
 }
 function openFileAction(mode,src){
   document.getElementById('fileaction-mode').value=mode;
