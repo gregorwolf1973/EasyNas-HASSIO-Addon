@@ -463,8 +463,23 @@
 
   <!-- ══ BACKUP ══ -->
   <div class="panel" id="panel-backup">
+    <!-- Einstellungs-Backup -->
+    <div class="card" style="margin-bottom:24px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Einstellungs-Backup</div>
+          <div class="card-sub">Freigaben, Benutzer &amp; Gruppen reinstall-sicher in <code>/config/.simplenas</code> speichern</div>
+        </div>
+      </div>
+      <div style="padding:12px 16px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div id="settings-backup-status" style="flex:1;color:var(--text-dim);font-size:13px"><span class="spinner"></span></div>
+        <button class="btn btn-primary btn-sm" onclick="settingsBackup()">Jetzt sichern</button>
+        <button class="btn btn-ghost btn-sm" onclick="settingsRestore()">Wiederherstellen</button>
+      </div>
+    </div>
+    <!-- Datei-Backup-Jobs -->
     <div class="section-header" style="margin-top:0">
-      <div><div class="page-title">Backup</div><div class="page-sub">Backup-Jobs erstellen und verwalten</div></div>
+      <div><div class="page-title">Datei-Backup-Jobs</div><div class="page-sub">Backup-Jobs erstellen und verwalten</div></div>
       <button class="btn btn-primary" onclick="openBackupModal()">+ Neuer Backup-Job</button>
     </div>
     <div class="grid" id="backup-grid"><div class="empty" style="grid-column:1/-1"><span class="spinner"></span></div></div>
@@ -654,7 +669,7 @@ function switchTab(n){
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
   document.getElementById('panel-'+n).classList.add('active');
   document.getElementById('tab-'+n).classList.add('active');
-  if(n==='drives')loadDrives();if(n==='shares')loadShares();if(n==='users'){loadUsers();loadGroups();}if(n==='files')loadFiles();if(n==='backup')loadBackups();
+  if(n==='drives')loadDrives();if(n==='shares')loadShares();if(n==='users'){loadUsers();loadGroups();}if(n==='files')loadFiles();if(n==='backup'){loadBackups();loadSettingsBackupStatus();}
 }
 
 // ── Status ──
@@ -998,6 +1013,36 @@ async function createFolderInFiles(){
   const name=prompt('Neuer Ordner in '+_filesPath+':');
   if(!name)return;
   try{await api('POST','/mkdir',{path:_filesPath+'/'+name});toast('Ordner erstellt');loadFiles();}catch(e){toast(e.message,true);}
+}
+
+// ── Einstellungs-Backup ──
+async function loadSettingsBackupStatus(){
+  const el=document.getElementById('settings-backup-status');
+  if(!el)return;
+  try{
+    const r=await api('GET','/settings/backup-status');
+    if(r.available){
+      const d=new Date(r.timestamp*1000);
+      el.textContent='Letztes Backup: '+d.toLocaleString('de-DE');
+    }else{
+      el.textContent='Noch kein Backup vorhanden – klicke "Jetzt sichern"';
+    }
+  }catch(e){el.textContent='Status nicht verfügbar';}
+}
+async function settingsBackup(){
+  try{
+    await api('POST','/settings/backup');
+    toast('Einstellungen gesichert');
+    loadSettingsBackupStatus();
+  }catch(e){toast(e.message,true);}
+}
+async function settingsRestore(){
+  if(!confirm('Einstellungen aus Backup wiederherstellen?\nAktuelle Einstellungen werden überschrieben.'))return;
+  try{
+    await api('POST','/settings/restore');
+    toast('Wiederhergestellt – Seite wird neu geladen...');
+    setTimeout(()=>location.reload(),2000);
+  }catch(e){toast(e.message,true);}
 }
 
 // ── Backups ──

@@ -25,7 +25,35 @@ ADMIN_USERNAME=$(bashio::config 'admin_username')
 export ADMIN_PASSWORD
 ADMIN_PASSWORD=$(bashio::config 'admin_password')
 
-# Initialize persistent data files
+# Auto-restore settings from /config/.simplenas (reinstall-safe backup)
+python3 - << 'PYEOF'
+import os, shutil, json
+
+BACKUP_DIR = "/config/.simplenas"
+DATA_DIR   = "/data"
+
+meta = os.path.join(BACKUP_DIR, "meta.json")
+shares = os.path.join(DATA_DIR, "shares.json")
+
+# Restore only when backup exists AND /data is empty/missing
+if os.path.exists(meta) and (not os.path.exists(shares) or os.path.getsize(shares) <= 5):
+    print("[RESTORE] Frische Installation erkannt – stelle Einstellungen aus /config/.simplenas wieder her ...")
+    os.makedirs(DATA_DIR, exist_ok=True)
+    for fname in ("shares.json", "users.json", "groups.json", "mounts.json", "backups.json", "admin_auth.json"):
+        src = os.path.join(BACKUP_DIR, fname)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(DATA_DIR, fname))
+            print(f"[RESTORE] {fname} wiederhergestellt")
+    samba_src = os.path.join(BACKUP_DIR, "samba")
+    if os.path.isdir(samba_src):
+        samba_dst = os.path.join(DATA_DIR, "samba")
+        os.makedirs(samba_dst, exist_ok=True)
+        for f in os.listdir(samba_src):
+            shutil.copy2(os.path.join(samba_src, f), os.path.join(samba_dst, f))
+    print("[RESTORE] Fertig.")
+PYEOF
+
+# Initialize persistent data files (only if still missing after restore)
 for f in shares users mounts groups backups; do
     if [ ! -f "/data/${f}.json" ]; then
         echo '[]' > "/data/${f}.json"

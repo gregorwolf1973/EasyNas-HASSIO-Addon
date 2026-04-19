@@ -12,6 +12,7 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024 * 1024  # 10 GB max upload
 
 DATA_DIR    = "/data"
+CONFIG_BACKUP_DIR = "/config/.simplenas"
 SHARES_FILE = f"{DATA_DIR}/shares.json"
 USERS_FILE  = f"{DATA_DIR}/users.json"
 MOUNTS_FILE = f"{DATA_DIR}/mounts.json"
@@ -104,9 +105,41 @@ def load_json(path, default):
     except Exception:
         return default
 
+_backup_lock = False
+
+def _auto_backup():
+    """Sync all /data settings to /config/.simplenas (survives addon reinstall)."""
+    global _backup_lock
+    if _backup_lock:
+        return
+    _backup_lock = True
+    try:
+        import time
+        os.makedirs(CONFIG_BACKUP_DIR, exist_ok=True)
+        with open(os.path.join(CONFIG_BACKUP_DIR, "meta.json"), "w") as f:
+            json.dump({"timestamp": time.time()}, f)
+        for fname in ("shares.json", "users.json", "groups.json",
+                      "mounts.json", "backups.json", "admin_auth.json"):
+            src = os.path.join(DATA_DIR, fname)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(CONFIG_BACKUP_DIR, fname))
+        samba_src = os.path.join(DATA_DIR, "samba")
+        if os.path.isdir(samba_src):
+            samba_dst = os.path.join(CONFIG_BACKUP_DIR, "samba")
+            os.makedirs(samba_dst, exist_ok=True)
+            for f in os.listdir(samba_src):
+                shutil.copy2(os.path.join(samba_src, f), os.path.join(samba_dst, f))
+    except Exception as e:
+        print(f"[SETTINGS-BACKUP] Fehler: {e}", flush=True)
+    finally:
+        _backup_lock = False
+
 def save_json(path, data):
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
+    # Auto-sync to reinstall-safe location after every settings change
+    if os.path.dirname(os.path.abspath(path)) == os.path.abspath(DATA_DIR):
+        _auto_backup()
 
 # Run setup at import time (covers both __main__ and WSGI server invocations)
 _setup_admin_auth()
@@ -494,6 +527,46 @@ def api_restart_samba():
 
         if not smbd_ok or not nmbd_ok:
             return jsonify({"error": f"smbd={'OK' if smbd_ok else 'FEHLT'}, nmbd={'OK' if nmbd_ok else 'FEHLT'}"}), 500
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ─────────────────────────── settings backup API ────────────────
+
+@app.route("/api/settings/backup-status")
+def api_settings_backup_status():
+    meta_file = os.path.join(CONFIG_BACKUP_DIR, "meta.json")
+    if os.path.exists(meta_file):
+        meta = load_json(meta_file, {})
+        return jsonify({"available": True, "timestamp": meta.get("timestamp")})
+    return jsonify({"available": False})
+
+@app.route("/api/settings/backup", methods=["POST"])
+def api_settings_backup():
+    _auto_backup()
+    meta = load_json(os.path.join(CONFIG_BACKUP_DIR, "meta.json"), {})
+    print(f"[SETTINGS-BACKUP] Manuell gespeichert nach {CONFIG_BACKUP_DIR}", flush=True)
+    return jsonify({"ok": True, "timestamp": meta.get("timestamp")})
+
+@app.route("/api/settings/restore", methods=["POST"])
+def api_settings_restore():
+    meta_file = os.path.join(CONFIG_BACKUP_DIR, "meta.json")
+    if not os.path.exists(meta_file):
+        return jsonify({"error": "Kein Einstellungs-Backup vorhanden"}), 404
+    try:
+        for fname in ("shares.json", "users.json", "groups.json",
+                      "mounts.json", "backups.json", "admin_auth.json"):
+            src = os.path.join(CONFIG_BACKUP_DIR, fname)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(DATA_DIR, fname))
+        samba_src = os.path.join(CONFIG_BACKUP_DIR, "samba")
+        if os.path.isdir(samba_src):
+            samba_dst = os.path.join(DATA_DIR, "samba")
+            os.makedirs(samba_dst, exist_ok=True)
+            for f in os.listdir(samba_src):
+                shutil.copy2(os.path.join(samba_src, f), os.path.join(samba_dst, f))
+        reload_samba()
+        print("[SETTINGS-BACKUP] Manuell wiederhergestellt", flush=True)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
