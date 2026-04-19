@@ -576,15 +576,21 @@ def api_files():
         for name in sorted(os.listdir(path)):
             full = os.path.join(path, name)
             try:
-                is_dir = os.path.isdir(full)  # folgt Symlinks automatisch
+                is_link = os.path.islink(full)
                 try:
                     st = os.stat(full)         # folgt Symlink
+                    is_dir = os.path.isdir(full)
                     size = st.st_size if not is_dir else None
                     mtime = st.st_mtime
                 except OSError:
-                    st = os.lstat(full)        # Fallback: Symlink selbst lesen
+                    # Symlink-Ziel nicht auflösbar (z.B. bind-mount außerhalb Container)
+                    # → als Verzeichnis behandeln wenn es ein Symlink ist
+                    is_dir = is_link
                     size = None
-                    mtime = st.st_mtime
+                    try:
+                        mtime = os.lstat(full).st_mtime
+                    except Exception:
+                        mtime = 0
                 entries.append({
                     "name": name, "path": full, "is_dir": is_dir,
                     "size": size,
