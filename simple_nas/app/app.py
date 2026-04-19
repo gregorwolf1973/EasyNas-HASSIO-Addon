@@ -576,8 +576,11 @@ def _remap_path(path):
     accessible, so redirect to the real mount point."""
     for prefix in ("/homeassistant/addons_config/", "/config/addons_config/"):
         if path.startswith(prefix):
-            return "/addon_configs/" + path[len(prefix):]
+            remapped = "/addon_configs/" + path[len(prefix):]
+            print(f"[REMAP] {path} -> {remapped} (exists={os.path.isdir(remapped)})", flush=True)
+            return remapped
         if path == prefix.rstrip("/"):
+            print(f"[REMAP] {path} -> /addon_configs (exists={os.path.isdir('/addon_configs')})", flush=True)
             return "/addon_configs"
     return path
 
