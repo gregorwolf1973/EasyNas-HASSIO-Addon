@@ -464,19 +464,29 @@
 
   <!-- ══ BACKUP ══ -->
   <div class="panel" id="panel-backup">
-    <!-- Einstellungs-Backup -->
-    <div class="card" style="margin-bottom:24px">
+    <!-- Auto-Backup Status -->
+    <div class="card" style="margin-bottom:16px">
       <div class="card-header">
         <div>
-          <div class="card-title" data-i18n="settings_backup_title">Einstellungs-Backup</div>
-          <div class="card-sub" data-i18n="settings_backup_sub">Freigaben, Benutzer &amp; Gruppen reinstall-sicher in <code>/config/.simplenas</code> speichern</div>
+          <div class="card-title" data-i18n="settings_autobackup_title">Automatisches Backup</div>
+          <div class="card-sub" data-i18n="settings_autobackup_sub">Wird bei jeder Änderung nach <code>/config/.simplenas/auto</code> gespeichert – reinstall-sicher</div>
         </div>
       </div>
       <div style="padding:12px 16px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
         <div id="settings-backup-status" style="flex:1;color:var(--text-dim);font-size:13px"><span class="spinner"></span></div>
-        <button class="btn btn-primary btn-sm" onclick="settingsBackup()" data-i18n="btn_save_now">Jetzt sichern</button>
-        <button class="btn btn-ghost btn-sm" onclick="settingsRestore()" data-i18n="btn_restore">Wiederherstellen</button>
+        <button class="btn btn-ghost btn-sm" onclick="settingsRestore()" data-i18n="btn_restore_auto">Aus Auto-Backup wiederherstellen</button>
       </div>
+    </div>
+    <!-- Manuelle Snapshots -->
+    <div class="section-header" style="margin-top:0;margin-bottom:12px">
+      <div>
+        <div class="page-title" data-i18n="manual_snapshots_title">Manuelle Snapshots</div>
+        <div class="page-sub" data-i18n="manual_snapshots_sub">Bis zu 10 Snapshots – einzeln wiederherstellen oder löschen</div>
+      </div>
+      <button class="btn btn-primary" onclick="createManualBackup()" data-i18n="btn_create_snapshot">+ Snapshot erstellen</button>
+    </div>
+    <div id="manual-backups-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">
+      <div class="empty"><span class="spinner"></span></div>
     </div>
     <!-- Datei-Backup-Jobs -->
     <div class="section-header" style="margin-top:0">
@@ -655,9 +665,7 @@ const T={
     groups_title:'Gruppen',btn_new_group:'+ Neue Gruppe',
     files_title:'Dateien',files_sub:'Dateien durchsuchen, hochladen, kopieren, verschieben und löschen',
     btn_upload:'↑ Hochladen',btn_new_folder:'+ Ordner',go_to:'Gehe zu:',path_placeholder:'Pfad eingeben…',
-    settings_backup_title:'Einstellungs-Backup',
-    settings_backup_sub:'Freigaben, Benutzer & Gruppen reinstall-sicher in /config/.simplenas speichern',
-    btn_save_now:'Jetzt sichern',btn_restore:'Wiederherstellen',
+    btn_restore:'Wiederherstellen',
     file_backup_title:'Datei-Backup-Jobs',file_backup_sub:'Backup-Jobs erstellen und verwalten',btn_new_backup:'+ Neuer Backup-Job',
     modal_cancel:'Abbrechen',modal_save:'Speichern',modal_ok:'OK',modal_select:'Auswählen',
     modal_mount:'Laufwerk einhängen',modal_unmount:'Laufwerk aushängen',
@@ -704,10 +712,21 @@ const T={
     confirm_del_file:'"{n}" wirklich löschen?',
     saved:'Gespeichert',copied:'Kopiert',moved:'Verschoben',
     err_dst:'Ziel angeben',upload_ok:'Hochgeladen: {n}',new_folder_in:'Neuer Ordner in {p}:',
-    settings_backup_ts:'Letztes Backup: {ts}',settings_no_backup:'Noch kein Backup vorhanden – klicke "Jetzt sichern"',
+    settings_autobackup_title:'Automatisches Backup',
+    settings_autobackup_sub:'Wird bei jeder Änderung nach /config/.simplenas/auto gespeichert – reinstall-sicher',
+    btn_restore_auto:'Aus Auto-Backup wiederherstellen',
+    manual_snapshots_title:'Manuelle Snapshots',
+    manual_snapshots_sub:'Bis zu 10 Snapshots – einzeln wiederherstellen oder löschen',
+    btn_create_snapshot:'+ Snapshot erstellen',
+    snapshot_no_entries:'Noch keine manuellen Snapshots',
+    snapshot_restore:'Wiederherstellen',snapshot_delete:'Löschen',
+    confirm_snapshot_restore:'Snapshot wiederherstellen?\nAktuelle Einstellungen werden überschrieben.',
+    confirm_snapshot_delete:'Snapshot wirklich löschen?',
+    snapshot_restored:'Snapshot wiederhergestellt – Seite wird neu geladen...',
+    snapshot_deleted:'Snapshot gelöscht',snapshot_created:'Snapshot erstellt',
+    settings_backup_ts:'Auto-Backup: {ts}',settings_no_backup:'Noch kein Auto-Backup vorhanden',
     settings_status_err:'Status nicht verfügbar',settings_saved:'Einstellungen gesichert',
-    confirm_settings_backup:'Vorhandene Sicherung überschreiben?',
-    confirm_settings_restore:'Einstellungen aus Backup wiederherstellen?\nAktuelle Einstellungen werden überschrieben.',
+    confirm_settings_restore:'Auto-Backup wiederherstellen?\nAktuelle Einstellungen werden überschrieben.',
     settings_restored:'Wiederhergestellt – Seite wird neu geladen...',
     no_backup_jobs:'Noch keine Backup-Jobs',running_label:'Läuft: ',last_backup_label:'Letztes Backup: ',
     err_label:'Fehler: ',btn_start:'▶ Starten',btn_running:'Läuft…',keep_label:'Behalten: ',
@@ -729,9 +748,7 @@ const T={
     groups_title:'Groups',btn_new_group:'+ New Group',
     files_title:'Files',files_sub:'Browse, upload, copy, move and delete files',
     btn_upload:'↑ Upload',btn_new_folder:'+ Folder',go_to:'Go to:',path_placeholder:'Enter path…',
-    settings_backup_title:'Settings Backup',
-    settings_backup_sub:'Save shares, users & groups reinstall-safe to /config/.simplenas',
-    btn_save_now:'Save now',btn_restore:'Restore',
+    btn_restore:'Restore',
     file_backup_title:'File Backup Jobs',file_backup_sub:'Create and manage backup jobs',btn_new_backup:'+ New Backup Job',
     modal_cancel:'Cancel',modal_save:'Save',modal_ok:'OK',modal_select:'Select',
     modal_mount:'Mount Drive',modal_unmount:'Unmount Drive',
@@ -778,10 +795,21 @@ const T={
     confirm_del_file:'Really delete "{n}"?',
     saved:'Saved',copied:'Copied',moved:'Moved',
     err_dst:'Enter destination',upload_ok:'Uploaded: {n}',new_folder_in:'New folder in {p}:',
-    settings_backup_ts:'Last backup: {ts}',settings_no_backup:'No backup yet – click "Save now"',
+    settings_autobackup_title:'Automatic Backup',
+    settings_autobackup_sub:'Saved on every change to /config/.simplenas/auto – reinstall-safe',
+    btn_restore_auto:'Restore from auto-backup',
+    manual_snapshots_title:'Manual Snapshots',
+    manual_snapshots_sub:'Up to 10 snapshots – restore or delete individually',
+    btn_create_snapshot:'+ Create snapshot',
+    snapshot_no_entries:'No manual snapshots yet',
+    snapshot_restore:'Restore',snapshot_delete:'Delete',
+    confirm_snapshot_restore:'Restore snapshot?\nCurrent settings will be overwritten.',
+    confirm_snapshot_delete:'Really delete this snapshot?',
+    snapshot_restored:'Snapshot restored – reloading page...',
+    snapshot_deleted:'Snapshot deleted',snapshot_created:'Snapshot created',
+    settings_backup_ts:'Auto-backup: {ts}',settings_no_backup:'No auto-backup yet',
     settings_status_err:'Status unavailable',settings_saved:'Settings saved',
-    confirm_settings_backup:'Overwrite existing backup?',
-    confirm_settings_restore:'Restore settings from backup?\nCurrent settings will be overwritten.',
+    confirm_settings_restore:'Restore from auto-backup?\nCurrent settings will be overwritten.',
     settings_restored:'Restored – reloading page...',
     no_backup_jobs:'No backup jobs yet',running_label:'Running: ',last_backup_label:'Last backup: ',
     err_label:'Error: ',btn_start:'▶ Start',btn_running:'Running…',keep_label:'Keep: ',
@@ -845,7 +873,7 @@ function switchTab(n){
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
   document.getElementById('panel-'+n).classList.add('active');
   document.getElementById('tab-'+n).classList.add('active');
-  if(n==='drives')loadDrives();if(n==='shares')loadShares();if(n==='users'){loadUsers();loadGroups();}if(n==='files')loadFiles();if(n==='backup'){loadBackups();loadSettingsBackupStatus();}
+  if(n==='drives')loadDrives();if(n==='shares')loadShares();if(n==='users'){loadUsers();loadGroups();}if(n==='files')loadFiles();if(n==='backup'){loadBackups();loadSettingsBackupStatus();loadManualBackups();}
 }
 
 // ── Status ──
@@ -1192,13 +1220,11 @@ async function createFolderInFiles(){
 }
 
 // ── Einstellungs-Backup ──
-let _settingsBackupAvailable=false;
 async function loadSettingsBackupStatus(){
   const el=document.getElementById('settings-backup-status');
   if(!el)return;
   try{
     const r=await api('GET','/settings/backup-status');
-    _settingsBackupAvailable=r.available;
     if(r.available){
       const d=new Date(r.timestamp*1000);
       el.textContent=t('settings_backup_ts',{ts:d.toLocaleString(t('date_locale'))});
@@ -1207,19 +1233,58 @@ async function loadSettingsBackupStatus(){
     }
   }catch(e){el.textContent=t('settings_status_err');}
 }
-async function settingsBackup(){
-  if(_settingsBackupAvailable&&!confirm(t('confirm_settings_backup')))return;
-  try{
-    await api('POST','/settings/backup');
-    toast(t('settings_saved'));
-    loadSettingsBackupStatus();
-  }catch(e){toast(e.message,true);}
-}
 async function settingsRestore(){
   if(!confirm(t('confirm_settings_restore')))return;
   try{
     await api('POST','/settings/restore');
     toast(t('settings_restored'));
+    setTimeout(()=>location.reload(),2000);
+  }catch(e){toast(e.message,true);}
+}
+// ── Manuelle Snapshots ──
+async function loadManualBackups(){
+  const el=document.getElementById('manual-backups-list');
+  if(!el)return;
+  el.innerHTML='<div class="empty"><span class="spinner"></span></div>';
+  try{
+    const list=await api('GET','/settings/backups');
+    if(!list.length){
+      el.innerHTML='<div class="empty">'+t('snapshot_no_entries')+'</div>';
+      return;
+    }
+    el.innerHTML=list.map(b=>{
+      const d=new Date(b.timestamp*1000);
+      const ts=d.toLocaleString(t('date_locale'));
+      return '<div class="card" style="padding:10px 16px"><div style="display:flex;align-items:center;gap:12px">'
+        +'<div style="flex:1"><span style="font-weight:500;font-size:14px">'+ts+'</span>'
+        +'<span style="margin-left:8px;font-size:11px;color:var(--text-dim);font-family:monospace">'+b.id+'</span></div>'
+        +'<button class="btn btn-ghost btn-sm" onclick="restoreManualBackup(\''+b.id+'\')">'+t('snapshot_restore')+'</button>'
+        +'<button class="btn btn-danger btn-sm btn-icon" title="'+t('snapshot_delete')+'" onclick="deleteManualBackup(\''+b.id+'\')">'
+        +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>'
+        +'</button></div></div>';
+    }).join('');
+  }catch(e){el.innerHTML='<div class="empty" style="color:var(--danger)">'+e.message+'</div>';}
+}
+async function createManualBackup(){
+  try{
+    await api('POST','/settings/backup');
+    toast(t('snapshot_created'));
+    loadManualBackups();
+  }catch(e){toast(e.message,true);}
+}
+async function deleteManualBackup(id){
+  if(!confirm(t('confirm_snapshot_delete')))return;
+  try{
+    await api('DELETE','/settings/backups/'+id);
+    toast(t('snapshot_deleted'));
+    loadManualBackups();
+  }catch(e){toast(e.message,true);}
+}
+async function restoreManualBackup(id){
+  if(!confirm(t('confirm_snapshot_restore')))return;
+  try{
+    await api('POST','/settings/backups/'+id+'/restore');
+    toast(t('snapshot_restored'));
     setTimeout(()=>location.reload(),2000);
   }catch(e){toast(e.message,true);}
 }

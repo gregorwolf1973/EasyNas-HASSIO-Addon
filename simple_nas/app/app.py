@@ -12,7 +12,10 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024 * 1024  # 10 GB max upload
 
 DATA_DIR    = "/data"
-CONFIG_BACKUP_DIR = "/config/.simplenas"
+CONFIG_BACKUP_DIR  = "/config/.simplenas"
+CONFIG_AUTO_DIR    = f"{CONFIG_BACKUP_DIR}/auto"      # auto-backup (reinstall-safe, always overwritten)
+CONFIG_BACKUPS_DIR = f"{CONFIG_BACKUP_DIR}/backups"   # manual snapshots
+MAX_MANUAL_BACKUPS = 10
 SHARES_FILE = f"{DATA_DIR}/shares.json"
 USERS_FILE  = f"{DATA_DIR}/users.json"
 MOUNTS_FILE = f"{DATA_DIR}/mounts.json"
@@ -107,30 +110,48 @@ def load_json(path, default):
 
 _backup_lock = False
 
+def _copy_data_to(dest_dir):
+    """Copy all settings from /data to dest_dir."""
+    import time
+    os.makedirs(dest_dir, exist_ok=True)
+    with open(os.path.join(dest_dir, "meta.json"), "w") as f:
+        json.dump({"timestamp": time.time()}, f)
+    for fname in ("shares.json", "users.json", "groups.json",
+                  "mounts.json", "backups.json", "admin_auth.json"):
+        src = os.path.join(DATA_DIR, fname)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(dest_dir, fname))
+    samba_src = os.path.join(DATA_DIR, "samba")
+    if os.path.isdir(samba_src):
+        samba_dst = os.path.join(dest_dir, "samba")
+        os.makedirs(samba_dst, exist_ok=True)
+        for f in os.listdir(samba_src):
+            shutil.copy2(os.path.join(samba_src, f), os.path.join(samba_dst, f))
+
+def _restore_from(src_dir):
+    """Restore settings from src_dir to /data."""
+    for fname in ("shares.json", "users.json", "groups.json",
+                  "mounts.json", "backups.json", "admin_auth.json"):
+        src = os.path.join(src_dir, fname)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(DATA_DIR, fname))
+    samba_src = os.path.join(src_dir, "samba")
+    if os.path.isdir(samba_src):
+        samba_dst = os.path.join(DATA_DIR, "samba")
+        os.makedirs(samba_dst, exist_ok=True)
+        for f in os.listdir(samba_src):
+            shutil.copy2(os.path.join(samba_src, f), os.path.join(samba_dst, f))
+
 def _auto_backup():
-    """Sync all /data settings to /config/.simplenas (survives addon reinstall)."""
+    """Sync /data to auto-backup slot (reinstall-safe, always overwritten)."""
     global _backup_lock
     if _backup_lock:
         return
     _backup_lock = True
     try:
-        import time
-        os.makedirs(CONFIG_BACKUP_DIR, exist_ok=True)
-        with open(os.path.join(CONFIG_BACKUP_DIR, "meta.json"), "w") as f:
-            json.dump({"timestamp": time.time()}, f)
-        for fname in ("shares.json", "users.json", "groups.json",
-                      "mounts.json", "backups.json", "admin_auth.json"):
-            src = os.path.join(DATA_DIR, fname)
-            if os.path.exists(src):
-                shutil.copy2(src, os.path.join(CONFIG_BACKUP_DIR, fname))
-        samba_src = os.path.join(DATA_DIR, "samba")
-        if os.path.isdir(samba_src):
-            samba_dst = os.path.join(CONFIG_BACKUP_DIR, "samba")
-            os.makedirs(samba_dst, exist_ok=True)
-            for f in os.listdir(samba_src):
-                shutil.copy2(os.path.join(samba_src, f), os.path.join(samba_dst, f))
+        _copy_data_to(CONFIG_AUTO_DIR)
     except Exception as e:
-        print(f"[SETTINGS-BACKUP] Fehler: {e}", flush=True)
+        print(f"[SETTINGS-BACKUP] Auto-Backup Fehler: {e}", flush=True)
     finally:
         _backup_lock = False
 
@@ -535,38 +556,84 @@ def api_restart_samba():
 
 @app.route("/api/settings/backup-status")
 def api_settings_backup_status():
-    meta_file = os.path.join(CONFIG_BACKUP_DIR, "meta.json")
+    """Auto-backup status (used for reinstall-safe indicator)."""
+    meta_file = os.path.join(CONFIG_AUTO_DIR, "meta.json")
     if os.path.exists(meta_file):
         meta = load_json(meta_file, {})
         return jsonify({"available": True, "timestamp": meta.get("timestamp")})
     return jsonify({"available": False})
 
+@app.route("/api/settings/backups", methods=["GET"])
+def api_settings_backups_list():
+    """List all manual backup snapshots."""
+    result = []
+    if os.path.isdir(CONFIG_BACKUPS_DIR):
+        for name in sorted(os.listdir(CONFIG_BACKUPS_DIR), reverse=True):
+            d = os.path.join(CONFIG_BACKUPS_DIR, name)
+            meta_file = os.path.join(d, "meta.json")
+            if os.path.isdir(d) and os.path.exists(meta_file):
+                meta = load_json(meta_file, {})
+                result.append({"id": name, "timestamp": meta.get("timestamp"), "label": name})
+    return jsonify(result)
+
 @app.route("/api/settings/backup", methods=["POST"])
 def api_settings_backup():
-    _auto_backup()
-    meta = load_json(os.path.join(CONFIG_BACKUP_DIR, "meta.json"), {})
-    print(f"[SETTINGS-BACKUP] Manuell gespeichert nach {CONFIG_BACKUP_DIR}", flush=True)
-    return jsonify({"ok": True, "timestamp": meta.get("timestamp")})
+    """Create a new manual backup snapshot."""
+    import datetime
+    name = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    dest = os.path.join(CONFIG_BACKUPS_DIR, name)
+    try:
+        _copy_data_to(dest)
+        # Keep only MAX_MANUAL_BACKUPS newest
+        entries = sorted(os.listdir(CONFIG_BACKUPS_DIR))
+        for old in entries[:-MAX_MANUAL_BACKUPS]:
+            shutil.rmtree(os.path.join(CONFIG_BACKUPS_DIR, old), ignore_errors=True)
+        meta = load_json(os.path.join(dest, "meta.json"), {})
+        print(f"[SETTINGS-BACKUP] Manueller Snapshot: {name}", flush=True)
+        return jsonify({"ok": True, "id": name, "timestamp": meta.get("timestamp")})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/settings/backups/<backup_id>", methods=["DELETE"])
+def api_settings_backup_delete(backup_id):
+    """Delete a specific manual backup snapshot."""
+    # Security: only allow simple timestamp-format IDs, no path traversal
+    import re
+    if not re.match(r'^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$', backup_id):
+        return jsonify({"error": "Ungültige Backup-ID"}), 400
+    dest = os.path.join(CONFIG_BACKUPS_DIR, backup_id)
+    if not os.path.isdir(dest):
+        return jsonify({"error": "Backup nicht gefunden"}), 404
+    shutil.rmtree(dest)
+    print(f"[SETTINGS-BACKUP] Gelöscht: {backup_id}", flush=True)
+    return jsonify({"ok": True})
+
+@app.route("/api/settings/backups/<backup_id>/restore", methods=["POST"])
+def api_settings_backup_restore(backup_id):
+    """Restore settings from a specific manual backup snapshot."""
+    import re
+    if not re.match(r'^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$', backup_id):
+        return jsonify({"error": "Ungültige Backup-ID"}), 400
+    src = os.path.join(CONFIG_BACKUPS_DIR, backup_id)
+    if not os.path.isdir(src):
+        return jsonify({"error": "Backup nicht gefunden"}), 404
+    try:
+        _restore_from(src)
+        reload_samba()
+        print(f"[SETTINGS-BACKUP] Wiederhergestellt von: {backup_id}", flush=True)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/settings/restore", methods=["POST"])
 def api_settings_restore():
-    meta_file = os.path.join(CONFIG_BACKUP_DIR, "meta.json")
-    if not os.path.exists(meta_file):
-        return jsonify({"error": "Kein Einstellungs-Backup vorhanden"}), 404
+    """Restore from auto-backup slot."""
+    if not os.path.exists(os.path.join(CONFIG_AUTO_DIR, "meta.json")):
+        return jsonify({"error": "Kein Auto-Backup vorhanden"}), 404
     try:
-        for fname in ("shares.json", "users.json", "groups.json",
-                      "mounts.json", "backups.json", "admin_auth.json"):
-            src = os.path.join(CONFIG_BACKUP_DIR, fname)
-            if os.path.exists(src):
-                shutil.copy2(src, os.path.join(DATA_DIR, fname))
-        samba_src = os.path.join(CONFIG_BACKUP_DIR, "samba")
-        if os.path.isdir(samba_src):
-            samba_dst = os.path.join(DATA_DIR, "samba")
-            os.makedirs(samba_dst, exist_ok=True)
-            for f in os.listdir(samba_src):
-                shutil.copy2(os.path.join(samba_src, f), os.path.join(samba_dst, f))
+        _restore_from(CONFIG_AUTO_DIR)
         reload_samba()
-        print("[SETTINGS-BACKUP] Manuell wiederhergestellt", flush=True)
+        print("[SETTINGS-BACKUP] Auto-Backup wiederhergestellt", flush=True)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
