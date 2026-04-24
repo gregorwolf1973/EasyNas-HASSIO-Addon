@@ -50,6 +50,9 @@ conf = f"""[global]
    preferred master = yes
    os level = 65
    wins support = yes
+   # Suppress macOS junk files on all shares
+   veto files = /.DS_Store/._.DS_Store/._*/.TemporaryItems/.Trashes/.fseventsd/.Spotlight-V100/
+   delete veto files = yes
 
 """
 
