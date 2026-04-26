@@ -9,6 +9,7 @@ SMB_CONF    = "/etc/samba/smb.conf"
 
 workgroup = sys.argv[1] if len(sys.argv) > 1 else "WORKGROUP"
 nas_name  = sys.argv[2] if len(sys.argv) > 2 else "SimpleNAS"
+smb_port  = int(sys.argv[3]) if len(sys.argv) > 3 else 445
 
 shares, users, groups = [], [], []
 try:
@@ -50,6 +51,8 @@ conf = f"""[global]
    preferred master = yes
    os level = 65
    wins support = yes
+   # Custom SMB port (default 445; change if official Samba add-on is also running)
+   smb ports = {smb_port}
    # Suppress macOS junk files on all shares
    veto files = /.DS_Store/._.DS_Store/._*/.TemporaryItems/.Trashes/.fseventsd/.Spotlight-V100/
    delete veto files = yes

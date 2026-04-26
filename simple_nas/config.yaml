@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Einfaches NAS mit Samba-Freigaben und Web-GUI zur Laufwerkverwaltung"
-version: "3.0.31"
+version: "3.0.32"
 url: "https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon"
 slug: "simple_nas"
 init: false
@@ -29,6 +29,7 @@ options:
   admin_password_enabled: false
   admin_username: "admin"
   admin_password: ""
+  smb_port: 445
 schema:
   workgroup: str
   nas_name: str
@@ -37,9 +38,10 @@ schema:
   admin_password_enabled: bool
   admin_username: str
   admin_password: str
+  smb_port: port
 map:
   - share:rw
   - media:rw
-  - ssl:ro
+  - ssl:rw
   - config:rw
   - all_addon_configs:rw

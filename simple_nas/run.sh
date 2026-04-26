@@ -25,6 +25,10 @@ ADMIN_USERNAME=$(bashio::config 'admin_username')
 export ADMIN_PASSWORD
 ADMIN_PASSWORD=$(bashio::config 'admin_password')
 
+export SMB_PORT
+SMB_PORT=$(bashio::config 'smb_port')
+bashio::log.info "SMB Port: ${SMB_PORT}"
+
 # Auto-restore settings from /config/.simplenas/auto (reinstall-safe backup)
 python3 - << 'PYEOF'
 import os, shutil, json
@@ -61,7 +65,7 @@ for f in shares users mounts groups backups; do
 done
 
 # Generate smb.conf
-python3 /app/generate_smb_conf.py "$WORKGROUP" "$NAS_NAME"
+python3 /app/generate_smb_conf.py "$WORKGROUP" "$NAS_NAME" "$SMB_PORT"
 
 # Restore system users and groups from persistent JSON files
 # (Container is ephemeral - Linux users are lost on restart)
@@ -161,12 +165,12 @@ if command -v avahi-daemon > /dev/null 2>&1; then
         bashio::log.info "Avahi daemon gestartet"
         sleep 1
         # Explicitly publish SMB service with friendly name (container hostname is ugly)
-        avahi-publish -s "${NAS_NAME}" _smb._tcp 445 &
-        bashio::log.info "Avahi mDNS: _smb._tcp auf Port 445 als '${NAS_NAME}' published"
+        avahi-publish -s "${NAS_NAME}" _smb._tcp "${SMB_PORT}" &
+        bashio::log.info "Avahi mDNS: _smb._tcp auf Port ${SMB_PORT} als '${NAS_NAME}' published"
     else
         bashio::log.warning "Avahi daemon Fehler: ${AVAHI_ERR}"
         # Try avahi-publish directly (works if HA OS already runs avahi)
-        avahi-publish -s "${NAS_NAME}" _smb._tcp 445 &
+        avahi-publish -s "${NAS_NAME}" _smb._tcp "${SMB_PORT}" &
         bashio::log.info "Avahi: service via avahi-publish published (nutzt System-Avahi)"
     fi
 else
