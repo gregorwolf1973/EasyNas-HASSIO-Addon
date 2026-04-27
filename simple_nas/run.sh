@@ -29,6 +29,10 @@ export SMB_PORT
 SMB_PORT=$(bashio::config 'smb_port')
 bashio::log.info "SMB Port: ${SMB_PORT}"
 
+export WEB_GUI_ENABLED
+WEB_GUI_ENABLED=$(bashio::config 'web_gui_enabled')
+bashio::log.info "Web GUI enabled: ${WEB_GUI_ENABLED}"
+
 # Auto-restore settings from /config/.simplenas/auto (reinstall-safe backup)
 python3 - << 'PYEOF'
 import os, shutil, json
@@ -249,5 +253,10 @@ fi
 bashio::log.info "Network Discovery aktiv"
 
 # ── Web GUI ────────────────────────────────────────────────────
-bashio::log.info "Starting Web GUI on port ${WEB_PORT}..."
-exec python3 /app/app.py
+if [ "${WEB_GUI_ENABLED}" = "true" ]; then
+    bashio::log.info "Starting Web GUI on port ${WEB_PORT}..."
+    exec python3 /app/app.py
+else
+    bashio::log.info "Web GUI disabled (web_gui_enabled: false) – Samba-only mode."
+    exec tail -f /dev/null
+fi
