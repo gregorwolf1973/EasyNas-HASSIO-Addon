@@ -132,6 +132,67 @@ bashio::log.info "Starting mount helper..."
 # Wait for FIFO to be ready
 sleep 1
 
+# Migrate mounts.json: replace raw /dev/sdX paths with stable /dev/disk/by-id/
+python3 - << 'PYEOF'
+import json, os, re
+
+MOUNTS_FILE = "/data/mounts.json"
+BY_ID_DIR   = "/dev/disk/by-id"
+
+def get_by_id_path(dev_path):
+    """Resolve a /dev/sdX (or similar) path to a stable /dev/disk/by-id/ symlink."""
+    if not os.path.isdir(BY_ID_DIR):
+        return None
+    try:
+        real_dev = os.path.realpath(dev_path)
+    except Exception:
+        return None
+    candidates = []
+    try:
+        for link in os.listdir(BY_ID_DIR):
+            link_path = os.path.join(BY_ID_DIR, link)
+            try:
+                if os.path.realpath(link_path) == real_dev:
+                    candidates.append(link)
+            except Exception:
+                pass
+    except Exception:
+        return None
+    if not candidates:
+        return None
+    for prefix in ("usb-", "ata-", "nvme-", "mmc-", "scsi-"):
+        for c in sorted(candidates):
+            if c.startswith(prefix):
+                return os.path.join(BY_ID_DIR, c)
+    return os.path.join(BY_ID_DIR, sorted(candidates)[0])
+
+try:
+    mounts = json.load(open(MOUNTS_FILE))
+except Exception:
+    mounts = []
+
+changed = 0
+for m in mounts:
+    dev = m.get("device", "")
+    # Only migrate raw /dev/sd*, /dev/hd*, /dev/vd* paths — leave by-id and others alone
+    if re.match(r"^/dev/[shv]d[a-z]\d*$", dev):
+        by_id = get_by_id_path(dev)
+        if by_id:
+            print(f"[MIGRATE] {dev} → {by_id}")
+            m["dev_path"] = dev     # keep original for reference
+            m["device"]   = by_id
+            changed += 1
+        else:
+            print(f"[MIGRATE] {dev}: kein by-id gefunden (Gerät nicht angeschlossen?)")
+
+if changed:
+    with open(MOUNTS_FILE, "w") as f:
+        json.dump(mounts, f, indent=2)
+    print(f"[MIGRATE] {changed} Eintrag/Einträge auf by-id migriert.")
+else:
+    print("[MIGRATE] Keine Migration nötig.")
+PYEOF
+
 # Restore saved mounts via mount helper
 python3 /app/restore_mounts.py
 
