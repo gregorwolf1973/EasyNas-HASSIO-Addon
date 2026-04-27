@@ -573,7 +573,7 @@
     <select id="mount-fstype"><option value="auto" data-i18n="fs_auto">Automatisch</option><option value="ext4">ext4</option><option value="ext3">ext3</option><option value="ntfs-3g">NTFS</option><option value="vfat">FAT32</option><option value="exfat">exFAT</option><option value="btrfs">btrfs</option><option value="xfs">XFS</option></select>
   </div>
   <div id="mount-confirm-area" style="display:none;">
-    <div class="form-group"><label data-i18n="lbl_confirm_device">Zur Bestätigung Gerätenamen eintippen</label><input type="text" id="mount-confirm-input" placeholder="/dev/sda1" oninput="checkMountConfirm()"></div>
+    <div class="form-group"><label data-i18n="lbl_confirm_device">Zur Bestätigung Gerätepfad eintippen</label><input type="text" id="mount-confirm-input" placeholder="/dev/disk/by-id/…" oninput="checkMountConfirm()"></div>
   </div>
   <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-mount')" data-i18n="modal_cancel">Abbrechen</button><button class="btn btn-primary" id="mount-go-btn" onclick="doMount()" data-i18n="btn_do_mount">Einhängen</button></div>
 </div></div>
@@ -686,6 +686,7 @@ const T={
     placeholder_backup_name:'z.B. NAS-Backup',placeholder_share_name:'z.B. Dokumente',placeholder_group_name:'z.B. familie',
     svc_active:'aktiv',svc_inactive:'inaktiv',
     no_drives:'Keine Laufwerke',removable:'Wechseldatenträger',not_mounted:'nicht eingehängt',
+    tag_system:'SYSTEM',
     btn_mount:'Einhängen',btn_unmount:'Aushängen',
     warn_sys_mount:'⚠️ <strong>Achtung!</strong> <code>{d}</code> gehört zur System-Festplatte. Das Ein-/Aushängen kann Home Assistant beschädigen!',
     warn_sys_unmount:'⚠️ <strong>Achtung!</strong> <code>{d}</code> gehört zur System-Festplatte ({m}). Das Aushängen kann Home Assistant beschädigen!',
@@ -769,6 +770,7 @@ const T={
     placeholder_backup_name:'e.g. NAS-Backup',placeholder_share_name:'e.g. Documents',placeholder_group_name:'e.g. family',
     svc_active:'active',svc_inactive:'inactive',
     no_drives:'No drives',removable:'Removable',not_mounted:'not mounted',
+    tag_system:'SYSTEM',
     btn_mount:'Mount',btn_unmount:'Unmount',
     warn_sys_mount:'⚠️ <strong>Warning!</strong> <code>{d}</code> belongs to the system disk. Mounting/unmounting may damage Home Assistant!',
     warn_sys_unmount:'⚠️ <strong>Warning!</strong> <code>{d}</code> belongs to the system disk ({m}). Unmounting may damage Home Assistant!',
@@ -892,7 +894,6 @@ async function loadStatus(){try{
 async function restartSamba(){try{await api('POST','/samba/restart');toast(t('samba_restarted'));setTimeout(loadStatus,2000);}catch(e){toast(e.message,true);}}
 
 // ── Drives ──
-function isSdaDevice(path){return /^\/dev\/sda\d*$/.test(path);}
 async function loadDrives(){
   const list=document.getElementById('drive-list');
   list.innerHTML='<div class="empty"><span class="spinner"></span></div>';
@@ -904,24 +905,32 @@ function driveCard(d){
   const label=d.label?'<span class="tag accent">'+d.label+'</span>':'';
   const fs=d.fstype?'<span class="tag">'+d.fstype+'</span>':'';
   const rm=d.removable?'<span class="tag warn">'+t('removable')+'</span>':'';
+  const sys=d.system_device?'<span class="tag" style="background:var(--danger);color:#fff">'+t('tag_system')+'</span>':'';
+  const byId=d.by_id?'<div style="font-family:monospace;font-size:10px;color:var(--text-dim);margin-top:2px;word-break:break-all">'+d.by_id+'</div>':'';
   const mi=mounted?'<span style="font-family:monospace;font-size:11px;color:var(--accent)">'+d.mountpoint+'</span>':'<span style="color:var(--text-dim);font-size:11px">'+t('not_mounted')+'</span>';
-  const btn=isDisk?'':mounted?'<button class="btn btn-ghost btn-sm" onclick="openUnmountModal(\''+d.path+'\',\''+d.mountpoint+'\')">'+t('btn_unmount')+'</button>':'<button class="btn btn-primary btn-sm" onclick="openMountModal(\''+d.path+'\',\''+(d.fstype||'')+'\')">'+t('btn_mount')+'</button>';
+  // Pass by_id (or fallback to path) and system_device flag to mount modal
+  const mountArg=d.by_id||d.path;
+  const btn=isDisk?'':mounted
+    ?'<button class="btn btn-ghost btn-sm" onclick="openUnmountModal(\''+d.path+'\',\''+d.mountpoint+'\')">'+t('btn_unmount')+'</button>'
+    :'<button class="btn btn-primary btn-sm" onclick="openMountModal('+JSON.stringify(mountArg)+',\''+(d.fstype||'')+'\','+!!d.system_device+')">'+t('btn_mount')+'</button>';
   const model=d.model?'<span>'+d.model.trim()+'</span>':'';
-  return '<div class="drive-item"><svg class="drive-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">'+(isDisk?'<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="17" cy="12" r="2"/>':'<path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>')+'</svg><div class="drive-info"><div class="drive-name">'+d.path+(d.size?' <span style="font-size:12px;color:var(--text-dim);font-weight:400">'+d.size+'</span>':'')+'</div><div class="drive-meta">'+model+label+fs+rm+'</div><div style="margin-top:4px">'+mi+'</div></div><div class="drive-actions">'+btn+'</div></div>';
+  return '<div class="drive-item"><svg class="drive-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">'+(isDisk?'<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="17" cy="12" r="2"/>':'<path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>')+'</svg><div class="drive-info"><div class="drive-name">'+d.path+(d.size?' <span style="font-size:12px;color:var(--text-dim);font-weight:400">'+d.size+'</span>':'')+'</div><div class="drive-meta">'+model+label+fs+rm+sys+'</div>'+byId+'<div style="margin-top:4px">'+mi+'</div></div><div class="drive-actions">'+btn+'</div></div>';
 }
 
 let _mountDevice='',_mountFstype='',_unmountDevice='',_unmountMp='';
 
-function openMountModal(dev,fs){
+function openMountModal(dev,fs,isSystem){
   _mountDevice=dev;_mountFstype=fs;
   document.getElementById('mount-device').value=dev;
-  document.getElementById('mount-name').value=dev.replace('/dev/','');
+  // Suggest mount name from last path segment of by-id or /dev/sdX
+  const suggestion=dev.split('/').pop().replace(/[^a-zA-Z0-9_\-]/g,'_');
+  document.getElementById('mount-name').value=suggestion;
   document.getElementById('mount-fstype').value=fs||'auto';
   updateMountPreview();
   const warn=document.getElementById('mount-warning');
   const conf=document.getElementById('mount-confirm-area');
   const btn=document.getElementById('mount-go-btn');
-  if(isSdaDevice(dev)){
+  if(isSystem){
     warn.innerHTML='<div class="warn-box"><p>'+t('warn_sys_mount',{d:dev})+'</p></div>';
     conf.style.display='block';document.getElementById('mount-confirm-input').value='';
     btn.disabled=true;btn.style.opacity='.4';

@@ -22,6 +22,8 @@ MOUNTS_FILE = f"{DATA_DIR}/mounts.json"
 GROUPS_FILE = f"{DATA_DIR}/groups.json"
 ADMIN_AUTH_FILE = f"{DATA_DIR}/admin_auth.json"
 WORKGROUP   = os.environ.get("WORKGROUP", "WORKGROUP")
+NAS_NAME    = os.environ.get("NAS_NAME", "SimpleNAS")
+SMB_PORT    = os.environ.get("SMB_PORT", "445")
 
 # ─────────────────────────── admin auth ─────────────────────────
 
@@ -181,7 +183,7 @@ def backup_samba_passwords():
 
 def reload_samba():
     """Regenerate smb.conf and signal smbd to reload. Restart if needed."""
-    subprocess.run(["python3", "/app/generate_smb_conf.py", WORKGROUP], check=False)
+    subprocess.run(["python3", "/app/generate_smb_conf.py", WORKGROUP, NAS_NAME, SMB_PORT], check=False)
     # Try smbcontrol first
     try:
         rc = subprocess.run(["smbcontrol", "smbd", "reload-config"],
@@ -199,6 +201,60 @@ def reload_samba():
             subprocess.Popen(["nmbd", "--foreground", "--no-process-group"],
                              stdout=open("/var/log/samba/nmbd.log", "a"),
                              stderr=subprocess.STDOUT)
+
+def get_by_id_path(dev_name):
+    """Return the most readable stable /dev/disk/by-id/ symlink for dev_name (e.g. 'sdb1').
+    Returns the full by-id path string, or None if not available."""
+    real_dev = os.path.realpath(f"/dev/{dev_name}")
+    by_id_dir = "/dev/disk/by-id"
+    if not os.path.isdir(by_id_dir):
+        return None
+    candidates = []
+    try:
+        for link in os.listdir(by_id_dir):
+            link_path = os.path.join(by_id_dir, link)
+            try:
+                if os.path.realpath(link_path) == real_dev:
+                    candidates.append(link)
+            except Exception:
+                pass
+    except Exception:
+        return None
+    if not candidates:
+        return None
+    # Prefer human-readable prefixes; avoid wwn- / dm- / md-
+    for prefix in ("usb-", "ata-", "nvme-", "mmc-", "scsi-"):
+        for c in sorted(candidates):
+            if c.startswith(prefix):
+                return os.path.join(by_id_dir, c)
+    return os.path.join(by_id_dir, sorted(candidates)[0])
+
+
+def get_system_devices():
+    """Return a set of device names (e.g. 'sda', 'sda1', 'mmcblk0p1') that back
+    critical system mount points so the UI can warn before touching them."""
+    critical = {'/', '/boot', '/boot/efi', '/usr', '/var', '/homeassistant', '/mnt/data'}
+    system_devs = set()
+    try:
+        with open("/proc/mounts") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                dev_raw, mp = parts[0], parts[1]
+                if mp not in critical:
+                    continue
+                real = os.path.realpath(dev_raw)
+                name = os.path.basename(real)
+                system_devs.add(name)
+                # Also flag the parent disk (strip partition suffix p?N)
+                parent = re.sub(r'p?\d+$', '', name)
+                if parent != name:
+                    system_devs.add(parent)
+    except Exception:
+        pass
+    return system_devs
+
 
 def get_disk_usage(path):
     try:
@@ -225,8 +281,10 @@ def list_block_devices():
 def flatten_devices(devices, parent=None):
     result = []
     for dev in devices:
+        name = dev.get("name")
         d = {
-            "name": dev.get("name"), "path": f"/dev/{dev.get('name')}",
+            "name": name, "path": f"/dev/{name}",
+            "by_id": get_by_id_path(name),
             "size": dev.get("size", "?"), "type": dev.get("type"),
             "fstype": dev.get("fstype"), "label": dev.get("label"),
             "mountpoint": dev.get("mountpoint"), "uuid": dev.get("uuid"),
@@ -242,8 +300,11 @@ def flatten_devices(devices, parent=None):
 
 @app.route("/api/drives")
 def api_drives():
+    system_devs = get_system_devices()
     devices = flatten_devices(list_block_devices())
     drives = [d for d in devices if d["type"] in ("disk", "part")]
+    for d in drives:
+        d["system_device"] = d["name"] in system_devs
     return jsonify(drives)
 
 MOUNT_FIFO   = "/tmp/mount_cmd"
@@ -287,6 +348,15 @@ def api_mount():
     if not device or not mountpoint:
         return jsonify({"error": "device and mountpoint required"}), 400
 
+    # Resolve to stable by-id path — prevents /dev/sdX reordering across reboots
+    dev_name   = os.path.basename(os.path.realpath(device))
+    by_id      = get_by_id_path(dev_name)
+    stable_dev = by_id if by_id else device
+    if by_id:
+        print(f"[MOUNT] Resolved {device} → {by_id}", flush=True)
+    else:
+        print(f"[MOUNT] No by-id path found for {device}, using raw device path", flush=True)
+
     # If mountpoint doesn't start with /, treat as name under /media
     if not mountpoint.startswith("/"):
         safe_name  = re.sub(r"[^a-zA-Z0-9_\-]", "_", mountpoint)
@@ -295,15 +365,23 @@ def api_mount():
     _helper_call("MKDIR", mountpoint)
     os.makedirs(mountpoint, exist_ok=True)
 
-    rc, out = _helper_call("MOUNT", device, mountpoint, fstype)
+    rc, out = _helper_call("MOUNT", stable_dev, mountpoint, fstype)
     if rc != 0:
         return jsonify({"error": out or "Mount fehlgeschlagen"}), 500
 
     mounts = load_json(MOUNTS_FILE, [])
-    mounts = [m for m in mounts if m.get("device") != device]
-    mounts.append({"device": device, "mountpoint": mountpoint, "fstype": fstype})
+    # Remove any existing entry for this mountpoint
+    mounts = [m for m in mounts if m.get("mountpoint") != mountpoint]
+    mounts.append({
+        "device":    stable_dev,   # stable by-id path (or raw /dev/sdX as fallback)
+        "dev_path":  device,       # original /dev/sdX — kept for display only
+        "mountpoint": mountpoint,
+        "fstype":    fstype,
+    })
     save_json(MOUNTS_FILE, mounts)
-    return jsonify({"ok": True, "mountpoint": mountpoint})
+    # Regenerate smb.conf so share availability reflects new mount state
+    reload_samba()
+    return jsonify({"ok": True, "mountpoint": mountpoint, "stable_device": stable_dev})
 
 @app.route("/api/drives/unmount", methods=["POST"])
 def api_unmount():
@@ -319,6 +397,8 @@ def api_unmount():
     mounts = load_json(MOUNTS_FILE, [])
     mounts = [m for m in mounts if m.get("mountpoint") != mountpoint and m.get("device") != device]
     save_json(MOUNTS_FILE, mounts)
+    # Regenerate smb.conf — shares on this mount point become unavailable
+    reload_samba()
     return jsonify({"ok": True})
 
 # ─────────────────────────── shares API ─────────────────────────

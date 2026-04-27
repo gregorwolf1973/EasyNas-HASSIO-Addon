@@ -2,6 +2,44 @@
 """Generate /etc/samba/smb.conf from shares.json and system config."""
 import json, os, sys
 
+
+def get_mounted_points():
+    """Return set of all mount points listed in /proc/mounts."""
+    mounted = set()
+    try:
+        with open("/proc/mounts") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2:
+                    mounted.add(parts[1])
+    except Exception:
+        pass
+    return mounted
+
+
+def share_available(path, mounted_points):
+    """Return True if the share path is currently accessible.
+
+    Paths under /media/ require an actual mount so that an unmounted / missing
+    USB device never silently maps to the empty host directory.
+    All other paths (HA-mapped volumes like /share, /config, /ssl …) are
+    considered always-available when they exist on the filesystem.
+    """
+    if not os.path.exists(path):
+        return False
+    if path.startswith("/media/"):
+        # Walk up from path until we find an entry in /proc/mounts (excl. /)
+        check = os.path.realpath(path)
+        while check not in ("/", "/media", ""):
+            if check in mounted_points:
+                return True
+            parent = os.path.dirname(check)
+            if parent == check:
+                break
+            check = parent
+        return False   # nothing mounted under /media covers this path
+    return True  # HA-mapped or other always-available path
+
 SHARES_FILE = "/data/shares.json"
 USERS_FILE  = "/data/users.json"
 GROUPS_FILE = "/data/groups.json"
@@ -59,24 +97,40 @@ conf = f"""[global]
 
 """
 
+mounted_points = get_mounted_points()
+inactive_count = 0
+
 for share in shares:
-    name        = share.get("name", "share")
-    path        = share.get("path", "/data/shares")
-    public      = share.get("public", False)
-    writable    = share.get("writable", True)
-    comment     = share.get("comment", "")
-    valid_users = share.get("users", [])
+    name         = share.get("name", "share")
+    path         = share.get("path", "/data/shares")
+    public       = share.get("public", False)
+    writable     = share.get("writable", True)
+    comment      = share.get("comment", "")
+    valid_users  = share.get("users", [])
     valid_groups = share.get("groups", [])
 
-    os.makedirs(path, mode=0o2775, exist_ok=True)
-    try:
-        os.chmod(path, 0o2775)
-    except Exception:
-        pass
+    available = share_available(path, mounted_points)
+
+    if available:
+        os.makedirs(path, mode=0o2775, exist_ok=True)
+        try:
+            os.chmod(path, 0o2775)
+        except Exception:
+            pass
 
     conf += f"[{name}]\n"
     conf += f"   comment = {comment or name}\n"
     conf += f"   path = {path}\n"
+
+    if not available:
+        # Path not mounted / does not exist — disable share so Samba
+        # does NOT expose an empty directory or the wrong device.
+        conf += f"   available = no\n"
+        conf += f"   # WARNING: '{path}' is not mounted or does not exist\n"
+        inactive_count += 1
+        conf += "\n"
+        continue
+
     conf += f"   browseable = yes\n"
     conf += f"   read only = {'no' if writable else 'yes'}\n"
     conf += f"   guest ok = {'yes' if public else 'no'}\n"
@@ -102,4 +156,6 @@ os.makedirs("/etc/samba", exist_ok=True)
 with open(SMB_CONF, "w") as f:
     f.write(conf)
 
-print(f"Generated {SMB_CONF} with {len(shares)} share(s).")
+active = len(shares) - inactive_count
+print(f"Generated {SMB_CONF} with {len(shares)} share(s) "
+      f"({active} active, {inactive_count} inactive/not mounted).")
