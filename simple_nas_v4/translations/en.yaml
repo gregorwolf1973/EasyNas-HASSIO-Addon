@@ -1,0 +1,19 @@
+configuration:
+  workgroup:
+    name: Workgroup
+    description: Windows workgroup name (default WORKGROUP)
+  log_level:
+    name: Log Level
+    description: Samba log verbosity
+  web_port:
+    name: Web GUI Port
+    description: Port for the web interface (default 8099). Note - if you change this from 8099 the HA Ingress 'Open' button may not work. Access the GUI directly via http://YOUR-HA-IP:PORT instead.
+  admin_password_enabled:
+    name: Enable Admin Password Protection
+    description: Protects the web interface with a username and password. Also requires setting admin_username and admin_password.
+  admin_username:
+    name: Admin Username
+    description: Username for accessing the web interface (default admin). Only active when admin_password_enabled is true.
+  admin_password:
+    name: Admin Password
+    description: Password for accessing the web interface. Stored encrypted. Only active when admin_password_enabled is true.
