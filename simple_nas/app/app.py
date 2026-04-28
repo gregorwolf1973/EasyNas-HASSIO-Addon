@@ -153,7 +153,7 @@ def _auto_backup():
     try:
         _copy_data_to(CONFIG_AUTO_DIR)
     except Exception as e:
-        print(f"[SETTINGS-BACKUP] Auto-Backup Fehler: {e}", flush=True)
+        print(f"[SETTINGS-BACKUP] Auto-backup error: {e}", flush=True)
     finally:
         _backup_lock = False
 
@@ -669,7 +669,7 @@ def api_settings_backup():
         for old in entries[:-MAX_MANUAL_BACKUPS]:
             shutil.rmtree(os.path.join(CONFIG_BACKUPS_DIR, old), ignore_errors=True)
         meta = load_json(os.path.join(dest, "meta.json"), {})
-        print(f"[SETTINGS-BACKUP] Manueller Snapshot: {name}", flush=True)
+        print(f"[SETTINGS-BACKUP] Manual snapshot created: {name}", flush=True)
         return jsonify({"ok": True, "id": name, "timestamp": meta.get("timestamp")})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -685,7 +685,7 @@ def api_settings_backup_delete(backup_id):
     if not os.path.isdir(dest):
         return jsonify({"error": "Backup nicht gefunden"}), 404
     shutil.rmtree(dest)
-    print(f"[SETTINGS-BACKUP] Gelöscht: {backup_id}", flush=True)
+    print(f"[SETTINGS-BACKUP] Snapshot deleted: {backup_id}", flush=True)
     return jsonify({"ok": True})
 
 @app.route("/api/settings/backups/<backup_id>/restore", methods=["POST"])
@@ -700,7 +700,7 @@ def api_settings_backup_restore(backup_id):
     try:
         _restore_from(src)
         reload_samba()
-        print(f"[SETTINGS-BACKUP] Wiederhergestellt von: {backup_id}", flush=True)
+        print(f"[SETTINGS-BACKUP] Restored from snapshot: {backup_id}", flush=True)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -713,7 +713,7 @@ def api_settings_restore():
     try:
         _restore_from(CONFIG_AUTO_DIR)
         reload_samba()
-        print("[SETTINGS-BACKUP] Auto-Backup wiederhergestellt", flush=True)
+        print("[SETTINGS-BACKUP] Auto-backup restored", flush=True)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -45,20 +45,20 @@ shares = os.path.join(DATA_DIR, "shares.json")
 
 # Restore only when auto-backup exists AND /data is empty/missing
 if os.path.exists(meta) and (not os.path.exists(shares) or os.path.getsize(shares) <= 5):
-    print("[RESTORE] Frische Installation erkannt – stelle Einstellungen aus /config/.simplenas/auto wieder her ...")
+    print("[RESTORE] Fresh install detected – restoring settings from /config/.simplenas/auto ...")
     os.makedirs(DATA_DIR, exist_ok=True)
     for fname in ("shares.json", "users.json", "groups.json", "mounts.json", "backups.json", "admin_auth.json"):
         src = os.path.join(AUTO_DIR, fname)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(DATA_DIR, fname))
-            print(f"[RESTORE] {fname} wiederhergestellt")
+            print(f"[RESTORE] {fname} restored")
     samba_src = os.path.join(AUTO_DIR, "samba")
     if os.path.isdir(samba_src):
         samba_dst = os.path.join(DATA_DIR, "samba")
         os.makedirs(samba_dst, exist_ok=True)
         for f in os.listdir(samba_src):
             shutil.copy2(os.path.join(samba_src, f), os.path.join(samba_dst, f))
-    print("[RESTORE] Fertig.")
+    print("[RESTORE] Done.")
 PYEOF
 
 # Initialize persistent data files (only if still missing after restore)
@@ -187,14 +187,14 @@ for m in mounts:
             m["device"]   = by_id
             changed += 1
         else:
-            print(f"[MIGRATE] {dev}: kein by-id gefunden (Gerät nicht angeschlossen?)")
+            print(f"[MIGRATE] {dev}: no by-id path found (device not connected?)")
 
 if changed:
     with open(MOUNTS_FILE, "w") as f:
         json.dump(mounts, f, indent=2)
-    print(f"[MIGRATE] {changed} Eintrag/Einträge auf by-id migriert.")
+    print(f"[MIGRATE] {changed} entry/entries migrated to by-id.")
 else:
-    print("[MIGRATE] Keine Migration nötig.")
+    print("[MIGRATE] No migration needed.")
 PYEOF
 
 # Restore saved mounts via mount helper
@@ -215,7 +215,7 @@ mkdir -p /var/run/dbus
 if [ ! -S /var/run/dbus/system_bus_socket ]; then
     dbus-daemon --system --nofork --nopidfile &
     sleep 1
-    bashio::log.info "DBus gestartet"
+    bashio::log.info "DBus started"
 fi
 
 # 2) Avahi – mDNS/DNS-SD (Linux Nautilus/Dolphin, macOS Finder)
@@ -227,30 +227,30 @@ if command -v avahi-daemon > /dev/null 2>&1; then
 
     AVAHI_ERR=$(avahi-daemon --daemonize --no-chroot 2>&1)
     if [ $? -eq 0 ]; then
-        bashio::log.info "Avahi daemon gestartet"
+        bashio::log.info "Avahi daemon started"
         sleep 1
         # Explicitly publish SMB service with friendly name (container hostname is ugly)
         avahi-publish -s "${NAS_NAME}" _smb._tcp "${SMB_PORT}" &
-        bashio::log.info "Avahi mDNS: _smb._tcp auf Port ${SMB_PORT} als '${NAS_NAME}' published"
+        bashio::log.info "Avahi mDNS: published _smb._tcp on port ${SMB_PORT} as '${NAS_NAME}'"
     else
-        bashio::log.warning "Avahi daemon Fehler: ${AVAHI_ERR}"
+        bashio::log.warning "Avahi daemon error: ${AVAHI_ERR}"
         # Try avahi-publish directly (works if HA OS already runs avahi)
         avahi-publish -s "${NAS_NAME}" _smb._tcp "${SMB_PORT}" &
-        bashio::log.info "Avahi: service via avahi-publish published (nutzt System-Avahi)"
+        bashio::log.info "Avahi: service published via avahi-publish (using system Avahi)"
     fi
 else
-    bashio::log.warning "avahi-daemon nicht installiert"
+    bashio::log.warning "avahi-daemon not installed"
 fi
 
-# 3) WSDD – WS-Discovery (Windows 10/11 Netzwerk-Browser)
+# 3) WSDD – WS-Discovery (Windows 10/11 network browser)
 if command -v wsdd > /dev/null 2>&1; then
     python3 /usr/local/bin/wsdd --workgroup "${WORKGROUP}" --hostname "${NAS_NAME}" &
-    bashio::log.info "WSDD gestartet (WS-Discovery für Windows 10/11, hostname=${NAS_NAME})"
+    bashio::log.info "WSDD started (WS-Discovery for Windows 10/11, hostname=${NAS_NAME})"
 else
-    bashio::log.warning "wsdd nicht installiert"
+    bashio::log.warning "wsdd not installed"
 fi
 
-bashio::log.info "Network Discovery aktiv"
+bashio::log.info "Network discovery active"
 
 # ── Web GUI ────────────────────────────────────────────────────
 if [ "${WEB_GUI_ENABLED}" = "true" ]; then
