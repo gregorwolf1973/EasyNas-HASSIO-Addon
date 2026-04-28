@@ -200,6 +200,11 @@ PYEOF
 # Restore saved mounts via mount helper
 python3 /app/restore_mounts.py
 
+# Regenerate smb.conf AFTER mounts are restored so that shares under /media/
+# are correctly marked available = yes instead of available = no
+bashio::log.info "Regenerating smb.conf after mount restore..."
+python3 /app/generate_smb_conf.py "$WORKGROUP" "$NAS_NAME" "$SMB_PORT"
+
 # Start Samba daemons
 bashio::log.info "Starting Samba daemons (smbd + nmbd)..."
 smbd --foreground --no-process-group &
