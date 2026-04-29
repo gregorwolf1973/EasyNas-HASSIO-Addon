@@ -924,7 +924,7 @@ function driveCard(d){
   // Pass by_id (or fallback to path) and system_device flag to mount modal
   const mountArg=d.by_id||d.path;
   const btn=isDisk?'':mounted
-    ?'<button class="btn btn-ghost btn-sm" onclick="openUnmountModal(\''+d.path+'\',\''+d.mountpoint+'\')">'+t('btn_unmount')+'</button>'
+    ?'<button class="btn btn-ghost btn-sm" onclick="openUnmountModal(\''+d.path+'\',\''+d.mountpoint+'\','+!!d.system_device+')">'+t('btn_unmount')+'</button>'
     :'<button class="btn btn-primary btn-sm" onclick="openMountModal('+JSON.stringify(mountArg)+',\''+(d.fstype||'')+'\','+!!d.system_device+')">'+t('btn_mount')+'</button>';
   const model=d.model?'<span>'+d.model.trim()+'</span>':'';
   return '<div class="drive-item"><svg class="drive-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">'+(isDisk?'<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="17" cy="12" r="2"/>':'<path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>')+'</svg><div class="drive-info"><div class="drive-name">'+d.path+(d.size?' <span style="font-size:12px;color:var(--text-dim);font-weight:400">'+d.size+'</span>':'')+'</div><div class="drive-meta">'+model+label+fs+rm+sys+'</div>'+byId+'<div style="margin-top:4px">'+mi+'</div></div><div class="drive-actions">'+btn+'</div></div>';
@@ -980,12 +980,12 @@ async function doMount(){
   try{const r=await api('POST','/drives/mount',{device:_mountDevice,mountpoint:name,fstype,share_bind});toast(t('mounted_ok',{m:r.mountpoint}));closeModal('modal-mount');loadDrives();}catch(e){toast(e.message,true);}
 }
 
-function openUnmountModal(dev,mp){
+function openUnmountModal(dev,mp,isSystem){
   _unmountDevice=dev;_unmountMp=mp;
   const warn=document.getElementById('unmount-warning');
   const conf=document.getElementById('unmount-confirm-area');
   const btn=document.getElementById('unmount-go-btn');
-  if(isSdaDevice(dev)){
+  if(isSystem){
     warn.innerHTML='<div class="warn-box"><p>'+t('warn_sys_unmount',{d:dev,m:mp})+'</p></div>';
     conf.style.display='block';document.getElementById('unmount-confirm-input').value='';
     btn.disabled=true;btn.style.opacity='.4';

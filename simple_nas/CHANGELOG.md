@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.0.40
+- Fix: Aushängen-Knopf hatte einen Verweis auf die alte `isSdaDevice`-Funktion → JS-Fehler, Klick ohne Wirkung
+- Unmount-Dialog nutzt jetzt das `system_device`-Flag der Drive-API
+
 ## 3.0.39
 - Robusteres Aushängen von Laufwerken
 - Vor `umount` werden offene Samba-Handles geschlossen (`smbcontrol close-share`)
