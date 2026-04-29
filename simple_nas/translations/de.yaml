@@ -7,13 +7,10 @@ configuration:
     description: Samba Log-Ausführlichkeit
   web_port:
     name: Web-GUI Port
-    description: Port für die Web-Oberfläche (Standard 8099). Hinweis - bei Änderung funktioniert der HA-Ingress-Button 'Öffnen' möglicherweise nicht mehr. Zugriff dann direkt über http://DEINE-HA-IP:PORT.
-  admin_password_enabled:
-    name: Admin-Passwortschutz aktivieren
-    description: Schützt die Web-Oberfläche mit einem Benutzernamen und Passwort. Erfordert auch das Setzen von admin_username und admin_password.
-  admin_username:
-    name: Admin-Benutzername
-    description: Benutzername für den Zugang zur Web-Oberfläche (Standard admin). Nur wirksam wenn admin_password_enabled aktiviert ist.
-  admin_password:
-    name: Admin-Passwort
-    description: Passwort für den Zugang zur Web-Oberfläche. Wird verschlüsselt gespeichert. Nur wirksam wenn admin_password_enabled aktiviert ist.
+    description: Port für die Web-Oberfläche (Standard 8099)
+  host_mount:
+    name: Host-Mount Modus
+    description: >-
+      Wenn aktiviert, werden Laufwerke auf Host-Ebene gemountet und sind für ALLE
+      Addons und HA-Automationen unter /media/ sichtbar. Wenn deaktiviert (Standard),
+      sind Mounts nur innerhalb dieses Addons sichtbar. Erfordert Addon-Neustart nach Änderung.
