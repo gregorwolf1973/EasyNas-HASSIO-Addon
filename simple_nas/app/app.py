@@ -268,6 +268,35 @@ def get_disk_usage(path):
 
 # ─────────────────────────── drives API ─────────────────────────
 
+def probe_fstype(dev_path):
+    """Detect filesystem type when lsblk's FSTYPE column is empty.
+    Mirrors the helper's escalation: blkid → blkid -p → file -sL."""
+    if not dev_path or not os.path.exists(dev_path):
+        return None
+    for cmd in (["blkid", "-o", "value", "-s", "TYPE", dev_path],
+                ["blkid", "-p", "-o", "value", "-s", "TYPE", dev_path]):
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+            t = (r.stdout or "").strip().splitlines()[0:1]
+            if t and t[0]:
+                return t[0]
+        except Exception:
+            pass
+    # file -sL reads the superblock magic directly
+    try:
+        r = subprocess.run(["file", "-sL", dev_path],
+                           capture_output=True, text=True, timeout=3)
+        s = (r.stdout or "").lower()
+        for needle, fs in (("ext4", "ext4"), ("ext3", "ext3"), ("ext2", "ext2"),
+                           ("ntfs", "ntfs"), ("exfat", "exfat"),
+                           ("fat (", "vfat"), ("dos/mbr", "vfat"),
+                           ("btrfs", "btrfs"), ("xfs", "xfs")):
+            if needle in s:
+                return fs
+    except Exception:
+        pass
+    return None
+
 def list_block_devices():
     try:
         result = subprocess.run(
@@ -282,11 +311,15 @@ def flatten_devices(devices, parent=None):
     result = []
     for dev in devices:
         name = dev.get("name")
+        # lsblk's FSTYPE is empty on some USB devices — probe as fallback
+        fstype = dev.get("fstype")
+        if not fstype and dev.get("type") == "part":
+            fstype = probe_fstype(f"/dev/{name}")
         d = {
             "name": name, "path": f"/dev/{name}",
             "by_id": get_by_id_path(name),
             "size": dev.get("size", "?"), "type": dev.get("type"),
-            "fstype": dev.get("fstype"), "label": dev.get("label"),
+            "fstype": fstype, "label": dev.get("label"),
             "mountpoint": dev.get("mountpoint"), "uuid": dev.get("uuid"),
             "model": dev.get("model") or (parent.get("model") if parent else None),
             "vendor": dev.get("vendor") or (parent.get("vendor") if parent else None),

@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.0.45
+- Laufwerks-Übersicht: FS-Typ-Tag (`ext4`, `ntfs`, …) wird wieder zuverlässig angezeigt
+- Wenn `lsblk` keinen FSTYPE meldet, wird `blkid` / `blkid -p` / `file -sL` als Fallback befragt — dieselbe Eskalation wie beim Mount-Helper
+
 ## 3.0.44
 - Mount-Auto-Erkennung deutlich robuster
 - Symlink (z.B. `/dev/disk/by-id/usb-…`) wird vor dem Probe per `readlink -f` aufgelöst
