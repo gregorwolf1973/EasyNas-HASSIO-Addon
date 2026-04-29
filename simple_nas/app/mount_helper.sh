@@ -1,14 +1,9 @@
 #!/bin/sh
 # mount_helper.sh
 # Privilegierter Daemon für Mount-Operationen, kommuniziert über FIFO
-# Host-Mount Modus: Mountet direkt nach /media/ (geteilt via map: media:rw)
-# Container-Mount Modus: Mountet nach beliebigem Pfad (nur in diesem Container sichtbar)
 
 FIFO="/tmp/mount_cmd"
 RESULT="/tmp/mount_result"
-
-# Host-Mount Modus: wird über Umgebungsvariable gesteuert
-HOST_MOUNT="${HOST_MOUNT:-false}"
 
 # Aufräumen
 rm -f "$FIFO" "$RESULT"
@@ -17,10 +12,7 @@ rm -f "$FIFO" "$RESULT"
 mkfifo "$FIFO" || { echo "FEHLER: mkfifo gescheitert"; exit 1; }
 
 echo "[mount_helper] Bereit auf $FIFO"
-echo "[mount_helper] Host-Mount Modus: $HOST_MOUNT"
-if [ "$HOST_MOUNT" = "true" ]; then
-    echo "[mount_helper] Mounts nach /media/ werden über map:media:rw mit anderen Addons geteilt"
-fi
+echo "[mount_helper] Capabilities: $(cat /proc/self/status 2>/dev/null | grep Cap || echo 'n/a')"
 
 while true; do
     if read -r line < "$FIFO"; then
@@ -35,7 +27,8 @@ while true; do
                 MOUNTPOINT="$ARG2"
                 FSTYPE="$ARG3"
 
-                echo "[mount_helper] MOUNT: $DEVICE -> $MOUNTPOINT (fs=$FSTYPE, host=$HOST_MOUNT)"
+                echo "[mount_helper] MOUNT: $DEVICE -> $MOUNTPOINT (fs=$FSTYPE)"
+                mkdir -p "$MOUNTPOINT" 2>/dev/null
 
                 # Verify device exists
                 if [ ! -b "$DEVICE" ]; then
@@ -43,16 +36,6 @@ while true; do
                     printf '1|%s ist kein Block-Device oder nicht gefunden\n' "$DEVICE" > "$RESULT"
                     continue
                 fi
-
-                if [ "$HOST_MOUNT" = "true" ]; then
-                    # ── HOST-MOUNT ──
-                    # Erzwinge Mount nach /media/NAME (geteilt mit allen Addons via map:media:rw)
-                    MOUNT_NAME=$(basename "$MOUNTPOINT")
-                    MOUNTPOINT="/media/${MOUNT_NAME}"
-                    echo "[mount_helper] Host-Mount: $DEVICE -> $MOUNTPOINT (sichtbar für alle Addons)"
-                fi
-
-                mkdir -p "$MOUNTPOINT" 2>/dev/null
 
                 # Try mount
                 if [ -n "$FSTYPE" ] && [ "$FSTYPE" != "auto" ]; then
@@ -65,18 +48,19 @@ while true; do
                     RC=$?
                 fi
 
-                # Debug bei Fehler
+                # If failed, log debug info
                 if [ $RC -ne 0 ]; then
                     echo "[mount_helper] Mount fehlgeschlagen (rc=$RC): $OUT"
                     echo "[mount_helper] DEBUG: id=$(id)"
                     echo "[mount_helper] DEBUG: ls -la $DEVICE = $(ls -la "$DEVICE" 2>&1)"
                     echo "[mount_helper] DEBUG: blkid $DEVICE = $(blkid "$DEVICE" 2>&1)"
+                    echo "[mount_helper] DEBUG: mountinfo (last 5):"
+                    tail -5 /proc/self/mountinfo 2>/dev/null
                 fi
 
                 printf '%s|%s\n' "$RC" "$OUT" > "$RESULT"
                 echo "[mount_helper] MOUNT result: rc=$RC"
                 ;;
-
             UMOUNT)
                 echo "[mount_helper] UMOUNT: $ARG1"
                 OUT=$(umount "$ARG1" 2>&1)
@@ -84,12 +68,10 @@ while true; do
                 printf '%s|%s\n' "$RC" "$OUT" > "$RESULT"
                 echo "[mount_helper] UMOUNT result: rc=$RC"
                 ;;
-
             MKDIR)
                 mkdir -p "$ARG1" 2>/dev/null
                 printf '0|\n' > "$RESULT"
                 ;;
-
             *)
                 printf '1|Unbekannter Befehl: %s\n' "$ACTION" > "$RESULT"
                 ;;

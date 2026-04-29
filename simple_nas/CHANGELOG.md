@@ -1,29 +1,5 @@
 # Changelog
 
-## 3.1.1
-- Fix: Entfernt `host_pid: true` (brach s6-overlay Init-System → Addon startete nicht)
-- Fix: Host-Mount nutzt jetzt geteiltes `/media/` Volume statt nsenter (stabiler, kein Host-PID nötig)
-- Hinzugefügt: `devices: /dev` für direkten Zugriff auf Block-Devices
-
-## 3.1.0
-- Neu: Host-Mount Modus — Laufwerke auf Host-Ebene mounten via nsenter
-- Mounts sind mit Host-Mount für ALLE Addons und HA-Automationen unter /media/ sichtbar
-- Konfigurierbar über host_mount: true/false in den Addon-Einstellungen
-- host_pid: true hinzugefügt für nsenter Host-Namespace-Zugriff
-- Fallback auf Container-Mount wenn Host-Namespace nicht erreichbar
-
-## 3.1.1
-- Fix: Entfernt `host_pid: true` (brach s6-overlay Init-System → Addon startete nicht)
-- Fix: Host-Mount nutzt jetzt geteiltes `/media/` Volume statt nsenter (stabiler, kein Host-PID nötig)
-- Hinzugefügt: `devices: /dev` für direkten Zugriff auf Block-Devices
-
-## 3.1.0
-- Neu: Host-Mount Modus — Laufwerke auf Host-Ebene mounten (sichtbar für alle Addons und HA-Automationen)
-- Neu: Toggle in der Addon-Konfiguration (host_mount: true/false)
-- Neu: nsenter-basierter Mount in den Host-Mount-Namespace
-- Neu: Automatischer Fallback auf Container-Mount wenn Host-Namespace nicht erreichbar
-- Doku: Ausführliche Anleitung für Host-Mount mit Anwendungsbeispielen (Frigate, HA Automationen)
-
 ## 3.0.0
 - Neu: Dateien-Tab — vollständiger Filebrowser mit Upload, Download, Kopieren, Verschieben, Umbenennen, Löschen
 - Neu: Backup-Tab — Backup-Jobs erstellen, manuell starten, alte Backups automatisch aufräumen (rsync-basiert)

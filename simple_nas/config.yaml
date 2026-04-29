@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Einfaches NAS mit Samba-Freigaben und Web-GUI zur Laufwerkverwaltung"
-version: "3.1.1"
+version: "3.0.37"
 url: "https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon"
 slug: "simple_nas"
 init: false
@@ -11,12 +11,10 @@ arch:
 startup: services
 boot: auto
 ingress: true
-ingress_port: 8099
+ingress_port: 8100
 panel_icon: "mdi:nas"
 panel_title: "Simple NAS"
 host_network: true
-devices:
-  - /dev
 privileged:
   - SYS_ADMIN
   - SYS_RAWIO
@@ -25,15 +23,27 @@ full_access: true
 apparmor: false
 options:
   workgroup: "WORKGROUP"
+  nas_name: "SimpleNAS"
   log_level: "info"
-  web_port: 8099
-  host_mount: false
+  web_port: 8100
+  admin_password_enabled: false
+  admin_username: "admin"
+  admin_password: ""
+  smb_port: 445
+  web_gui_enabled: true
 schema:
   workgroup: str
+  nas_name: str
   log_level: list(trace|debug|info|notice|warning|error|fatal)
   web_port: port
-  host_mount: bool
+  admin_password_enabled: bool
+  admin_username: str
+  admin_password: str
+  smb_port: port
+  web_gui_enabled: bool
 map:
   - share:rw
   - media:rw
-  - ssl:ro
+  - ssl:rw
+  - config:rw
+  - all_addon_configs:rw
