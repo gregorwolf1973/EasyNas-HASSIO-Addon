@@ -206,8 +206,11 @@ def api_create_share():
     name = re.sub(r"[^a-zA-Z0-9_\-]", "_", name)
 
     # Create directory with Samba-friendly permissions
-    os.makedirs(path, mode=0o2775, exist_ok=True)
-    os.chmod(path, 0o2775)
+    try:
+        os.makedirs(path, mode=0o2775, exist_ok=True)
+        os.chmod(path, 0o2775)
+    except OSError:
+        pass  # Read-only filesystem (e.g. /ssl)
 
     shares = load_json(SHARES_FILE, [])
     if any(s["name"] == name for s in shares):
@@ -239,8 +242,11 @@ def api_update_share(name):
             # Ensure share directory exists with correct permissions
             p = s.get("path", "")
             if p:
-                os.makedirs(p, mode=0o2775, exist_ok=True)
-                os.chmod(p, 0o2775)
+                try:
+                    os.makedirs(p, mode=0o2775, exist_ok=True)
+                    os.chmod(p, 0o2775)
+                except OSError:
+                    pass  # Read-only filesystem
             save_json(SHARES_FILE, shares)
             reload_samba()
             return jsonify(s)

@@ -42,6 +42,11 @@ conf = f"""[global]
    printing = bsd
    printcap name = /dev/null
    disable spoolss = yes
+   smb2 leases = no
+   oplocks = no
+   level2 oplocks = no
+   kernel oplocks = no
+   change notify = yes
    log level = 2
 
 """
