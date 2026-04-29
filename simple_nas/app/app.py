@@ -268,9 +268,34 @@ def get_disk_usage(path):
 
 # ─────────────────────────── drives API ─────────────────────────
 
+def get_proc_mounts_fstypes():
+    """Return {device_basename: fstype} for everything currently mounted.
+    Uses /proc/mounts where the kernel always knows the resolved FS type.
+    Resolves symlinks (e.g. /dev/disk/by-id/...) to /dev/sdXN."""
+    out = {}
+    try:
+        with open("/proc/mounts") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) < 3:
+                    continue
+                dev_raw, _, fs = parts[0], parts[1], parts[2]
+                if not dev_raw.startswith("/dev/"):
+                    continue
+                try:
+                    real = os.path.realpath(dev_raw)
+                except Exception:
+                    real = dev_raw
+                out[os.path.basename(real)] = fs
+    except Exception:
+        pass
+    return out
+
 def probe_fstype(dev_path):
     """Detect filesystem type when lsblk's FSTYPE column is empty.
-    Mirrors the helper's escalation: blkid → blkid -p → file -sL."""
+    Tries blkid → blkid -p → file -sL. Note: HA-OS often blocks raw block
+    reads with EPERM, so all of these may return nothing for unmounted
+    USB devices — that's why we also fall back to /proc/mounts elsewhere."""
     if not dev_path or not os.path.exists(dev_path):
         return None
     for cmd in (["blkid", "-o", "value", "-s", "TYPE", dev_path],
@@ -282,7 +307,6 @@ def probe_fstype(dev_path):
                 return t[0]
         except Exception:
             pass
-    # file -sL reads the superblock magic directly
     try:
         r = subprocess.run(["file", "-sL", dev_path],
                            capture_output=True, text=True, timeout=3)
@@ -307,12 +331,29 @@ def list_block_devices():
     except Exception:
         return []
 
-def flatten_devices(devices, parent=None):
+def flatten_devices(devices, parent=None, mounted_fs=None, persisted_fs=None):
+    if mounted_fs is None:
+        mounted_fs = get_proc_mounts_fstypes()
+    if persisted_fs is None:
+        # Pull resolved fstypes from mounts.json (saved after a successful
+        # mount — covers devices that were mounted via brute-force and are
+        # currently mounted, plus historic entries for offline devices)
+        persisted_fs = {}
+        try:
+            for m in load_json(MOUNTS_FILE, []):
+                resolved = m.get("resolved_fstype") or m.get("fstype")
+                dev_real = os.path.basename(os.path.realpath(m.get("device", "")))
+                if resolved and resolved != "auto" and dev_real:
+                    persisted_fs[dev_real] = resolved
+        except Exception:
+            pass
     result = []
     for dev in devices:
         name = dev.get("name")
-        # lsblk's FSTYPE is empty on some USB devices — probe as fallback
+        # FS type sources, in order: lsblk → /proc/mounts → mounts.json → blkid/file probe
         fstype = dev.get("fstype")
+        if not fstype: fstype = mounted_fs.get(name)
+        if not fstype: fstype = persisted_fs.get(name)
         if not fstype and dev.get("type") == "part":
             fstype = probe_fstype(f"/dev/{name}")
         d = {
@@ -328,7 +369,7 @@ def flatten_devices(devices, parent=None):
         }
         result.append(d)
         for child in dev.get("children", []):
-            result.extend(flatten_devices([child], dev))
+            result.extend(flatten_devices([child], dev, mounted_fs, persisted_fs))
     return result
 
 @app.route("/api/drives")
@@ -405,6 +446,19 @@ def api_mount():
     if rc != 0:
         return jsonify({"error": out or "Mount fehlgeschlagen"}), 500
 
+    # Resolve the actual FS type the kernel is using — for the drive list tag
+    resolved_fs = fstype
+    if fstype == "auto":
+        try:
+            with open("/proc/mounts") as f:
+                for ln in f:
+                    p = ln.split()
+                    if len(p) >= 3 and p[1] == mountpoint:
+                        resolved_fs = p[2]
+                        break
+        except Exception:
+            pass
+
     # Bind-mount under /share/<name> for HA Core / other add-ons.
     share_bind_path = None
     if share_bind_enabled and mountpoint.startswith("/media/"):
@@ -429,6 +483,7 @@ def api_mount():
         "dev_path":  device,       # original /dev/sdX — kept for display only
         "mountpoint": mountpoint,
         "fstype":    fstype,
+        "resolved_fstype": resolved_fs,  # what the kernel actually mounted as
     }
     if share_bind_path:
         entry["share_bind"] = share_bind_path

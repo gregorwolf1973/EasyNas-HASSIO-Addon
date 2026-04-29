@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.46
+- FS-Tag-Anzeige bekommt zwei zusätzliche Quellen, weil HA-OS Raw-Block-Reads (`blkid`/`file -s` auf Blockdevices) per `EPERM` blockiert
+- Quelle 2: `/proc/mounts` — zeigt den FS-Typ jedes aktuell gemounteten Devices verlässlich
+- Quelle 3: `mounts.json` mit neuem Feld `resolved_fstype` — beim Mount wird der vom Kernel tatsächlich verwendete Typ aus `/proc/mounts` gelesen und gespeichert (nicht nur „auto")
+- Damit zeigt die Drive-Liste den FS-Tag (z.B. `ext4`) sicher für gemountete Geräte und auch für später wieder offline genommene, deren letzter Mount-Typ bekannt ist
+
 ## 3.0.45
 - Laufwerks-Übersicht: FS-Typ-Tag (`ext4`, `ntfs`, …) wird wieder zuverlässig angezeigt
 - Wenn `lsblk` keinen FSTYPE meldet, wird `blkid` / `blkid -p` / `file -sL` als Fallback befragt — dieselbe Eskalation wie beim Mount-Helper
