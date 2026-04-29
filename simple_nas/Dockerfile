@@ -10,6 +10,8 @@ RUN apk add --no-cache \
     util-linux \
     blkid \
     e2fsprogs \
+    psmisc \
+    lsof \
     ntfs-3g \
     exfatprogs \
     bash \

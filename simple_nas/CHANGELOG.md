@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.42
+- Mount „Automatisch" benutzt jetzt zuerst `blkid` zur FS-Erkennung — umgeht den irreführenden „Can't open blockdev"-Fehler von `fsconfig()` bei USB-Geräten
+- NTFS wird automatisch über `ntfs-3g` (statt Kernel-NTFS-RO) gemountet
+- Fallback auf nackten `mount`-Befehl, falls explizites `-t` fehlschlägt
+- `psmisc` (`fuser`) und `lsof` ergänzt — Busy-Diagnose beim Aushängen funktioniert jetzt richtig
+
 ## 3.0.41
 - Fix: Einhängen-Knopf reagierte nicht — `JSON.stringify(by_id)` enthielt doppelte Anführungszeichen, die das `onclick="…"`-Attribut zerschossen → „Unexpected end of input" beim Seitenrendern
 - Anführungszeichen werden jetzt als `&quot;` HTML-escaped
