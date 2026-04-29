@@ -344,6 +344,9 @@ def api_mount():
     device     = body.get("device", "").strip()
     mountpoint = body.get("mountpoint", "").strip()
     fstype     = body.get("fstype", "auto")
+    # Bind-mount to /share/<name> so HA Core and other add-ons can access the drive.
+    # Defaults to True (current standard behaviour).
+    share_bind_enabled = body.get("share_bind", True)
 
     if not device or not mountpoint:
         return jsonify({"error": "device and mountpoint required"}), 400
@@ -369,19 +372,40 @@ def api_mount():
     if rc != 0:
         return jsonify({"error": out or "Mount fehlgeschlagen"}), 500
 
+    # Bind-mount under /share/<name> for HA Core / other add-ons.
+    share_bind_path = None
+    if share_bind_enabled and mountpoint.startswith("/media/"):
+        bind_name = os.path.basename(mountpoint)
+        candidate = f"/share/{bind_name}"
+        os.makedirs(candidate, exist_ok=True)
+        rc_b, out_b = _helper_call("BIND", mountpoint, candidate)
+        if rc_b == 0:
+            share_bind_path = candidate
+            print(f"[MOUNT] Bind {mountpoint} -> {candidate}", flush=True)
+        else:
+            print(f"[MOUNT] Bind to {candidate} failed: {out_b}", flush=True)
+
     mounts = load_json(MOUNTS_FILE, [])
     # Remove any existing entry for this mountpoint
     mounts = [m for m in mounts if m.get("mountpoint") != mountpoint]
-    mounts.append({
+    entry = {
         "device":    stable_dev,   # stable by-id path (or raw /dev/sdX as fallback)
         "dev_path":  device,       # original /dev/sdX — kept for display only
         "mountpoint": mountpoint,
         "fstype":    fstype,
-    })
+    }
+    if share_bind_path:
+        entry["share_bind"] = share_bind_path
+    mounts.append(entry)
     save_json(MOUNTS_FILE, mounts)
     # Regenerate smb.conf so share availability reflects new mount state
     reload_samba()
-    return jsonify({"ok": True, "mountpoint": mountpoint, "stable_device": stable_dev})
+    return jsonify({
+        "ok": True,
+        "mountpoint": mountpoint,
+        "stable_device": stable_dev,
+        "share_bind": share_bind_path,
+    })
 
 @app.route("/api/drives/unmount", methods=["POST"])
 def api_unmount():
@@ -391,10 +415,27 @@ def api_unmount():
     if not mountpoint and not device:
         return jsonify({"error": "mountpoint or device required"}), 400
     target = mountpoint or device
+
+    # Find bind path from saved mounts so we can unmount it first
+    mounts = load_json(MOUNTS_FILE, [])
+    bind_path = None
+    for m in mounts:
+        if (mountpoint and m.get("mountpoint") == mountpoint) or \
+           (device and m.get("device") == device):
+            bind_path = m.get("share_bind")
+            break
+
+    # Unmount bind first (ignore errors — may not exist)
+    if bind_path:
+        rc_b, out_b = _helper_call("UMOUNT", bind_path)
+        if rc_b != 0:
+            print(f"[UNMOUNT] Bind unmount {bind_path} failed: {out_b}", flush=True)
+        else:
+            print(f"[UNMOUNT] Bind unmounted: {bind_path}", flush=True)
+
     rc, out = _helper_call("UMOUNT", target)
     if rc != 0:
         return jsonify({"error": out or "Aushängen fehlgeschlagen"}), 500
-    mounts = load_json(MOUNTS_FILE, [])
     mounts = [m for m in mounts if m.get("mountpoint") != mountpoint and m.get("device") != device]
     save_json(MOUNTS_FILE, mounts)
     # Regenerate smb.conf — shares on this mount point become unavailable

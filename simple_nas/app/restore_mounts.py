@@ -42,6 +42,7 @@ for m in mounts:
     device     = m.get("device")
     mountpoint = m.get("mountpoint")
     fstype     = m.get("fstype", "auto")
+    share_bind = m.get("share_bind")
     if not device or not mountpoint:
         continue
     helper_call("MKDIR", mountpoint)
@@ -49,5 +50,13 @@ for m in mounts:
     rc, out = helper_call("MOUNT", device, mountpoint, fstype)
     if rc == 0:
         print(f"Mounted {device} -> {mountpoint}")
+        # Restore bind-mount to /share/<name> for HA Core access
+        if share_bind:
+            os.makedirs(share_bind, exist_ok=True)
+            rc_b, out_b = helper_call("BIND", mountpoint, share_bind)
+            if rc_b == 0:
+                print(f"  Bind {mountpoint} -> {share_bind}")
+            else:
+                print(f"  Bind to {share_bind} failed: {out_b}")
     else:
         print(f"Failed to mount {device}: {out}")

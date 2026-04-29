@@ -68,6 +68,28 @@ while true; do
                 printf '%s|%s\n' "$RC" "$OUT" > "$RESULT"
                 echo "[mount_helper] UMOUNT result: rc=$RC"
                 ;;
+            BIND)
+                SRC="$ARG1"
+                DST="$ARG2"
+                echo "[mount_helper] BIND: $SRC -> $DST"
+                mkdir -p "$DST" 2>/dev/null
+                # If something is already mounted at DST, treat as success (idempotent restore)
+                if mountpoint -q "$DST" 2>/dev/null; then
+                    echo "[mount_helper] BIND: $DST already a mountpoint — skipping"
+                    printf '0|already-mounted\n' > "$RESULT"
+                    continue
+                fi
+                OUT=$(mount --bind "$SRC" "$DST" 2>&1)
+                RC=$?
+                if [ $RC -eq 0 ]; then
+                    # Make the bind shared so it propagates into other containers
+                    mount --make-shared "$DST" 2>/dev/null || true
+                else
+                    echo "[mount_helper] BIND failed (rc=$RC): $OUT"
+                fi
+                printf '%s|%s\n' "$RC" "$OUT" > "$RESULT"
+                echo "[mount_helper] BIND result: rc=$RC"
+                ;;
             MKDIR)
                 mkdir -p "$ARG1" 2>/dev/null
                 printf '0|\n' > "$RESULT"

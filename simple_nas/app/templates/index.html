@@ -572,6 +572,13 @@
   <div class="form-group"><label data-i18n="lbl_filesystem">Dateisystem</label>
     <select id="mount-fstype"><option value="auto" data-i18n="fs_auto">Automatisch</option><option value="ext4">ext4</option><option value="ext3">ext3</option><option value="ntfs-3g">NTFS</option><option value="vfat">FAT32</option><option value="exfat">exFAT</option><option value="btrfs">btrfs</option><option value="xfs">XFS</option></select>
   </div>
+  <div class="form-group">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal;">
+      <input type="checkbox" id="mount-share-bind" checked oninput="updateMountPreview()" style="width:auto;margin:0;">
+      <span data-i18n="lbl_share_bind">Auch für HA Core / andere Add-ons zugänglich machen (Bind-Mount nach /share/&lt;name&gt;)</span>
+    </label>
+    <div class="mount-path-preview" id="mount-bind-preview" style="opacity:.8;"></div>
+  </div>
   <div id="mount-confirm-area" style="display:none;">
     <div class="form-group"><label data-i18n="lbl_confirm_device">Zur Bestätigung Gerätepfad eintippen</label><input type="text" id="mount-confirm-input" placeholder="/dev/disk/by-id/…" oninput="checkMountConfirm()"></div>
   </div>
@@ -676,6 +683,7 @@ const T={
     modal_browser:'Ordner auswählen',modal_copy:'Kopieren',modal_move:'Verschieben',
     lbl_device:'Gerät',lbl_mount_point:'Einhängepunkt (Name oder voller Pfad wie /mnt/nas)',
     lbl_filesystem:'Dateisystem',lbl_confirm_device:'Zur Bestätigung Gerätenamen eintippen',
+    lbl_share_bind:'Auch für HA Core / andere Add-ons zugänglich machen (Bind-Mount nach /share/<name>)',
     lbl_name:'Name',lbl_path:'Pfad',lbl_description:'Beschreibung',lbl_optional:'optional',
     lbl_write_access:'Schreibzugriff',lbl_write_access_sub:'Dateien erstellen & ändern',
     lbl_public:'Öffentlich',lbl_public_sub:'Zugriff ohne Passwort',
@@ -760,6 +768,7 @@ const T={
     modal_browser:'Select Folder',modal_copy:'Copy',modal_move:'Move',
     lbl_device:'Device',lbl_mount_point:'Mount Point (name or full path like /mnt/nas)',
     lbl_filesystem:'Filesystem',lbl_confirm_device:'Enter device name to confirm',
+    lbl_share_bind:'Also make accessible to HA Core / other add-ons (bind-mount to /share/<name>)',
     lbl_name:'Name',lbl_path:'Path',lbl_description:'Description',lbl_optional:'optional',
     lbl_write_access:'Write Access',lbl_write_access_sub:'Create & edit files',
     lbl_public:'Public',lbl_public_sub:'Access without password',
@@ -926,6 +935,7 @@ function openMountModal(dev,fs,isSystem){
   const suggestion=dev.split('/').pop().replace(/[^a-zA-Z0-9_\-]/g,'_');
   document.getElementById('mount-name').value=suggestion;
   document.getElementById('mount-fstype').value=fs||'auto';
+  document.getElementById('mount-share-bind').checked=true;
   updateMountPreview();
   const warn=document.getElementById('mount-warning');
   const conf=document.getElementById('mount-confirm-area');
@@ -950,11 +960,20 @@ function updateMountPreview(){
     p='/media/'+n.replace(/[^a-zA-Z0-9_\-]/g,'_');
   }
   document.getElementById('mount-preview').textContent=p;
+  // Bind preview: only when checkbox enabled AND mountpoint sits under /media/
+  const cb=document.getElementById('mount-share-bind');
+  const bp=document.getElementById('mount-bind-preview');
+  if(cb && cb.checked && p.startsWith('/media/')){
+    bp.textContent='+ /share/'+p.substring(7);
+  }else{
+    bp.textContent='';
+  }
 }
 async function doMount(){
   const name=document.getElementById('mount-name').value.trim();
   const fstype=document.getElementById('mount-fstype').value;
-  try{const r=await api('POST','/drives/mount',{device:_mountDevice,mountpoint:name,fstype});toast(t('mounted_ok',{m:r.mountpoint}));closeModal('modal-mount');loadDrives();}catch(e){toast(e.message,true);}
+  const share_bind=document.getElementById('mount-share-bind').checked;
+  try{const r=await api('POST','/drives/mount',{device:_mountDevice,mountpoint:name,fstype,share_bind});toast(t('mounted_ok',{m:r.mountpoint}));closeModal('modal-mount');loadDrives();}catch(e){toast(e.message,true);}
 }
 
 function openUnmountModal(dev,mp){

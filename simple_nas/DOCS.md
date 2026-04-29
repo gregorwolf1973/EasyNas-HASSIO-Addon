@@ -10,6 +10,7 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 - **Web GUI** – manage shares, users, groups, drives, and file browser via HA Ingress
 - **USB / external drives** – mount and unmount drives at runtime; mounts survive reboots using stable `/dev/disk/by-id/` identifiers
 - **Network discovery** – mDNS (Avahi) for macOS Finder / Linux Nautilus, WS-Discovery (wsdd) for Windows 10/11
+- **HA Core / cross-add-on access** – mounted drives are automatically bind-mounted to `/share/<name>` so Home Assistant Core and other add-ons can read and write the same data (can be disabled per mount via the mount dialog)
 - **Reinstall-safe backup** – settings are automatically backed up to `/config/.simplenas/auto` and restored on fresh install; manual snapshots (up to 10) are also supported
 - **Password protection** – optional web GUI login (username + password via add-on config)
 - **macOS junk suppression** – `.DS_Store`, `._*`, `.TemporaryItems` etc. are hidden and deleted automatically on all shares
