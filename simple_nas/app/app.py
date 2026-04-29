@@ -415,6 +415,7 @@ def api_unmount():
     if not mountpoint and not device:
         return jsonify({"error": "mountpoint or device required"}), 400
     target = mountpoint or device
+    force  = bool(body.get("force", False))
 
     # Find bind path from saved mounts so we can unmount it first
     mounts = load_json(MOUNTS_FILE, [])
@@ -425,17 +426,51 @@ def api_unmount():
             bind_path = m.get("share_bind")
             break
 
-    # Unmount bind first (ignore errors — may not exist)
+    # 1) Tell smbd to close all shares whose path lies under the mountpoint,
+    #    so it releases its file handles before we unmount.
+    try:
+        shares = load_json(SHARES_FILE, [])
+        affected = [s.get("name") for s in shares
+                    if s.get("path", "").rstrip("/").startswith(mountpoint.rstrip("/"))
+                    and s.get("name")]
+        for sname in affected:
+            subprocess.run(["smbcontrol", "all", "close-share", sname],
+                           capture_output=True, timeout=5)
+        if affected:
+            print(f"[UNMOUNT] Closed Samba handles for: {', '.join(affected)}", flush=True)
+    except Exception as e:
+        print(f"[UNMOUNT] close-share failed: {e}", flush=True)
+
+    def _umount_with_fallback(path):
+        """Try plain umount, fall back to lazy umount if force=True or busy."""
+        rc, out = _helper_call("UMOUNT", path)
+        if rc == 0:
+            return 0, out, False
+        # Busy? Either force was requested, or auto-fallback for binds (always safe)
+        is_busy = "busy" in (out or "").lower() or "target is busy" in (out or "").lower()
+        if force or (path == bind_path and is_busy):
+            rc2, out2 = _helper_call("UMOUNT_LAZY", path)
+            return rc2, out2, True
+        return rc, out, False
+
+    # 2) Unmount bind first
     if bind_path:
-        rc_b, out_b = _helper_call("UMOUNT", bind_path)
+        rc_b, out_b, lazy_b = _umount_with_fallback(bind_path)
         if rc_b != 0:
             print(f"[UNMOUNT] Bind unmount {bind_path} failed: {out_b}", flush=True)
         else:
-            print(f"[UNMOUNT] Bind unmounted: {bind_path}", flush=True)
+            print(f"[UNMOUNT] Bind unmounted{' (lazy)' if lazy_b else ''}: {bind_path}", flush=True)
 
-    rc, out = _helper_call("UMOUNT", target)
+    # 3) Unmount real mount
+    rc, out, lazy = _umount_with_fallback(target)
     if rc != 0:
-        return jsonify({"error": out or "Aushängen fehlgeschlagen"}), 500
+        # Collect diagnostic info on what's holding it
+        _, who = _helper_call("FUSER", target, timeout=5)
+        return jsonify({
+            "error": out or "Aushängen fehlgeschlagen",
+            "busy": "busy" in (out or "").lower(),
+            "holders": who,
+        }), 500
     mounts = [m for m in mounts if m.get("mountpoint") != mountpoint and m.get("device") != device]
     save_json(MOUNTS_FILE, mounts)
     # Regenerate smb.conf — shares on this mount point become unavailable

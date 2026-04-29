@@ -68,6 +68,18 @@ while true; do
                 printf '%s|%s\n' "$RC" "$OUT" > "$RESULT"
                 echo "[mount_helper] UMOUNT result: rc=$RC"
                 ;;
+            UMOUNT_LAZY)
+                echo "[mount_helper] UMOUNT_LAZY: $ARG1"
+                OUT=$(umount -l "$ARG1" 2>&1)
+                RC=$?
+                printf '%s|%s\n' "$RC" "$OUT" > "$RESULT"
+                echo "[mount_helper] UMOUNT_LAZY result: rc=$RC"
+                ;;
+            FUSER)
+                # Show what's holding the mount busy
+                OUT=$(fuser -mv "$ARG1" 2>&1; lsof +D "$ARG1" 2>&1 | head -20)
+                printf '0|%s\n' "$OUT" > "$RESULT"
+                ;;
             BIND)
                 SRC="$ARG1"
                 DST="$ARG2"
