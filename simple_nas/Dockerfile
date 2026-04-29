@@ -12,6 +12,7 @@ RUN apk add --no-cache \
     e2fsprogs \
     psmisc \
     lsof \
+    file \
     ntfs-3g \
     exfatprogs \
     bash \

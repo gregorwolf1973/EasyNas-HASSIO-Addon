@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.44
+- Mount-Auto-Erkennung deutlich robuster
+- Symlink (z.B. `/dev/disk/by-id/usb-…`) wird vor dem Probe per `readlink -f` aufgelöst
+- Vierte Erkennungsstufe: `file -s` liest direkt die Superblock-Magic (Paket `file` ergänzt)
+- Brute-Force-Fallback: nacheinander `ext4 → ext3 → ext2 → ntfs-3g → vfat → exfat → btrfs → xfs` versuchen, falls alle Detektoren leer kommen — fixt USB-Geräte, bei denen `blkid`/`lsblk` nichts melden, `mount -t ext4` aber funktioniert
+
 ## 3.0.43
 - Bind-Mount-Name unter `/share/<name>` ist jetzt im Mount-Dialog frei änderbar (Eingabefeld direkt unter der Checkbox)
 - FS-Auto-Erkennung im Helper auf drei Stufen erweitert: `blkid` → `blkid -p` (low-level Probe) → `lsblk -no FSTYPE`
