@@ -921,11 +921,14 @@ function driveCard(d){
   const sys=d.system_device?'<span class="tag" style="background:var(--danger);color:#fff">'+t('tag_system')+'</span>':'';
   const byId=d.by_id?'<div style="font-family:monospace;font-size:10px;color:var(--text-dim);margin-top:2px;word-break:break-all">'+d.by_id+'</div>':'';
   const mi=mounted?'<span style="font-family:monospace;font-size:11px;color:var(--accent)">'+d.mountpoint+'</span>':'<span style="color:var(--text-dim);font-size:11px">'+t('not_mounted')+'</span>';
-  // Pass by_id (or fallback to path) and system_device flag to mount modal
-  const mountArg=d.by_id||d.path;
+  // Pass by_id (or fallback to path) and system_device flag to mount modal.
+  // JSON.stringify() embeds literal double-quotes which would break onclick="…"
+  // — escape them as &quot; for HTML attribute use.
+  const mountArg=(d.by_id||d.path);
+  const mountArgAttr=JSON.stringify(mountArg).replace(/"/g,'&quot;');
   const btn=isDisk?'':mounted
     ?'<button class="btn btn-ghost btn-sm" onclick="openUnmountModal(\''+d.path+'\',\''+d.mountpoint+'\','+!!d.system_device+')">'+t('btn_unmount')+'</button>'
-    :'<button class="btn btn-primary btn-sm" onclick="openMountModal('+JSON.stringify(mountArg)+',\''+(d.fstype||'')+'\','+!!d.system_device+')">'+t('btn_mount')+'</button>';
+    :'<button class="btn btn-primary btn-sm" onclick="openMountModal('+mountArgAttr+',\''+(d.fstype||'')+'\','+!!d.system_device+')">'+t('btn_mount')+'</button>';
   const model=d.model?'<span>'+d.model.trim()+'</span>':'';
   return '<div class="drive-item"><svg class="drive-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">'+(isDisk?'<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="17" cy="12" r="2"/>':'<path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>')+'</svg><div class="drive-info"><div class="drive-name">'+d.path+(d.size?' <span style="font-size:12px;color:var(--text-dim);font-weight:400">'+d.size+'</span>':'')+'</div><div class="drive-meta">'+model+label+fs+rm+sys+'</div>'+byId+'<div style="margin-top:4px">'+mi+'</div></div><div class="drive-actions">'+btn+'</div></div>';
 }

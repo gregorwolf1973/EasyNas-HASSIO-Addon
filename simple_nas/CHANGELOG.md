@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.0.41
+- Fix: Einhängen-Knopf reagierte nicht — `JSON.stringify(by_id)` enthielt doppelte Anführungszeichen, die das `onclick="…"`-Attribut zerschossen → „Unexpected end of input" beim Seitenrendern
+- Anführungszeichen werden jetzt als `&quot;` HTML-escaped
+
 ## 3.0.40
 - Fix: Aushängen-Knopf hatte einen Verweis auf die alte `isSdaDevice`-Funktion → JS-Fehler, Klick ohne Wirkung
 - Unmount-Dialog nutzt jetzt das `system_device`-Flag der Drive-API
