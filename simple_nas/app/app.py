@@ -375,7 +375,10 @@ def api_mount():
     # Bind-mount under /share/<name> for HA Core / other add-ons.
     share_bind_path = None
     if share_bind_enabled and mountpoint.startswith("/media/"):
-        bind_name = os.path.basename(mountpoint)
+        # User-supplied bind name overrides the default (= mount basename)
+        custom = body.get("share_bind_name", "").strip()
+        bind_name = re.sub(r"[^a-zA-Z0-9_\-]", "_", custom) if custom \
+                    else os.path.basename(mountpoint)
         candidate = f"/share/{bind_name}"
         os.makedirs(candidate, exist_ok=True)
         rc_b, out_b = _helper_call("BIND", mountpoint, candidate)

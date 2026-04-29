@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.43
+- Bind-Mount-Name unter `/share/<name>` ist jetzt im Mount-Dialog frei änderbar (Eingabefeld direkt unter der Checkbox)
+- FS-Auto-Erkennung im Helper auf drei Stufen erweitert: `blkid` → `blkid -p` (low-level Probe) → `lsblk -no FSTYPE`
+- Bessere Logs im Helper (welche Methode hat erkannt, welcher Treiber wurde versucht)
+
 ## 3.0.42
 - Mount „Automatisch" benutzt jetzt zuerst `blkid` zur FS-Erkennung — umgeht den irreführenden „Can't open blockdev"-Fehler von `fsconfig()` bei USB-Geräten
 - NTFS wird automatisch über `ntfs-3g` (statt Kernel-NTFS-RO) gemountet

@@ -43,28 +43,30 @@ while true; do
                     OUT=$(mount -t "$FSTYPE" "$DEVICE" "$MOUNTPOINT" 2>&1)
                     RC=$?
                 else
-                    # AUTO: probe FS type via blkid first — fsconfig()'s built-in
-                    # auto-detect can fail with "Can't open blockdev" on USB
-                    # devices (race during exclusive open). blkid sidesteps that.
+                    # AUTO: detect FS via three escalating probes, because
+                    # fsconfig()'s built-in auto-detect can fail with the
+                    # misleading "Can't open blockdev" on USB devices.
                     DETECTED=$(blkid -o value -s TYPE "$DEVICE" 2>/dev/null | head -1)
+                    [ -z "$DETECTED" ] && DETECTED=$(blkid -p -o value -s TYPE "$DEVICE" 2>/dev/null | head -1)
+                    [ -z "$DETECTED" ] && DETECTED=$(lsblk -no FSTYPE "$DEVICE" 2>/dev/null | head -1 | tr -d ' ')
                     # Map kernel name → userspace driver where useful
                     case "$DETECTED" in
                         ntfs)  DETECTED=ntfs-3g ;;
                     esac
                     if [ -n "$DETECTED" ]; then
-                        echo "[mount_helper] auto: blkid detected '$DETECTED'"
+                        echo "[mount_helper] auto: detected '$DETECTED'"
                         echo "[mount_helper] Trying: mount -t $DETECTED $DEVICE $MOUNTPOINT"
                         OUT=$(mount -t "$DETECTED" "$DEVICE" "$MOUNTPOINT" 2>&1)
                         RC=$?
-                        # Fall back to plain mount if explicit -t failed
                         if [ $RC -ne 0 ]; then
-                            echo "[mount_helper] explicit -t $DETECTED failed, retrying without -t"
+                            echo "[mount_helper] explicit -t $DETECTED failed: $OUT"
+                            echo "[mount_helper] retrying without -t"
                             OUT2=$(mount "$DEVICE" "$MOUNTPOINT" 2>&1)
                             RC2=$?
                             if [ $RC2 -eq 0 ]; then OUT="$OUT2"; RC=0; fi
                         fi
                     else
-                        echo "[mount_helper] auto: blkid returned nothing, falling back to bare mount"
+                        echo "[mount_helper] auto: no FS detected by blkid/lsblk — bare mount"
                         OUT=$(mount "$DEVICE" "$MOUNTPOINT" 2>&1)
                         RC=$?
                     fi

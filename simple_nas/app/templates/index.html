@@ -577,6 +577,10 @@
       <input type="checkbox" id="mount-share-bind" checked oninput="updateMountPreview()" style="width:auto;margin:0;">
       <span data-i18n="lbl_share_bind">Auch für HA Core / andere Add-ons zugänglich machen (Bind-Mount nach /share/&lt;name&gt;)</span>
     </label>
+    <div id="mount-share-bind-row" style="display:flex;gap:6px;align-items:center;margin-top:6px;">
+      <span style="font-family:monospace;color:var(--text-dim);font-size:12px">/share/</span>
+      <input type="text" id="mount-share-bind-name" placeholder="name" oninput="updateMountPreview()" style="flex:1">
+    </div>
     <div class="mount-path-preview" id="mount-bind-preview" style="opacity:.8;"></div>
   </div>
   <div id="mount-confirm-area" style="display:none;">
@@ -943,6 +947,9 @@ function openMountModal(dev,fs,isSystem){
   document.getElementById('mount-name').value=suggestion;
   document.getElementById('mount-fstype').value=fs||'auto';
   document.getElementById('mount-share-bind').checked=true;
+  const bn=document.getElementById('mount-share-bind-name');
+  bn.value='';delete bn.dataset.userEdited;
+  bn.oninput=function(){this.dataset.userEdited='1';updateMountPreview();};
   updateMountPreview();
   const warn=document.getElementById('mount-warning');
   const conf=document.getElementById('mount-confirm-area');
@@ -967,11 +974,21 @@ function updateMountPreview(){
     p='/media/'+n.replace(/[^a-zA-Z0-9_\-]/g,'_');
   }
   document.getElementById('mount-preview').textContent=p;
-  // Bind preview: only when checkbox enabled AND mountpoint sits under /media/
+  // Bind preview + auto-fill bind name from mount name (until user edits it)
   const cb=document.getElementById('mount-share-bind');
   const bp=document.getElementById('mount-bind-preview');
-  if(cb && cb.checked && p.startsWith('/media/')){
-    bp.textContent='+ /share/'+p.substring(7);
+  const row=document.getElementById('mount-share-bind-row');
+  const bn=document.getElementById('mount-share-bind-name');
+  const enabled=cb && cb.checked;
+  row.style.display=enabled?'flex':'none';
+  if(enabled){
+    if(!bn.dataset.userEdited){
+      // Default: same name as the mountpoint basename
+      const base=p.replace(/\/+$/,'').split('/').pop();
+      bn.value=base.replace(/[^a-zA-Z0-9_\-]/g,'_');
+    }
+    const safe=(bn.value||'').replace(/[^a-zA-Z0-9_\-]/g,'_');
+    bp.textContent=safe?('+ /share/'+safe):'';
   }else{
     bp.textContent='';
   }
@@ -980,7 +997,10 @@ async function doMount(){
   const name=document.getElementById('mount-name').value.trim();
   const fstype=document.getElementById('mount-fstype').value;
   const share_bind=document.getElementById('mount-share-bind').checked;
-  try{const r=await api('POST','/drives/mount',{device:_mountDevice,mountpoint:name,fstype,share_bind});toast(t('mounted_ok',{m:r.mountpoint}));closeModal('modal-mount');loadDrives();}catch(e){toast(e.message,true);}
+  const share_bind_name=document.getElementById('mount-share-bind-name').value.trim();
+  const body={device:_mountDevice,mountpoint:name,fstype,share_bind};
+  if(share_bind && share_bind_name) body.share_bind_name=share_bind_name;
+  try{const r=await api('POST','/drives/mount',body);toast(t('mounted_ok',{m:r.mountpoint}));closeModal('modal-mount');loadDrives();}catch(e){toast(e.message,true);}
 }
 
 function openUnmountModal(dev,mp,isSystem){
