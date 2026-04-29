@@ -572,17 +572,6 @@
   <div class="form-group"><label data-i18n="lbl_filesystem">Dateisystem</label>
     <select id="mount-fstype"><option value="auto" data-i18n="fs_auto">Automatisch</option><option value="ext4">ext4</option><option value="ext3">ext3</option><option value="ntfs-3g">NTFS</option><option value="vfat">FAT32</option><option value="exfat">exFAT</option><option value="btrfs">btrfs</option><option value="xfs">XFS</option></select>
   </div>
-  <div class="form-group">
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal;">
-      <input type="checkbox" id="mount-share-bind" checked oninput="updateMountPreview()" style="width:auto;margin:0;">
-      <span data-i18n="lbl_share_bind">Auch für HA Core / andere Add-ons zugänglich machen (Bind-Mount nach /share/&lt;name&gt;)</span>
-    </label>
-    <div id="mount-share-bind-row" style="display:flex;gap:6px;align-items:center;margin-top:6px;">
-      <span style="font-family:monospace;color:var(--text-dim);font-size:12px">/share/</span>
-      <input type="text" id="mount-share-bind-name" placeholder="name" oninput="updateMountPreview()" style="flex:1">
-    </div>
-    <div class="mount-path-preview" id="mount-bind-preview" style="opacity:.8;"></div>
-  </div>
   <div id="mount-confirm-area" style="display:none;">
     <div class="form-group"><label data-i18n="lbl_confirm_device">Zur Bestätigung Gerätepfad eintippen</label><input type="text" id="mount-confirm-input" placeholder="/dev/disk/by-id/…" oninput="checkMountConfirm()"></div>
   </div>
@@ -687,7 +676,6 @@ const T={
     modal_browser:'Ordner auswählen',modal_copy:'Kopieren',modal_move:'Verschieben',
     lbl_device:'Gerät',lbl_mount_point:'Einhängepunkt (Name oder voller Pfad wie /mnt/nas)',
     lbl_filesystem:'Dateisystem',lbl_confirm_device:'Zur Bestätigung Gerätenamen eintippen',
-    lbl_share_bind:'Auch für HA Core / andere Add-ons zugänglich machen (Bind-Mount nach /share/<name>)',
     busy_intro:'Das Laufwerk ist gerade belegt. Diese Prozesse halten es offen:',
     busy_force_q:'Trotzdem aushängen erzwingen? (lazy unmount – Mount wird gelöst, sobald der letzte Handle weg ist)',
     lbl_name:'Name',lbl_path:'Pfad',lbl_description:'Beschreibung',lbl_optional:'optional',
@@ -774,7 +762,6 @@ const T={
     modal_browser:'Select Folder',modal_copy:'Copy',modal_move:'Move',
     lbl_device:'Device',lbl_mount_point:'Mount Point (name or full path like /mnt/nas)',
     lbl_filesystem:'Filesystem',lbl_confirm_device:'Enter device name to confirm',
-    lbl_share_bind:'Also make accessible to HA Core / other add-ons (bind-mount to /share/<name>)',
     busy_intro:'The drive is currently busy. These processes are holding it open:',
     busy_force_q:'Force unmount anyway? (lazy unmount – mount is detached as soon as the last handle is closed)',
     lbl_name:'Name',lbl_path:'Path',lbl_description:'Description',lbl_optional:'optional',
@@ -946,10 +933,6 @@ function openMountModal(dev,fs,isSystem){
   const suggestion=dev.split('/').pop().replace(/[^a-zA-Z0-9_\-]/g,'_');
   document.getElementById('mount-name').value=suggestion;
   document.getElementById('mount-fstype').value=fs||'auto';
-  document.getElementById('mount-share-bind').checked=true;
-  const bn=document.getElementById('mount-share-bind-name');
-  bn.value='';delete bn.dataset.userEdited;
-  bn.oninput=function(){this.dataset.userEdited='1';updateMountPreview();};
   updateMountPreview();
   const warn=document.getElementById('mount-warning');
   const conf=document.getElementById('mount-confirm-area');
@@ -969,38 +952,16 @@ function updateMountPreview(){
   const n=document.getElementById('mount-name').value.trim()||'laufwerk';
   let p;
   if(n.startsWith('/')) {
-    p=n;  // Absoluter Pfad — direkt verwenden
+    p=n;
   } else {
     p='/media/'+n.replace(/[^a-zA-Z0-9_\-]/g,'_');
   }
   document.getElementById('mount-preview').textContent=p;
-  // Bind preview + auto-fill bind name from mount name (until user edits it)
-  const cb=document.getElementById('mount-share-bind');
-  const bp=document.getElementById('mount-bind-preview');
-  const row=document.getElementById('mount-share-bind-row');
-  const bn=document.getElementById('mount-share-bind-name');
-  const enabled=cb && cb.checked;
-  row.style.display=enabled?'flex':'none';
-  if(enabled){
-    if(!bn.dataset.userEdited){
-      // Default: same name as the mountpoint basename
-      const base=p.replace(/\/+$/,'').split('/').pop();
-      bn.value=base.replace(/[^a-zA-Z0-9_\-]/g,'_');
-    }
-    const safe=(bn.value||'').replace(/[^a-zA-Z0-9_\-]/g,'_');
-    bp.textContent=safe?('+ /share/'+safe):'';
-  }else{
-    bp.textContent='';
-  }
 }
 async function doMount(){
   const name=document.getElementById('mount-name').value.trim();
   const fstype=document.getElementById('mount-fstype').value;
-  const share_bind=document.getElementById('mount-share-bind').checked;
-  const share_bind_name=document.getElementById('mount-share-bind-name').value.trim();
-  const body={device:_mountDevice,mountpoint:name,fstype,share_bind};
-  if(share_bind && share_bind_name) body.share_bind_name=share_bind_name;
-  try{const r=await api('POST','/drives/mount',body);toast(t('mounted_ok',{m:r.mountpoint}));closeModal('modal-mount');loadDrives();}catch(e){toast(e.message,true);}
+  try{const r=await api('POST','/drives/mount',{device:_mountDevice,mountpoint:name,fstype});toast(t('mounted_ok',{m:r.mountpoint}));closeModal('modal-mount');loadDrives();}catch(e){toast(e.message,true);}
 }
 
 function openUnmountModal(dev,mp,isSystem){

@@ -442,9 +442,6 @@ def api_mount():
     device     = body.get("device", "").strip()
     mountpoint = body.get("mountpoint", "").strip()
     fstype     = body.get("fstype", "auto")
-    # Bind-mount to /share/<name> so HA Core and other add-ons can access the drive.
-    # Defaults to True (current standard behaviour).
-    share_bind_enabled = body.get("share_bind", True)
 
     if not device or not mountpoint:
         return jsonify({"error": "device and mountpoint required"}), 400
@@ -482,48 +479,22 @@ def api_mount():
                         break
         except Exception:
             pass
-    # Remember it for future drive-list rendering, even after unmount
+    # Persist the resolved type so the tag stays visible after unmount
     if resolved_fs and resolved_fs != "auto":
         update_fstype_memory({os.path.basename(os.path.realpath(stable_dev)): resolved_fs})
 
-    # Bind-mount under /share/<name> for HA Core / other add-ons.
-    share_bind_path = None
-    if share_bind_enabled and mountpoint.startswith("/media/"):
-        # User-supplied bind name overrides the default (= mount basename)
-        custom = body.get("share_bind_name", "").strip()
-        bind_name = re.sub(r"[^a-zA-Z0-9_\-]", "_", custom) if custom \
-                    else os.path.basename(mountpoint)
-        candidate = f"/share/{bind_name}"
-        os.makedirs(candidate, exist_ok=True)
-        rc_b, out_b = _helper_call("BIND", mountpoint, candidate)
-        if rc_b == 0:
-            share_bind_path = candidate
-            print(f"[MOUNT] Bind {mountpoint} -> {candidate}", flush=True)
-        else:
-            print(f"[MOUNT] Bind to {candidate} failed: {out_b}", flush=True)
-
     mounts = load_json(MOUNTS_FILE, [])
-    # Remove any existing entry for this mountpoint
     mounts = [m for m in mounts if m.get("mountpoint") != mountpoint]
-    entry = {
-        "device":    stable_dev,   # stable by-id path (or raw /dev/sdX as fallback)
-        "dev_path":  device,       # original /dev/sdX — kept for display only
-        "mountpoint": mountpoint,
-        "fstype":    fstype,
-        "resolved_fstype": resolved_fs,  # what the kernel actually mounted as
-    }
-    if share_bind_path:
-        entry["share_bind"] = share_bind_path
-    mounts.append(entry)
-    save_json(MOUNTS_FILE, mounts)
-    # Regenerate smb.conf so share availability reflects new mount state
-    reload_samba()
-    return jsonify({
-        "ok": True,
-        "mountpoint": mountpoint,
-        "stable_device": stable_dev,
-        "share_bind": share_bind_path,
+    mounts.append({
+        "device":         stable_dev,
+        "dev_path":       device,
+        "mountpoint":     mountpoint,
+        "fstype":         fstype,
+        "resolved_fstype": resolved_fs,
     })
+    save_json(MOUNTS_FILE, mounts)
+    reload_samba()
+    return jsonify({"ok": True, "mountpoint": mountpoint, "stable_device": stable_dev})
 
 @app.route("/api/drives/unmount", methods=["POST"])
 def api_unmount():
@@ -535,14 +506,7 @@ def api_unmount():
     target = mountpoint or device
     force  = bool(body.get("force", False))
 
-    # Find bind path from saved mounts so we can unmount it first
     mounts = load_json(MOUNTS_FILE, [])
-    bind_path = None
-    for m in mounts:
-        if (mountpoint and m.get("mountpoint") == mountpoint) or \
-           (device and m.get("device") == device):
-            bind_path = m.get("share_bind")
-            break
 
     # 1) Tell smbd to close all shares whose path lies under the mountpoint,
     #    so it releases its file handles before we unmount.
@@ -560,26 +524,17 @@ def api_unmount():
         print(f"[UNMOUNT] close-share failed: {e}", flush=True)
 
     def _umount_with_fallback(path):
-        """Try plain umount, fall back to lazy umount if force=True or busy."""
+        """Try plain umount, fall back to lazy umount on force or busy."""
         rc, out = _helper_call("UMOUNT", path)
         if rc == 0:
             return 0, out, False
-        # Busy? Either force was requested, or auto-fallback for binds (always safe)
         is_busy = "busy" in (out or "").lower() or "target is busy" in (out or "").lower()
-        if force or (path == bind_path and is_busy):
+        if force and is_busy:
             rc2, out2 = _helper_call("UMOUNT_LAZY", path)
             return rc2, out2, True
         return rc, out, False
 
-    # 2) Unmount bind first
-    if bind_path:
-        rc_b, out_b, lazy_b = _umount_with_fallback(bind_path)
-        if rc_b != 0:
-            print(f"[UNMOUNT] Bind unmount {bind_path} failed: {out_b}", flush=True)
-        else:
-            print(f"[UNMOUNT] Bind unmounted{' (lazy)' if lazy_b else ''}: {bind_path}", flush=True)
-
-    # 3) Unmount real mount
+    # 2) Unmount
     rc, out, lazy = _umount_with_fallback(target)
     if rc != 0:
         # Collect diagnostic info on what's holding it

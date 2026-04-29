@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.0.48
+- Bind-Mount-Feature entfernt: HA-OS verwendet Slave-Mount-Namespaces (`master:118`) — Mounts aus einem Add-on-Container propagieren nicht zu anderen Containern oder HA Core. Die Funktion war damit wirkungslos.
+- Mount-Dialog: Checkbox und Bind-Pfad-Feld entfernt
+
 ## 3.0.47
 - FS-Tag bleibt jetzt auch bei ausgehängten Laufwerken sichtbar
 - Neues File `/data/fstype_memory.json` merkt sich den letzten bekannten FS-Typ pro Device — wird bei jedem Mount und bei jedem Drive-Listing aus `/proc/mounts` gespeist und nie automatisch geleert
