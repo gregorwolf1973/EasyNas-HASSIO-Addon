@@ -20,6 +20,7 @@ SHARES_FILE = f"{DATA_DIR}/shares.json"
 USERS_FILE  = f"{DATA_DIR}/users.json"
 MOUNTS_FILE = f"{DATA_DIR}/mounts.json"
 GROUPS_FILE = f"{DATA_DIR}/groups.json"
+FSTYPE_MEMORY_FILE = f"{DATA_DIR}/fstype_memory.json"
 ADMIN_AUTH_FILE = f"{DATA_DIR}/admin_auth.json"
 WORKGROUP   = os.environ.get("WORKGROUP", "WORKGROUP")
 NAS_NAME    = os.environ.get("NAS_NAME", "SimpleNAS")
@@ -268,6 +269,24 @@ def get_disk_usage(path):
 
 # ─────────────────────────── drives API ─────────────────────────
 
+def update_fstype_memory(updates):
+    """Persist freshly-known FS types so unmounted-but-known drives keep
+    their tag across restarts. Updates only — never deletes entries."""
+    if not updates:
+        return
+    try:
+        mem = load_json(FSTYPE_MEMORY_FILE, {}) or {}
+    except Exception:
+        mem = {}
+    changed = False
+    for name, fs in updates.items():
+        if name and fs and fs != "auto" and mem.get(name) != fs:
+            mem[name] = fs
+            changed = True
+    if changed:
+        try: save_json(FSTYPE_MEMORY_FILE, mem)
+        except Exception: pass
+
 def get_proc_mounts_fstypes():
     """Return {device_basename: fstype} for everything currently mounted.
     Uses /proc/mounts where the kernel always knows the resolved FS type.
@@ -331,29 +350,34 @@ def list_block_devices():
     except Exception:
         return []
 
-def flatten_devices(devices, parent=None, mounted_fs=None, persisted_fs=None):
+def flatten_devices(devices, parent=None, mounted_fs=None, mem_fs=None):
     if mounted_fs is None:
         mounted_fs = get_proc_mounts_fstypes()
-    if persisted_fs is None:
-        # Pull resolved fstypes from mounts.json (saved after a successful
-        # mount — covers devices that were mounted via brute-force and are
-        # currently mounted, plus historic entries for offline devices)
-        persisted_fs = {}
+        # Seed the persistent memory with whatever the kernel currently
+        # reports — so once a drive has been mounted, the tag keeps
+        # showing after unmount and across restarts.
+        update_fstype_memory(mounted_fs)
+    if mem_fs is None:
+        # Also pick up fstypes saved in mounts.json (backwards-compat) and
+        # the new fstype_memory.json
+        mem_fs = {}
         try:
             for m in load_json(MOUNTS_FILE, []):
                 resolved = m.get("resolved_fstype") or m.get("fstype")
                 dev_real = os.path.basename(os.path.realpath(m.get("device", "")))
                 if resolved and resolved != "auto" and dev_real:
-                    persisted_fs[dev_real] = resolved
-        except Exception:
-            pass
+                    mem_fs[dev_real] = resolved
+        except Exception: pass
+        try:
+            mem_fs.update(load_json(FSTYPE_MEMORY_FILE, {}) or {})
+        except Exception: pass
     result = []
     for dev in devices:
         name = dev.get("name")
-        # FS type sources, in order: lsblk → /proc/mounts → mounts.json → blkid/file probe
+        # FS type sources, in order: lsblk → /proc/mounts → memory file/mounts.json → probe
         fstype = dev.get("fstype")
         if not fstype: fstype = mounted_fs.get(name)
-        if not fstype: fstype = persisted_fs.get(name)
+        if not fstype: fstype = mem_fs.get(name)
         if not fstype and dev.get("type") == "part":
             fstype = probe_fstype(f"/dev/{name}")
         d = {
@@ -369,7 +393,7 @@ def flatten_devices(devices, parent=None, mounted_fs=None, persisted_fs=None):
         }
         result.append(d)
         for child in dev.get("children", []):
-            result.extend(flatten_devices([child], dev, mounted_fs, persisted_fs))
+            result.extend(flatten_devices([child], dev, mounted_fs, mem_fs))
     return result
 
 @app.route("/api/drives")
@@ -458,6 +482,9 @@ def api_mount():
                         break
         except Exception:
             pass
+    # Remember it for future drive-list rendering, even after unmount
+    if resolved_fs and resolved_fs != "auto":
+        update_fstype_memory({os.path.basename(os.path.realpath(stable_dev)): resolved_fs})
 
     # Bind-mount under /share/<name> for HA Core / other add-ons.
     share_bind_path = None

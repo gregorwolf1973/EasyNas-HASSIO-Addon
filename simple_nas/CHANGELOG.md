@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.47
+- FS-Tag bleibt jetzt auch bei ausgehängten Laufwerken sichtbar
+- Neues File `/data/fstype_memory.json` merkt sich den letzten bekannten FS-Typ pro Device — wird bei jedem Mount und bei jedem Drive-Listing aus `/proc/mounts` gespeist und nie automatisch geleert
+- Übersteht Container-Neustarts, Aushängen und Reinstall (`/data` ist persistent)
+
 ## 3.0.46
 - FS-Tag-Anzeige bekommt zwei zusätzliche Quellen, weil HA-OS Raw-Block-Reads (`blkid`/`file -s` auf Blockdevices) per `EPERM` blockiert
 - Quelle 2: `/proc/mounts` — zeigt den FS-Typ jedes aktuell gemounteten Devices verlässlich
