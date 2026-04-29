@@ -3,7 +3,7 @@
 Ein schlankes NAS-Add-on für Home Assistant OS. Verwandelt deinen Raspberry Pi (oder andere HA-Hardware) in einen vollwertigen Netzwerkspeicher mit Web-Oberfläche.
 
 ![Architectures](https://img.shields.io/badge/arch-aarch64%20|%20amd64%20|%20armv7-blue)
-![Version](https://img.shields.io/badge/version-3.1.0-green)
+![Version](https://img.shields.io/badge/version-3.1.1-green)
 
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/gregorwolf1973)
 
@@ -145,8 +145,8 @@ web_port: 8099         # Port für die Web-Oberfläche (Standard: 8099)
 | **Pfad im Addon** | `/media/nas` | `/media/nas` |
 | **Pfad für andere Addons** | ❌ nicht sichtbar | ✅ `/media/nas` |
 | **HA Automationen** | ❌ kein Zugriff | ✅ `/media/nas` |
-| **Technik** | `mount` im Container | `nsenter` → Host-Namespace |
-| **Risiko** | Gering | Mittel (Host-Dateisystem-Zugriff) |
+| **Technik** | `mount` im Container | `mount` nach `/media/` (geteilt via `map: media:rw`) |
+| **Risiko** | Gering | Gering (nutzt offizielle HA Shared-Volumes) |
 
 ### Anwendungsbeispiele
 
@@ -162,10 +162,10 @@ web_port: 8099         # Port für die Web-Oberfläche (Standard: 8099)
 
 ### Sicherheitshinweise
 
-- Host-Mount erfordert `host_pid: true` und `privileged: SYS_ADMIN` (bereits in der Addon-Konfiguration enthalten)
-- Mounts werden über `nsenter` im Host-Mount-Namespace ausgeführt — das Addon hat damit Zugriff auf das Host-Dateisystem
+- Host-Mount nutzt das offizielle HA Shared-Volume `/media/` (konfiguriert via `map: media:rw`)
+- Mounts nach `/media/NAME` sind automatisch für alle Addons sichtbar die ebenfalls `map: media:rw` konfiguriert haben
 - Bei Problemen kann der Host-Mount-Modus jederzeit in der Konfiguration deaktiviert werden
-- Beim Aushängen werden sowohl der Host-Mount als auch der Container-Mount entfernt
+- Alle Mounts werden direkt im Container ausgeführt — kein Zugriff auf das Host-Dateisystem nötig
 
 ## Unterstützte Dateisysteme
 

@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Einfaches NAS mit Samba-Freigaben und Web-GUI zur Laufwerkverwaltung"
-version: "3.1.0"
+version: "3.1.1"
 url: "https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon"
 slug: "simple_nas"
 init: false
@@ -15,7 +15,8 @@ ingress_port: 8099
 panel_icon: "mdi:nas"
 panel_title: "Simple NAS"
 host_network: true
-host_pid: true
+devices:
+  - /dev
 privileged:
   - SYS_ADMIN
   - SYS_RAWIO
