@@ -1,5 +1,44 @@
 # Changelog
 
+## 3.0.39
+- Robusteres Aushängen von Laufwerken
+- Vor `umount` werden offene Samba-Handles geschlossen (`smbcontrol close-share`)
+- Bind-Mounts unter `/share/` fallen bei „busy" automatisch auf `umount -l` zurück
+- Bei belegtem Laufwerk: GUI zeigt blockierende Prozesse (`fuser`/`lsof`) und bietet „Aushängen erzwingen"
+
+## 3.0.38
+- Neu: Bind-Mount eingehängter Laufwerke nach `/share/<name>` — Zugriff durch HA Core und andere Add-ons
+- Mount-Dialog: Checkbox „Auch für HA Core / andere Add-ons zugänglich machen" (standardmäßig an)
+- Bind-Mounts werden in `mounts.json` gespeichert und beim Neustart automatisch wiederhergestellt
+- Beim Aushängen wird der Bind zuerst entfernt, dann der eigentliche Mount
+- `mount_helper.sh`: neue `BIND`-Aktion mit `mount --make-shared`
+
+## 3.0.37
+- Fix: HA-Backup-Speicherort verschwand manchmal nach Neustart (Race Condition)
+- `smb.conf` wird jetzt zweimal generiert — vor und nach dem Restore der Mounts
+
+## 3.0.36
+- Alle Log-Meldungen ins Englische übersetzt (run.sh, app.py)
+
+## 3.0.35
+- Neu: Option `web_gui_enabled` — Web-GUI komplett deaktivierbar (geringere Angriffsfläche, Samba-only-Betrieb)
+
+## 3.0.34
+- Bestehende `/dev/sdX`-Einträge werden beim Start automatisch zu `/dev/disk/by-id/`-Pfaden migriert
+
+## 3.0.33
+- Mounts verwenden stabile `/dev/disk/by-id/`-Pfade — überleben USB-Neusortierung nach Reboot
+- System-Geräte werden über `/proc/mounts` erkannt (nicht mehr nur `sda`)
+- Inaktive Shares werden in `smb.conf` als `available = no` markiert
+- Englische Dokumentation (`DOCS.md`) ergänzt
+
+## 3.0.32
+- Fix: `/ssl` von `ro` auf `rw` geändert (Zertifikatsordner war read-only)
+- Neu: konfigurierbarer `smb_port` für Parallelbetrieb mit dem offiziellen Samba-Add-on
+
+## 3.0.31
+- Neu: macOS-Junk-Dateien werden global ausgeblendet/gelöscht (`.DS_Store`, `._*`, `.TemporaryItems`, …) via Samba `veto files` + `delete veto files`
+
 ## 3.0.0
 - Neu: Dateien-Tab — vollständiger Filebrowser mit Upload, Download, Kopieren, Verschieben, Umbenennen, Löschen
 - Neu: Backup-Tab — Backup-Jobs erstellen, manuell starten, alte Backups automatisch aufräumen (rsync-basiert)
