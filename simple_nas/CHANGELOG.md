@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.0.49
+- Fix: Laufwerke wurden nach HA-Neustart nicht mehr eingehängt — `restore_mounts.py` benutzte `fstype: "auto"` statt des beim Mount erkannten `resolved_fstype` (z.B. `"ext4"`), was auf USB-Geräten fehlschlug
+
 ## 3.0.48
 - Bind-Mount-Feature entfernt: HA-OS verwendet Slave-Mount-Namespaces (`master:118`) — Mounts aus einem Add-on-Container propagieren nicht zu anderen Containern oder HA Core. Die Funktion war damit wirkungslos.
 - Mount-Dialog: Checkbox und Bind-Pfad-Feld entfernt

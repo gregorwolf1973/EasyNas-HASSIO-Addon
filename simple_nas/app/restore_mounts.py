@@ -41,7 +41,9 @@ except Exception:
 for m in mounts:
     device     = m.get("device")
     mountpoint = m.get("mountpoint")
-    fstype     = m.get("fstype", "auto")
+    # Prefer the resolved type saved at mount time (e.g. "ext4") over the
+    # original user choice ("auto") — auto-detect fails on some USB devices
+    fstype     = m.get("resolved_fstype") or m.get("fstype", "auto")
     if not device or not mountpoint:
         continue
     helper_call("MKDIR", mountpoint)
