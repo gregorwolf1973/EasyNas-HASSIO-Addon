@@ -1336,7 +1336,22 @@ async function loadBackups(){
       const running=j.running?'<span class="tag accent">'+t('running_label')+j.progress+'</span>':'';
       const lastRun=j.last_run?'<span style="font-size:11px;color:var(--text-dim)">'+t('last_backup_label')+j.last_run+'</span>':'';
       const lastErr=j.last_error?'<span style="font-size:11px;color:var(--danger)">'+t('err_label')+j.last_error+'</span>':'';
-      return '<div class="card"><div class="card-header"><div><div class="card-title">'+j.name+'</div><div class="card-sub">'+j.src+' → '+j.dst+'</div></div><div class="card-actions"><button class="btn btn-primary btn-sm" onclick="runBackup(\''+j.id+'\')" '+(j.running?'disabled style="opacity:.4"':'')+'>'+(j.running?t('btn_running'):t('btn_start'))+'</button><button class="btn btn-ghost btn-sm btn-icon" title="'+t('title_edit')+'" onclick="openBackupModal(_backupsCache['+idx+'])"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button><button class="btn btn-danger btn-sm btn-icon" title="'+t('title_delete')+'" onclick="deleteBackup(\''+j.id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></div></div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="tag">'+t('keep_label')+j.keep+'</span>'+running+'</div>'+(lastRun||lastErr?'<div style="margin-top:6px">'+lastRun+(lastErr?' '+lastErr:'')+'</div>':'')+'</div>';
+      return '<div class="card">'
+        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px;">'
+          +'<div style="min-width:0;flex:1;">'
+            +'<div class="card-title">'+j.name+'</div>'
+            +'<div class="card-sub" style="word-break:break-all;white-space:normal;">'+j.src+'</div>'
+            +'<div class="card-sub" style="word-break:break-all;white-space:normal;">&#8627; '+j.dst+'</div>'
+          +'</div>'
+          +'<div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">'
+            +'<button class="btn btn-primary btn-sm" onclick="runBackup(\''+j.id+'\')" '+(j.running?'disabled style="opacity:.4"':'')+'>'+(j.running?t('btn_running'):t('btn_start'))+'</button>'
+            +'<button class="btn btn-ghost btn-sm btn-icon" title="'+t('title_edit')+'" onclick="openBackupModal(_backupsCache['+idx+'])"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+            +'<button class="btn btn-danger btn-sm btn-icon" title="'+t('title_delete')+'" onclick="deleteBackup(\''+j.id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>'
+          +'</div>'
+        +'</div>'
+        +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="tag">'+t('keep_label')+j.keep+'</span>'+running+'</div>'
+        +(lastRun||lastErr?'<div style="margin-top:6px">'+lastRun+(lastErr?' '+lastErr:'')+'</div>':'')
+        +'</div>';
     }).join('');
   }catch(e){grid.innerHTML='<div class="empty" style="grid-column:1/-1;color:var(--danger)">'+e.message+'</div>';}
 }

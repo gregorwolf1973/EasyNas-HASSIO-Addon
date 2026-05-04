@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.51
+- Fix: Backup-Job-Karte — Start/Bearbeiten/Löschen-Buttons liefen bei langen Pfaden aus dem Kartenbereich heraus
+- Karten-Layout neu strukturiert: Textbereich (`min-width:0; flex:1`) schrumpft bei Bedarf, Button-Leiste (`flex-shrink:0`) bleibt immer vollständig sichtbar
+- Quell- und Zielpfad auf separate Zeilen mit Zeilenumbruch (`word-break:break-all`)
+
 ## 3.0.50
 - Fix: Laufwerksansicht und Benutzer-Tab zeigten nach Sprachumschaltung weiterhin deutschen Text (`Einhängen`, `nicht eingehängt`, `Samba-Benutzer` etc.) — dynamisch generierte JS-Inhalte wurden beim Sprachwechsel nicht neu gerendert
 - `toggleLang()` lädt jetzt den aktiven Tab neu, sodass alle Texte sofort in der gewählten Sprache erscheinen
