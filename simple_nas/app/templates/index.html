@@ -848,6 +848,14 @@ function toggleLang(){
   _lang=_lang==='de'?'en':'de';
   localStorage.setItem('nas-lang',_lang);
   applyLang();
+  // Re-render dynamic JS-built content so it picks up the new language
+  const active=document.querySelector('nav button.active');
+  const tab=active?active.id.replace('tab-',''):'overview';
+  if(tab==='overview'){loadStatus();loadDrives();}
+  else if(tab==='drives')loadDrives();
+  else if(tab==='shares')loadShares();
+  else if(tab==='users'){loadUsers();loadGroups();}
+  else if(tab==='backup'){loadBackups();loadSettingsBackupStatus();loadManualBackups();}
 }
 
 // ── Utils ──

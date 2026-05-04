@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.0.50
+- Fix: Laufwerksansicht und Benutzer-Tab zeigten nach Sprachumschaltung weiterhin deutschen Text (`Einhängen`, `nicht eingehängt`, `Samba-Benutzer` etc.) — dynamisch generierte JS-Inhalte wurden beim Sprachwechsel nicht neu gerendert
+- `toggleLang()` lädt jetzt den aktiven Tab neu, sodass alle Texte sofort in der gewählten Sprache erscheinen
+
 ## 3.0.49
 - Fix: Laufwerke wurden nach HA-Neustart nicht mehr eingehängt — `restore_mounts.py` benutzte `fstype: "auto"` statt des beim Mount erkannten `resolved_fstype` (z.B. `"ext4"`), was auf USB-Geräten fehlschlug
 
