@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.0.52
+- Fix: USB-Laufwerke wurden beim Booten nicht eingehängt (Race Condition) — `restore_mounts.py` versucht den Mount jetzt bis zu 5× mit 3 s Pause, falls das Gerät noch nicht bereit ist (`Can't open blockdev`)
+- Fix: Falscher API-Endpunkt in DOCS.md — `/api/reload-samba` existiert nicht, korrekt ist `/api/samba/restart`
+
 ## 3.0.51
 - Fix: Backup-Job-Karte — Start/Bearbeiten/Löschen-Buttons liefen bei langen Pfaden aus dem Kartenbereich heraus
 - Karten-Layout neu strukturiert: Textbereich (`min-width:0; flex:1`) schrumpft bei Bedarf, Button-Leiste (`flex-shrink:0`) bleibt immer vollständig sichtbar

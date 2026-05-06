@@ -6,6 +6,10 @@ MOUNTS_FILE  = "/data/mounts.json"
 MOUNT_FIFO   = "/tmp/mount_cmd"
 MOUNT_RESULT = "/tmp/mount_result"
 
+# Retry settings for USB devices that aren't ready immediately at boot
+MOUNT_RETRIES   = 5
+MOUNT_RETRY_DELAY = 3  # seconds between retries
+
 def helper_call(action, arg1="", arg2="", arg3="", timeout=15):
     try:
         os.remove(MOUNT_RESULT)
@@ -48,7 +52,21 @@ for m in mounts:
         continue
     helper_call("MKDIR", mountpoint)
     os.makedirs(mountpoint, exist_ok=True)
-    rc, out = helper_call("MOUNT", device, mountpoint, fstype)
+
+    rc, out = 1, "not started"
+    for attempt in range(1, MOUNT_RETRIES + 1):
+        rc, out = helper_call("MOUNT", device, mountpoint, fstype)
+        if rc == 0:
+            break
+        # USB devices may not be ready immediately at boot — retry
+        if "Can't open blockdev" in out or "No such file or directory" in out:
+            if attempt < MOUNT_RETRIES:
+                print(f"Mount attempt {attempt}/{MOUNT_RETRIES} failed for {device} "
+                      f"(device not ready yet), retrying in {MOUNT_RETRY_DELAY}s…")
+                time.sleep(MOUNT_RETRY_DELAY)
+                continue
+        break  # non-retryable error
+
     if rc == 0:
         print(f"Mounted {device} -> {mountpoint}")
     else:

@@ -91,7 +91,7 @@ When Home Assistant restarts, HA Core may try to access a network path (backup l
 ```yaml
 rest_command:
   simplenas_reload:
-    url: "http://localhost:8100/api/reload-samba"
+    url: "http://localhost:8100/api/samba/restart"
     method: POST
     headers:
       Content-Type: "application/json"
