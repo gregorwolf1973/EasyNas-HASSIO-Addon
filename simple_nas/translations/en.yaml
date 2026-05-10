@@ -2,12 +2,15 @@ configuration:
   workgroup:
     name: Workgroup
     description: Windows workgroup name (default WORKGROUP)
+  nas_name:
+    name: NAS Name
+    description: NetBIOS / mDNS hostname shown in network browsers (default SimpleNAS)
   log_level:
     name: Log Level
     description: Samba log verbosity
   web_port:
     name: Web GUI Port
-    description: Port for the web interface (default 8099). Note - if you change this from 8099 the HA Ingress 'Open' button may not work. Access the GUI directly via http://YOUR-HA-IP:PORT instead.
+    description: Port for the web interface (default 8100). Note - if you change this the HA Ingress 'Open' button may not work. Access the GUI directly via http://YOUR-HA-IP:PORT instead.
   admin_password_enabled:
     name: Enable Admin Password Protection
     description: Protects the web interface with a username and password. Also requires setting admin_username and admin_password.
@@ -17,3 +20,9 @@ configuration:
   admin_password:
     name: Admin Password
     description: Password for accessing the web interface. Stored encrypted. Only active when admin_password_enabled is true.
+  smb_port:
+    name: SMB Port
+    description: SMB port (default 445). Change to e.g. 4445 if the official Samba add-on is also running.
+  web_gui_enabled:
+    name: Enable Web GUI
+    description: Set to false to run Samba only, without the web interface (smaller attack surface).

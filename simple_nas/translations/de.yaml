@@ -2,12 +2,15 @@ configuration:
   workgroup:
     name: Arbeitsgruppe
     description: Windows-Arbeitsgruppenname (Standard WORKGROUP)
+  nas_name:
+    name: NAS-Name
+    description: NetBIOS / mDNS Hostname, der in Netzwerkbrowsern angezeigt wird (Standard SimpleNAS)
   log_level:
     name: Log-Level
     description: Samba Log-Ausführlichkeit
   web_port:
     name: Web-GUI Port
-    description: Port für die Web-Oberfläche (Standard 8099). Hinweis - bei Änderung funktioniert der HA-Ingress-Button 'Öffnen' möglicherweise nicht mehr. Zugriff dann direkt über http://DEINE-HA-IP:PORT.
+    description: Port für die Web-Oberfläche (Standard 8100). Hinweis - bei Änderung funktioniert der HA-Ingress-Button 'Öffnen' möglicherweise nicht mehr. Zugriff dann direkt über http://DEINE-HA-IP:PORT.
   admin_password_enabled:
     name: Admin-Passwortschutz aktivieren
     description: Schützt die Web-Oberfläche mit einem Benutzernamen und Passwort. Erfordert auch das Setzen von admin_username und admin_password.
@@ -17,3 +20,9 @@ configuration:
   admin_password:
     name: Admin-Passwort
     description: Passwort für den Zugang zur Web-Oberfläche. Wird verschlüsselt gespeichert. Nur wirksam wenn admin_password_enabled aktiviert ist.
+  smb_port:
+    name: SMB-Port
+    description: SMB-Port (Standard 445). Ändere auf z.B. 4445 falls das offizielle Samba-Add-on parallel läuft.
+  web_gui_enabled:
+    name: Web-GUI aktivieren
+    description: Auf false setzen um nur Samba zu starten, ohne Web-Oberfläche (kleinere Angriffsfläche).

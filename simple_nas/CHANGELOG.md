@@ -1,163 +1,169 @@
 # Changelog
 
+## 3.0.54
+- Default UI language switched to English (`en`); DE/EN toggle remains in the header
+- README, root README and CHANGELOG translated to English; new entries from now on are written in English
+- Add-on description (HA Add-on Store) translated to English
+- Translation files (`de.yaml`, `en.yaml`) extended with the missing options `nas_name`, `smb_port`, `web_gui_enabled`
+
 ## 3.0.53
-- Fix: `mount -t ext4` schlug mit `fsconfig() failed: Can't open blockdev` fehl — HA-OS blockiert die neue Kernel-Mount-API (`fsconfig`/`fsopen`-Syscalls) per seccomp
-- `mount_helper.sh` benutzt jetzt bei `fsconfig()`-Fehler automatisch `busybox mount` als Fallback — dieser nutzt den alten `mount(2)`-Syscall, der weiterhin erlaubt ist
-- Gilt für alle Mount-Varianten: direkt, Auto-Erkennung, Brute-Force-Loop
+- Fix: `mount -t ext4` failed with `fsconfig() failed: Can't open blockdev` — HA OS blocks the new kernel mount API (`fsconfig`/`fsopen` syscalls) via seccomp
+- `mount_helper.sh` now automatically falls back to `busybox mount` on `fsconfig()` errors — this uses the old `mount(2)` syscall which is still permitted
+- Applies to all mount paths: direct, auto-detect, brute-force loop
 
 ## 3.0.52
-- Fix: USB-Laufwerke wurden beim Booten nicht eingehängt (Race Condition) — `restore_mounts.py` versucht den Mount jetzt bis zu 5× mit 3 s Pause, falls das Gerät noch nicht bereit ist (`Can't open blockdev`)
-- Fix: Falscher API-Endpunkt in DOCS.md — `/api/reload-samba` existiert nicht, korrekt ist `/api/samba/restart`
+- Fix: USB drives were not mounted at boot (race condition) — `restore_mounts.py` now retries the mount up to 5× with 3 s delay if the device is not yet ready (`Can't open blockdev`)
+- Fix: wrong API endpoint in DOCS.md — `/api/reload-samba` does not exist, the correct one is `/api/samba/restart`
 
 ## 3.0.51
-- Fix: Backup-Job-Karte — Start/Bearbeiten/Löschen-Buttons liefen bei langen Pfaden aus dem Kartenbereich heraus
-- Karten-Layout neu strukturiert: Textbereich (`min-width:0; flex:1`) schrumpft bei Bedarf, Button-Leiste (`flex-shrink:0`) bleibt immer vollständig sichtbar
-- Quell- und Zielpfad auf separate Zeilen mit Zeilenumbruch (`word-break:break-all`)
+- Fix: backup-job card — Start / Edit / Delete buttons overflowed the card boundary on long paths
+- Card layout restructured: text container (`min-width:0; flex:1`) shrinks if needed, button row (`flex-shrink:0`) always stays fully visible
+- Source and destination paths split onto separate lines with line-wrap (`word-break:break-all`)
 
 ## 3.0.50
-- Fix: Laufwerksansicht und Benutzer-Tab zeigten nach Sprachumschaltung weiterhin deutschen Text (`Einhängen`, `nicht eingehängt`, `Samba-Benutzer` etc.) — dynamisch generierte JS-Inhalte wurden beim Sprachwechsel nicht neu gerendert
-- `toggleLang()` lädt jetzt den aktiven Tab neu, sodass alle Texte sofort in der gewählten Sprache erscheinen
+- Fix: drive view and user tab kept showing German text (`Einhängen`, `nicht eingehängt`, `Samba-Benutzer` etc.) after switching language — dynamically built JS content was not re-rendered on language change
+- `toggleLang()` now reloads the active tab so all text appears immediately in the chosen language
 
 ## 3.0.49
-- Fix: Laufwerke wurden nach HA-Neustart nicht mehr eingehängt — `restore_mounts.py` benutzte `fstype: "auto"` statt des beim Mount erkannten `resolved_fstype` (z.B. `"ext4"`), was auf USB-Geräten fehlschlug
+- Fix: drives were no longer mounted after HA restart — `restore_mounts.py` used `fstype: "auto"` instead of the `resolved_fstype` (e.g. `"ext4"`) detected at mount time, which failed on USB devices
 
 ## 3.0.48
-- Bind-Mount-Feature entfernt: HA-OS verwendet Slave-Mount-Namespaces (`master:118`) — Mounts aus einem Add-on-Container propagieren nicht zu anderen Containern oder HA Core. Die Funktion war damit wirkungslos.
-- Mount-Dialog: Checkbox und Bind-Pfad-Feld entfernt
+- Bind-mount feature removed: HA OS uses slave mount namespaces (`master:118`) — mounts from an add-on container do not propagate to other containers or HA Core. The feature was therefore ineffective.
+- Mount dialog: checkbox and bind path field removed
 
 ## 3.0.47
-- FS-Tag bleibt jetzt auch bei ausgehängten Laufwerken sichtbar
-- Neues File `/data/fstype_memory.json` merkt sich den letzten bekannten FS-Typ pro Device — wird bei jedem Mount und bei jedem Drive-Listing aus `/proc/mounts` gespeist und nie automatisch geleert
-- Übersteht Container-Neustarts, Aushängen und Reinstall (`/data` ist persistent)
+- FS tag now stays visible even on unmounted drives
+- New file `/data/fstype_memory.json` remembers the last known FS type per device — populated on every mount and on every drive listing from `/proc/mounts`, never auto-cleared
+- Survives container restarts, unmount and reinstall (`/data` is persistent)
 
 ## 3.0.46
-- FS-Tag-Anzeige bekommt zwei zusätzliche Quellen, weil HA-OS Raw-Block-Reads (`blkid`/`file -s` auf Blockdevices) per `EPERM` blockiert
-- Quelle 2: `/proc/mounts` — zeigt den FS-Typ jedes aktuell gemounteten Devices verlässlich
-- Quelle 3: `mounts.json` mit neuem Feld `resolved_fstype` — beim Mount wird der vom Kernel tatsächlich verwendete Typ aus `/proc/mounts` gelesen und gespeichert (nicht nur „auto")
-- Damit zeigt die Drive-Liste den FS-Tag (z.B. `ext4`) sicher für gemountete Geräte und auch für später wieder offline genommene, deren letzter Mount-Typ bekannt ist
+- FS tag display gets two additional sources because HA OS blocks raw block-device reads (`blkid` / `file -s` on block devices) with `EPERM`
+- Source 2: `/proc/mounts` — reliably shows the FS type of every currently mounted device
+- Source 3: `mounts.json` with new field `resolved_fstype` — at mount time, the actual kernel-used type is read from `/proc/mounts` and stored (not just "auto")
+- The drive list now reliably shows the FS tag (e.g. `ext4`) for mounted devices and also for later-unmounted ones whose last mount type is known
 
 ## 3.0.45
-- Laufwerks-Übersicht: FS-Typ-Tag (`ext4`, `ntfs`, …) wird wieder zuverlässig angezeigt
-- Wenn `lsblk` keinen FSTYPE meldet, wird `blkid` / `blkid -p` / `file -sL` als Fallback befragt — dieselbe Eskalation wie beim Mount-Helper
+- Drive overview: FS-type tag (`ext4`, `ntfs`, …) is reliably shown again
+- When `lsblk` reports no FSTYPE, `blkid` / `blkid -p` / `file -sL` are queried as fallback — same escalation as in the mount helper
 
 ## 3.0.44
-- Mount-Auto-Erkennung deutlich robuster
-- Symlink (z.B. `/dev/disk/by-id/usb-…`) wird vor dem Probe per `readlink -f` aufgelöst
-- Vierte Erkennungsstufe: `file -s` liest direkt die Superblock-Magic (Paket `file` ergänzt)
-- Brute-Force-Fallback: nacheinander `ext4 → ext3 → ext2 → ntfs-3g → vfat → exfat → btrfs → xfs` versuchen, falls alle Detektoren leer kommen — fixt USB-Geräte, bei denen `blkid`/`lsblk` nichts melden, `mount -t ext4` aber funktioniert
+- Mount auto-detection significantly more robust
+- Symlinks (e.g. `/dev/disk/by-id/usb-…`) are resolved before probing via `readlink -f`
+- Fourth detection step: `file -s` reads the superblock magic directly (added the `file` package)
+- Brute-force fallback: tries `ext4 → ext3 → ext2 → ntfs-3g → vfat → exfat → btrfs → xfs` in turn if all detectors come up empty — fixes USB devices where `blkid` / `lsblk` return nothing but `mount -t ext4` works
 
 ## 3.0.43
-- Bind-Mount-Name unter `/share/<name>` ist jetzt im Mount-Dialog frei änderbar (Eingabefeld direkt unter der Checkbox)
-- FS-Auto-Erkennung im Helper auf drei Stufen erweitert: `blkid` → `blkid -p` (low-level Probe) → `lsblk -no FSTYPE`
-- Bessere Logs im Helper (welche Methode hat erkannt, welcher Treiber wurde versucht)
+- Bind-mount name under `/share/<name>` is now editable in the mount dialog (input field directly below the checkbox)
+- FS auto-detection in the helper extended to three stages: `blkid` → `blkid -p` (low-level probe) → `lsblk -no FSTYPE`
+- Better helper logs (which method detected, which driver was tried)
 
 ## 3.0.42
-- Mount „Automatisch" benutzt jetzt zuerst `blkid` zur FS-Erkennung — umgeht den irreführenden „Can't open blockdev"-Fehler von `fsconfig()` bei USB-Geräten
-- NTFS wird automatisch über `ntfs-3g` (statt Kernel-NTFS-RO) gemountet
-- Fallback auf nackten `mount`-Befehl, falls explizites `-t` fehlschlägt
-- `psmisc` (`fuser`) und `lsof` ergänzt — Busy-Diagnose beim Aushängen funktioniert jetzt richtig
+- Mount "Auto" now uses `blkid` for FS detection first — works around the misleading "Can't open blockdev" error from `fsconfig()` on USB devices
+- NTFS is automatically mounted via `ntfs-3g` (instead of kernel NTFS read-only)
+- Falls back to bare `mount` if explicit `-t` fails
+- Added `psmisc` (`fuser`) and `lsof` — busy diagnostics on unmount now work properly
 
 ## 3.0.41
-- Fix: Einhängen-Knopf reagierte nicht — `JSON.stringify(by_id)` enthielt doppelte Anführungszeichen, die das `onclick="…"`-Attribut zerschossen → „Unexpected end of input" beim Seitenrendern
-- Anführungszeichen werden jetzt als `&quot;` HTML-escaped
+- Fix: Mount button did not respond — `JSON.stringify(by_id)` contained double quotes that broke the `onclick="…"` attribute → "Unexpected end of input" when rendering the page
+- Quotes are now HTML-escaped to `&quot;`
 
 ## 3.0.40
-- Fix: Aushängen-Knopf hatte einen Verweis auf die alte `isSdaDevice`-Funktion → JS-Fehler, Klick ohne Wirkung
-- Unmount-Dialog nutzt jetzt das `system_device`-Flag der Drive-API
+- Fix: Unmount button referenced the old `isSdaDevice` function → JS error, click did nothing
+- Unmount dialog now uses the `system_device` flag from the drive API
 
 ## 3.0.39
-- Robusteres Aushängen von Laufwerken
-- Vor `umount` werden offene Samba-Handles geschlossen (`smbcontrol close-share`)
-- Bind-Mounts unter `/share/` fallen bei „busy" automatisch auf `umount -l` zurück
-- Bei belegtem Laufwerk: GUI zeigt blockierende Prozesse (`fuser`/`lsof`) und bietet „Aushängen erzwingen"
+- More robust drive unmounting
+- Open Samba handles are closed before `umount` (`smbcontrol close-share`)
+- Bind mounts under `/share/` automatically fall back to `umount -l` on "busy"
+- For busy drives: GUI shows blocking processes (`fuser` / `lsof`) and offers "Force unmount"
 
 ## 3.0.38
-- Neu: Bind-Mount eingehängter Laufwerke nach `/share/<name>` — Zugriff durch HA Core und andere Add-ons
-- Mount-Dialog: Checkbox „Auch für HA Core / andere Add-ons zugänglich machen" (standardmäßig an)
-- Bind-Mounts werden in `mounts.json` gespeichert und beim Neustart automatisch wiederhergestellt
-- Beim Aushängen wird der Bind zuerst entfernt, dann der eigentliche Mount
-- `mount_helper.sh`: neue `BIND`-Aktion mit `mount --make-shared`
+- New: bind-mount of mounted drives to `/share/<name>` — accessible by HA Core and other add-ons
+- Mount dialog: checkbox "Make accessible to HA Core / other add-ons" (on by default)
+- Bind mounts are saved in `mounts.json` and restored automatically on restart
+- On unmount the bind is removed first, then the actual mount
+- `mount_helper.sh`: new `BIND` action with `mount --make-shared`
 
 ## 3.0.37
-- Fix: HA-Backup-Speicherort verschwand manchmal nach Neustart (Race Condition)
-- `smb.conf` wird jetzt zweimal generiert — vor und nach dem Restore der Mounts
+- Fix: HA backup location sometimes vanished after a restart (race condition)
+- `smb.conf` is now generated twice — before and after restoring mounts
 
 ## 3.0.36
-- Alle Log-Meldungen ins Englische übersetzt (run.sh, app.py)
+- All log messages translated to English (run.sh, app.py)
 
 ## 3.0.35
-- Neu: Option `web_gui_enabled` — Web-GUI komplett deaktivierbar (geringere Angriffsfläche, Samba-only-Betrieb)
+- New: option `web_gui_enabled` — web GUI can be fully disabled (smaller attack surface, Samba-only operation)
 
 ## 3.0.34
-- Bestehende `/dev/sdX`-Einträge werden beim Start automatisch zu `/dev/disk/by-id/`-Pfaden migriert
+- Existing `/dev/sdX` entries are automatically migrated to `/dev/disk/by-id/` paths on startup
 
 ## 3.0.33
-- Mounts verwenden stabile `/dev/disk/by-id/`-Pfade — überleben USB-Neusortierung nach Reboot
-- System-Geräte werden über `/proc/mounts` erkannt (nicht mehr nur `sda`)
-- Inaktive Shares werden in `smb.conf` als `available = no` markiert
-- Englische Dokumentation (`DOCS.md`) ergänzt
+- Mounts use stable `/dev/disk/by-id/` paths — survive USB re-numbering after a reboot
+- System devices are detected via `/proc/mounts` (no longer just `sda`)
+- Inactive shares are marked `available = no` in `smb.conf`
+- English documentation (`DOCS.md`) added
 
 ## 3.0.32
-- Fix: `/ssl` von `ro` auf `rw` geändert (Zertifikatsordner war read-only)
-- Neu: konfigurierbarer `smb_port` für Parallelbetrieb mit dem offiziellen Samba-Add-on
+- Fix: `/ssl` changed from `ro` to `rw` (certificate folder was read-only)
+- New: configurable `smb_port` for parallel operation with the official Samba add-on
 
 ## 3.0.31
-- Neu: macOS-Junk-Dateien werden global ausgeblendet/gelöscht (`.DS_Store`, `._*`, `.TemporaryItems`, …) via Samba `veto files` + `delete veto files`
+- New: macOS junk files are globally hidden / deleted (`.DS_Store`, `._*`, `.TemporaryItems`, …) via Samba `veto files` + `delete veto files`
 
 ## 3.0.0
-- Neu: Dateien-Tab — vollständiger Filebrowser mit Upload, Download, Kopieren, Verschieben, Umbenennen, Löschen
-- Neu: Backup-Tab — Backup-Jobs erstellen, manuell starten, alte Backups automatisch aufräumen (rsync-basiert)
-- Neu: Datei-Upload direkt über die Web-GUI (bis 10 GB)
-- Neu: Datei-Download direkt aus dem Browser
-- Neu: Ordner erstellen im Filebrowser
-- Dockerfile: rsync hinzugefügt
+- New: Files tab — full file browser with upload, download, copy, move, rename, delete
+- New: Backup tab — create backup jobs, run manually, auto-clean old backups (rsync-based)
+- New: file upload directly via the web GUI (up to 10 GB)
+- New: file download directly from the browser
+- New: create folder in the file browser
+- Dockerfile: rsync added
 
 ## 2.2.0
-- Neu: Web-GUI Port konfigurierbar (Standard: 8099)
-- Neu: Samba-Passwörter werden persistent gespeichert und nach Neustart automatisch wiederhergestellt
+- New: web GUI port configurable (default: 8099)
+- New: Samba passwords are saved persistently and restored automatically after restart
 
 ## 2.1.0
-- Repository umbenannt zu EasyNas-HASSIO-Addon
-- Komplette README mit Installationsanleitung, Schnellstart, Nextcloud-Guide
-- CHANGELOG hinzugefügt
-- Addon-Icon und Logo
-- Übersetzungen (DE/EN)
-- Alle Fixes aus 2.0.x konsolidiert
+- Repository renamed to EasyNas-HASSIO-Addon
+- Full README with installation guide, quick start, Nextcloud guide
+- CHANGELOG added
+- Add-on icon and logo
+- Translations (DE/EN)
+- All fixes from 2.0.x consolidated
 
 ## 2.0.9
-- Fix: Benutzer und Gruppen werden nach Container-Neustart automatisch wiederhergestellt
-- Fix: Passwort-Änderung erstellt fehlende Samba-Einträge automatisch neu
+- Fix: users and groups are restored automatically after container restart
+- Fix: password change re-creates missing Samba entries automatically
 
 ## 2.0.8
-- Browser: "Gehe zu" Label für Navigation, /share Button entfernt
-- Mount-Feld: Klarere Beschriftung (Name oder voller Pfad)
+- Browser: "Go to" label for navigation, /share button removed
+- Mount field: clearer wording (name or full path)
 
 ## 2.0.7
-- Fix: Öffentliche Shares ignorieren jetzt `valid users` korrekt
-- Samba: SMB2/SMB3 Protokollbereich, bessere NTLM-Kompatibilität
+- Fix: public shares now correctly ignore `valid users`
+- Samba: SMB2/SMB3 protocol range, better NTLM compatibility
 
 ## 2.0.4
-- Fix: Share-Verzeichnisse bekommen korrekte Permissions (2775)
-- Fix: smb.conf Reload startet Samba automatisch neu falls nicht laufend
-- Samba: `force user = root`, `force group = root` für volle Kompatibilität
+- Fix: share directories get correct permissions (2775)
+- Fix: smb.conf reload restarts Samba automatically if not running
+- Samba: `force user = root`, `force group = root` for full compatibility
 
 ## 2.0.0
-- Neu: Gruppenverwaltung mit Mitglieder-Zuordnung
-- Neu: Benutzer und Gruppen als Chips in der Freigabe-Konfiguration
-- Neu: Dark/Light Theme (HA-Design)
-- Neu: sda-Schutz mit Bestätigungs-Dialog
-- Neu: Ordner erstellen im Browser
-- Neu: Ordner-Browser für Mount-Pfade mit Quick-Navigation
+- New: group management with member assignment
+- New: users and groups as chips in the share configuration
+- New: dark/light theme (HA design)
+- New: sda protection with confirmation dialog
+- New: create folder in the browser
+- New: folder browser for mount paths with quick navigation
 
 ## 1.1.2
-- Fix: wsdd als Script statt pip-Paket (HA Wheels-Index hat es nicht)
+- Fix: wsdd as a script instead of pip package (HA wheels index does not have it)
 
 ## 1.1.1
-- Neu: Netzwerk-Discovery (Avahi für Linux/macOS, WSDD für Windows 10/11)
+- New: network discovery (Avahi for Linux/macOS, WSDD for Windows 10/11)
 
 ## 1.0.9
-- Fix: `apparmor: false` und `privileged: SYS_ADMIN` für Mount-Operationen
+- Fix: `apparmor: false` and `privileged: SYS_ADMIN` for mount operations
 
 ## 1.0.8
-- Alle Mountpoints von /mnt auf /media geändert
-- Erster Release
+- All mount points changed from /mnt to /media
+- First release

@@ -826,7 +826,7 @@ const T={
     title_copy:'Copy',title_move:'Move',date_locale:'en-US',logout_title:'Logout',
   }
 };
-let _lang=localStorage.getItem('nas-lang')||'de';
+let _lang=localStorage.getItem('nas-lang')||'en';
 function t(k,vars){let s=T[_lang][k]||T.de[k]||k;if(vars)Object.keys(vars).forEach(v=>{s=s.replace('{'+v+'}',vars[v]);});return s;}
 function applyLang(){
   document.documentElement.lang=_lang;
