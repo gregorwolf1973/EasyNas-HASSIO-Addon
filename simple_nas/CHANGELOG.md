@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.55
+- Fix: shares pointing to a subdirectory under `/mnt/...` were marked `available = no` even when the underlying drive was mounted, because the subdirectory existed only on the container overlay (created before the mount) and was hidden by the live filesystem after mounting
+- `generate_smb_conf.py` now auto-creates the missing subdirectory if its parent is a real mount point — share becomes immediately usable
+- `/mnt/` paths now follow the same "real mount required" rule as `/media/` (was treated as always-available before)
+
 ## 3.0.54
 - Default UI language switched to English (`en`); DE/EN toggle remains in the header
 - README, root README and CHANGELOG translated to English; new entries from now on are written in English

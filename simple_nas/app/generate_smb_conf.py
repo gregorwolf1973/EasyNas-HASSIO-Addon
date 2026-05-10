@@ -17,27 +17,52 @@ def get_mounted_points():
     return mounted
 
 
+def _path_under_mount(path, mounted_points):
+    """Return the closest ancestor of `path` that is an actual mount point,
+    or None if no ancestor is mounted (excluding root '/')."""
+    check = os.path.realpath(path)
+    while check not in ("/", ""):
+        if check in mounted_points:
+            return check
+        parent = os.path.dirname(check)
+        if parent == check:
+            break
+        check = parent
+    return None
+
+
 def share_available(path, mounted_points):
     """Return True if the share path is currently accessible.
 
-    Paths under /media/ require an actual mount so that an unmounted / missing
-    USB device never silently maps to the empty host directory.
-    All other paths (HA-mapped volumes like /share, /config, /ssl …) are
-    considered always-available when they exist on the filesystem.
+    Paths under /media/ or /mnt/ require an actual mount so that an
+    unmounted / missing USB device never silently maps to an empty host
+    directory.
+
+    If the share path itself does not exist yet but its parent IS an actual
+    mount point (e.g. share = /mnt/nas/backup and /mnt/nas is the mounted
+    drive), auto-create the subdirectory so the share works on first start.
+    This handles the case where the share folder was originally created on
+    the container overlay before the drive was mounted, then got hidden by
+    the live filesystem after the mount.
     """
+    needs_real_mount = path.startswith("/media/") or path.startswith("/mnt/")
+
+    if needs_real_mount:
+        ancestor_mount = _path_under_mount(path, mounted_points)
+        if ancestor_mount is None:
+            return False  # nothing mounted under this path
+        # Path is below a real mount point — auto-create missing subdirs
+        if not os.path.exists(path):
+            try:
+                os.makedirs(path, mode=0o2775, exist_ok=True)
+                print(f"share_available: auto-created missing share dir {path}")
+            except OSError as e:
+                print(f"share_available: cannot create {path}: {e}")
+                return False
+        return True
+
     if not os.path.exists(path):
         return False
-    if path.startswith("/media/"):
-        # Walk up from path until we find an entry in /proc/mounts (excl. /)
-        check = os.path.realpath(path)
-        while check not in ("/", "/media", ""):
-            if check in mounted_points:
-                return True
-            parent = os.path.dirname(check)
-            if parent == check:
-                break
-            check = parent
-        return False   # nothing mounted under /media covers this path
     return True  # HA-mapped or other always-available path
 
 SHARES_FILE = "/data/shares.json"
