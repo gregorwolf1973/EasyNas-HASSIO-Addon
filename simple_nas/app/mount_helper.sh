@@ -14,6 +14,21 @@ mkfifo "$FIFO" || { echo "FEHLER: mkfifo gescheitert"; exit 1; }
 echo "[mount_helper] Bereit auf $FIFO"
 echo "[mount_helper] Capabilities: $(cat /proc/self/status 2>/dev/null | grep Cap || echo 'n/a')"
 
+# Wrapper: try util-linux mount first; if fsconfig() is blocked (HA-OS seccomp),
+# fall back to busybox mount which uses the old mount(2) syscall.
+do_mount() {
+    local _OUT _RC
+    _OUT=$(mount "$@" 2>&1)
+    _RC=$?
+    if [ $_RC -ne 0 ] && echo "$_OUT" | grep -q "fsconfig()"; then
+        echo "[mount_helper] fsconfig() blocked — retrying with busybox mount"
+        _OUT=$(busybox mount "$@" 2>&1)
+        _RC=$?
+    fi
+    echo "$_OUT"
+    return $_RC
+}
+
 while true; do
     if read -r line < "$FIFO"; then
         ACTION=$(echo "$line" | cut -d'|' -f1)
@@ -40,7 +55,7 @@ while true; do
                 # Try mount
                 if [ -n "$FSTYPE" ] && [ "$FSTYPE" != "auto" ]; then
                     echo "[mount_helper] Trying: mount -t $FSTYPE $DEVICE $MOUNTPOINT"
-                    OUT=$(mount -t "$FSTYPE" "$DEVICE" "$MOUNTPOINT" 2>&1)
+                    OUT=$(do_mount -t "$FSTYPE" "$DEVICE" "$MOUNTPOINT" 2>&1)
                     RC=$?
                 else
                     # AUTO: blkid/lsblk sometimes return nothing for by-id
@@ -76,7 +91,7 @@ while true; do
                     if [ -n "$DETECTED" ]; then
                         echo "[mount_helper] auto: detected '$DETECTED'"
                         echo "[mount_helper] Trying: mount -t $DETECTED $DEVICE $MOUNTPOINT"
-                        OUT=$(mount -t "$DETECTED" "$DEVICE" "$MOUNTPOINT" 2>&1)
+                        OUT=$(do_mount -t "$DETECTED" "$DEVICE" "$MOUNTPOINT" 2>&1)
                         RC=$?
                     fi
                     # Last resort: brute-force the common Linux/Windows types.
@@ -89,7 +104,7 @@ while true; do
                             echo "[mount_helper] auto: no FS detected — brute-force common types"
                         fi
                         for TRY_FS in ext4 ext3 ext2 ntfs-3g vfat exfat btrfs xfs; do
-                            OUT=$(mount -t "$TRY_FS" "$DEVICE" "$MOUNTPOINT" 2>&1)
+                            OUT=$(do_mount -t "$TRY_FS" "$DEVICE" "$MOUNTPOINT" 2>&1)
                             RC=$?
                             if [ $RC -eq 0 ]; then
                                 echo "[mount_helper] auto: brute-force succeeded with -t $TRY_FS"
@@ -101,7 +116,7 @@ while true; do
                     # Final fallback: bare mount (relies on kernel auto-probe)
                     if [ $RC -ne 0 ]; then
                         echo "[mount_helper] auto: brute-force failed — last bare mount attempt"
-                        OUT=$(mount "$DEVICE" "$MOUNTPOINT" 2>&1)
+                        OUT=$(do_mount "$DEVICE" "$MOUNTPOINT" 2>&1)
                         RC=$?
                     fi
                 fi

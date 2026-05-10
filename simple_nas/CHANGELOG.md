@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.53
+- Fix: `mount -t ext4` schlug mit `fsconfig() failed: Can't open blockdev` fehl — HA-OS blockiert die neue Kernel-Mount-API (`fsconfig`/`fsopen`-Syscalls) per seccomp
+- `mount_helper.sh` benutzt jetzt bei `fsconfig()`-Fehler automatisch `busybox mount` als Fallback — dieser nutzt den alten `mount(2)`-Syscall, der weiterhin erlaubt ist
+- Gilt für alle Mount-Varianten: direkt, Auto-Erkennung, Brute-Force-Loop
+
 ## 3.0.52
 - Fix: USB-Laufwerke wurden beim Booten nicht eingehängt (Race Condition) — `restore_mounts.py` versucht den Mount jetzt bis zu 5× mit 3 s Pause, falls das Gerät noch nicht bereit ist (`Can't open blockdev`)
 - Fix: Falscher API-Endpunkt in DOCS.md — `/api/reload-samba` existiert nicht, korrekt ist `/api/samba/restart`
