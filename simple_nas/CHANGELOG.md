@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.59
+- Files tab: size bars, file sizes, dates and action buttons now align in fixed columns across all rows
+- `.factions` column has fixed width (170 px) with right-aligned buttons — delete (rightmost) lines up across rows regardless of how many actions a row has
+- Each action button has a fixed 24×24 px slot so icons stay on the same grid
+
 ## 3.0.58
 - Fix: size bars rendered all gray — colored fill was invisible because the inner `<span>` is inline by default and ignored `width`/`height`
 - `.fbar-fill` now `display:block`, `.fbar` now `display:inline-block` — colored fill renders correctly in both the Files list and the Settings legend
