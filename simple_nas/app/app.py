@@ -5,6 +5,7 @@ import os
 import subprocess
 import re
 import shutil
+import time
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -953,10 +954,34 @@ def _remap_path(path):
             return "/addon_configs"
     return path
 
+def _recursive_dir_size(path, max_seconds=8):
+    """Sum file sizes recursively under `path`. Returns (bytes, truncated).
+    truncated=True when the walk was aborted due to the time budget."""
+    total = 0
+    deadline = time.time() + max_seconds
+    try:
+        for root, dirs, files in os.walk(path, followlinks=False):
+            if time.time() > deadline:
+                return total, True
+            for f in files:
+                try:
+                    total += os.lstat(os.path.join(root, f)).st_size
+                except OSError:
+                    pass
+    except Exception:
+        pass
+    return total, False
+
+
 @app.route("/api/files")
 def api_files():
-    """List files and directories (unlike /browse which is dirs only)."""
+    """List files and directories (unlike /browse which is dirs only).
+
+    ?dir_size=1 recursively computes the size of each directory entry
+    (capped per directory by _recursive_dir_size). Off by default because
+    it can be slow on large trees / slow USB media."""
     path = request.args.get("path", "/").strip()
+    want_dir_size = request.args.get("dir_size", "0") in ("1", "true", "yes")
     path = os.path.abspath(path)
     if not path.startswith("/"): path = "/"
     path = _remap_path(path)
@@ -966,10 +991,17 @@ def api_files():
             full = os.path.join(path, name)
             try:
                 is_link = os.path.islink(full)
+                size_truncated = False
                 try:
                     st = os.stat(full)         # folgt Symlink
                     is_dir = os.path.isdir(full)
-                    size = st.st_size if not is_dir else None
+                    if is_dir:
+                        if want_dir_size:
+                            size, size_truncated = _recursive_dir_size(full)
+                        else:
+                            size = None
+                    else:
+                        size = st.st_size
                     mtime = st.st_mtime
                 except OSError:
                     # Symlink-Ziel nicht auflösbar (z.B. bind-mount außerhalb Container)
@@ -983,6 +1015,7 @@ def api_files():
                 entries.append({
                     "name": name, "path": full, "is_dir": is_dir,
                     "size": size,
+                    "size_truncated": size_truncated,
                     "modified": mtime,
                     "readable": os.access(full, os.R_OK),
                     "is_symlink": os.path.islink(full),

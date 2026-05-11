@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.56
+- New: optional "Size bars" view in the Files tab — colored bars next to each entry visualize file and folder size at a glance (blue ≤10 MB, green ≤50 MB, yellow ≤100 MB, orange ≤1 GB, red >1 GB)
+- Folder sizes are computed recursively on demand (only when the toggle is on); per-folder walk capped at 8 s to keep large trees responsive — incomplete sizes are marked with `≈`
+- Bar length is logarithmic relative to the largest entry in the current view so a 10 MB file remains visible next to a 1 GB one
+- API: `/api/files` accepts new query param `dir_size=1` to recursively compute directory sizes
+- Toggle state persists in `localStorage` (key `nas-show-sizebars`); off by default
+- i18n strings added in DE and EN (`btn_sizebars`, `computing_sizes`, `size_truncated`)
+
 ## 3.0.55
 - Fix: shares pointing to a subdirectory under `/mnt/...` were marked `available = no` even when the underlying drive was mounted, because the subdirectory existed only on the container overlay (created before the mount) and was hidden by the live filesystem after mounting
 - `generate_smb_conf.py` now auto-creates the missing subdirectory if its parent is a real mount point — share becomes immediately usable
