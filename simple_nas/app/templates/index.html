@@ -321,6 +321,13 @@
   .fbar-yellow { background:#eab308; }
   .fbar-orange { background:#f97316; }
   .fbar-red    { background:#ef4444; }
+  /* Toggle switch (used in Settings) */
+  .switch { position:relative; display:inline-block; width:46px; height:24px; flex-shrink:0; }
+  .switch input { opacity:0; width:0; height:0; }
+  .switch-slider { position:absolute; cursor:pointer; inset:0; background:var(--surface2); border:1px solid var(--border); border-radius:24px; transition:.2s; }
+  .switch-slider:before { content:""; position:absolute; height:18px; width:18px; left:2px; bottom:2px; background:var(--text); border-radius:50%; transition:.2s; }
+  .switch input:checked + .switch-slider { background:var(--accent); border-color:var(--accent); }
+  .switch input:checked + .switch-slider:before { transform:translateX(22px); background:#fff; }
   .file-row .fsize-trunc { color:var(--warn); cursor:help; }
   .file-row .fdate { font-size:11px; color:var(--text-dim); width:130px; flex-shrink:0; }
   .file-row .factions { display:flex; gap:3px; flex-shrink:0; }
@@ -369,6 +376,9 @@
   <button onclick="switchTab('backup')" id="tab-backup">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
     <span data-i18n="nav_backup">Backup</span></button>
+  <button onclick="switchTab('settings')" id="tab-settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <span data-i18n="nav_settings">Einstellungen</span></button>
 </nav>
 
 <main>
@@ -447,7 +457,6 @@
     <div class="section-header" style="margin-top:0">
       <div><div class="page-title" data-i18n="files_title">Dateien</div><div class="page-sub" data-i18n="files_sub">Dateien durchsuchen, hochladen, kopieren, verschieben und löschen</div></div>
       <div style="display:flex;gap:6px;">
-        <button class="btn btn-ghost" id="btn-toggle-sizebars" onclick="toggleSizeBars()" title="Show file/folder size bars"><span data-i18n="btn_sizebars">📊 Size bars</span></button>
         <label class="btn btn-primary" style="cursor:pointer;" id="btn-upload-label">
           <span data-i18n="btn_upload">↑ Hochladen</span>
           <input type="file" id="file-upload-input" multiple style="display:none" onchange="uploadFiles(this.files)">
@@ -503,6 +512,39 @@
       <button class="btn btn-primary" onclick="openBackupModal()" data-i18n="btn_new_backup">+ Neuer Backup-Job</button>
     </div>
     <div class="grid" id="backup-grid"><div class="empty" style="grid-column:1/-1"><span class="spinner"></span></div></div>
+  </div>
+
+  <!-- ══ SETTINGS ══ -->
+  <div class="panel" id="panel-settings">
+    <div class="page-title" data-i18n="settings_title">Einstellungen</div>
+    <div class="page-sub" data-i18n="settings_sub">Anzeige- und Browser-Einstellungen</div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-header">
+        <div>
+          <div class="card-title" data-i18n="settings_files_title">Datei-Ansicht</div>
+          <div class="card-sub" data-i18n="settings_files_sub">Optionen für den Dateien-Tab</div>
+        </div>
+      </div>
+      <div style="padding:12px 16px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px">
+          <div style="font-weight:500" data-i18n="settings_sizebars_label">Größenbalken anzeigen</div>
+          <div style="color:var(--text-dim);font-size:13px;margin-top:2px" data-i18n="settings_sizebars_sub">Farbige Balken neben jeder Datei und jedem Ordner. Ordnergrößen werden rekursiv berechnet (bis 8 s je Ordner).</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="settings-sizebars-toggle" onchange="onSettingsSizebarsToggle(this.checked)">
+          <span class="switch-slider"></span>
+        </label>
+      </div>
+      <div style="padding:0 16px 16px;font-size:12px;color:var(--text-dim);display:flex;gap:12px;flex-wrap:wrap;align-items:center" data-i18n-skip>
+        <span data-i18n="settings_legend">Farben:</span>
+        <span style="display:inline-flex;align-items:center;gap:4px"><span class="fbar" style="width:32px"><span class="fbar-fill fbar-blue" style="width:100%"></span></span> ≤10&nbsp;MB</span>
+        <span style="display:inline-flex;align-items:center;gap:4px"><span class="fbar" style="width:32px"><span class="fbar-fill fbar-green" style="width:100%"></span></span> ≤50&nbsp;MB</span>
+        <span style="display:inline-flex;align-items:center;gap:4px"><span class="fbar" style="width:32px"><span class="fbar-fill fbar-yellow" style="width:100%"></span></span> ≤100&nbsp;MB</span>
+        <span style="display:inline-flex;align-items:center;gap:4px"><span class="fbar" style="width:32px"><span class="fbar-fill fbar-orange" style="width:100%"></span></span> ≤1&nbsp;GB</span>
+        <span style="display:inline-flex;align-items:center;gap:4px"><span class="fbar" style="width:32px"><span class="fbar-fill fbar-red" style="width:100%"></span></span> &gt;1&nbsp;GB</span>
+      </div>
+    </div>
   </div>
 
 </main>
@@ -718,7 +760,12 @@ const T={
     pls_select_folder:'Bitte Ordner wählen',
     new_folder_prompt:'Neuer Ordner in {p}:',folder_created:'Ordner erstellt: {p}',
     folder_label:'Ordner',empty_folder:'Leer',
-    btn_sizebars:'📊 Größenbalken',computing_sizes:'Berechne Größen…',size_truncated:'Größe nicht vollständig — Ordner zu groß, Berechnung abgebrochen',
+    computing_sizes:'Berechne Größen…',size_truncated:'Größe nicht vollständig — Ordner zu groß, Berechnung abgebrochen',
+    nav_settings:'Einstellungen',
+    settings_title:'Einstellungen',settings_sub:'Anzeige- und Browser-Einstellungen',
+    settings_files_title:'Datei-Ansicht',settings_files_sub:'Optionen für den Dateien-Tab',
+    settings_sizebars_label:'Größenbalken anzeigen',settings_sizebars_sub:'Farbige Balken neben jeder Datei und jedem Ordner. Ordnergrößen werden rekursiv berechnet (bis 8 s je Ordner).',
+    settings_legend:'Farben:',
     files_status:'{d} Ordner, {f} Dateien',
     edit_title:'Bearbeiten: {n}',loading:'Lade...',
     rename_prompt:'Umbenennen:',renamed:'Umbenannt',
@@ -805,7 +852,12 @@ const T={
     pls_select_folder:'Please select a folder',
     new_folder_prompt:'New folder in {p}:',folder_created:'Folder created: {p}',
     folder_label:'Folder',empty_folder:'Empty',
-    btn_sizebars:'📊 Size bars',computing_sizes:'Computing sizes…',size_truncated:'Size incomplete — folder too large, computation aborted',
+    computing_sizes:'Computing sizes…',size_truncated:'Size incomplete — folder too large, computation aborted',
+    nav_settings:'Settings',
+    settings_title:'Settings',settings_sub:'Display and browser preferences',
+    settings_files_title:'File View',settings_files_sub:'Options for the Files tab',
+    settings_sizebars_label:'Show size bars',settings_sizebars_sub:'Colored bars next to each file and folder. Folder sizes are computed recursively (up to 8 s per folder).',
+    settings_legend:'Colors:',
     files_status:'{d} folders, {f} files',
     edit_title:'Edit: {n}',loading:'Loading...',
     rename_prompt:'Rename:',renamed:'Renamed',
@@ -867,6 +919,7 @@ function toggleLang(){
   else if(tab==='shares')loadShares();
   else if(tab==='users'){loadUsers();loadGroups();}
   else if(tab==='backup'){loadBackups();loadSettingsBackupStatus();loadManualBackups();}
+  else if(tab==='settings')loadSettings();
 }
 
 // ── Utils ──
@@ -898,7 +951,7 @@ function switchTab(n){
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
   document.getElementById('panel-'+n).classList.add('active');
   document.getElementById('tab-'+n).classList.add('active');
-  if(n==='drives')loadDrives();if(n==='shares')loadShares();if(n==='users'){loadUsers();loadGroups();}if(n==='files')loadFiles();if(n==='backup'){loadBackups();loadSettingsBackupStatus();loadManualBackups();}
+  if(n==='drives')loadDrives();if(n==='shares')loadShares();if(n==='users'){loadUsers();loadGroups();}if(n==='files')loadFiles();if(n==='backup'){loadBackups();loadSettingsBackupStatus();loadManualBackups();}if(n==='settings')loadSettings();
 }
 
 // ── Status ──
@@ -1152,8 +1205,16 @@ function fmtSize(b){if(b==null)return'';if(b>1e9)return(b/1e9).toFixed(1)+' GB';
 function fmtTime(ts){if(!ts)return'';const d=new Date(ts*1000);const loc=t('date_locale');return d.toLocaleDateString(loc,{day:'2-digit',month:'2-digit',year:'2-digit'})+' '+d.toLocaleTimeString(loc,{hour:'2-digit',minute:'2-digit'});}
 
 let _showSizeBars=localStorage.getItem('nas-show-sizebars')==='1';
-function toggleSizeBars(){_showSizeBars=!_showSizeBars;localStorage.setItem('nas-show-sizebars',_showSizeBars?'1':'0');updateSizeBarsBtn();loadFiles();}
-function updateSizeBarsBtn(){const b=document.getElementById('btn-toggle-sizebars');if(!b)return;b.classList.toggle('btn-primary',_showSizeBars);b.classList.toggle('btn-ghost',!_showSizeBars);}
+function onSettingsSizebarsToggle(checked){
+  _showSizeBars=!!checked;
+  localStorage.setItem('nas-show-sizebars',_showSizeBars?'1':'0');
+  // If the Files panel is currently visible, re-render so the change shows immediately
+  if(document.getElementById('panel-files').classList.contains('active'))loadFiles();
+}
+function loadSettings(){
+  const t=document.getElementById('settings-sizebars-toggle');
+  if(t)t.checked=_showSizeBars;
+}
 
 // Color and bar rendering. Color thresholds are absolute (per spec),
 // bar length is logarithmic relative to the largest entry in the current view
@@ -1177,7 +1238,6 @@ function _sizeBarHtml(bytes,maxLog){
 async function loadFiles(path){
   if(path)_filesPath=path;
   document.getElementById('files-path-input').value=_filesPath;
-  updateSizeBarsBtn();
   const list=document.getElementById('files-list');
   list.innerHTML='<div style="padding:20px;text-align:center"><span class="spinner"></span>'+(_showSizeBars?' <span style="color:var(--text-dim);font-size:12px;margin-left:8px;">'+t('computing_sizes')+'</span>':'')+'</div>';
   try{

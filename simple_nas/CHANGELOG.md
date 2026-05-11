@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.57
+- New: dedicated **Settings** tab in the navigation — moved the "Show size bars" toggle out of the Files toolbar into a proper Settings section
+- Settings tab uses a real on/off toggle switch (not a button) for the size-bars option
+- Color legend is shown next to the toggle so the meaning of each bar color is obvious without hovering files
+- Files tab toolbar is back to upload / mkdir only — no clutter
+
 ## 3.0.56
 - New: optional "Size bars" view in the Files tab — colored bars next to each entry visualize file and folder size at a glance (blue ≤10 MB, green ≤50 MB, yellow ≤100 MB, orange ≤1 GB, red >1 GB)
 - Folder sizes are computed recursively on demand (only when the toggle is on); per-folder walk capped at 8 s to keep large trees responsive — incomplete sizes are marked with `≈`
