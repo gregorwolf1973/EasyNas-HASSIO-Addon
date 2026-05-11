@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.58
+- Fix: size bars rendered all gray — colored fill was invisible because the inner `<span>` is inline by default and ignored `width`/`height`
+- `.fbar-fill` now `display:block`, `.fbar` now `display:inline-block` — colored fill renders correctly in both the Files list and the Settings legend
+- Selector prefix `.file-row` dropped from `.fbar` rules so the Settings color legend also displays bars
+
 ## 3.0.57
 - New: dedicated **Settings** tab in the navigation — moved the "Show size bars" toggle out of the Files toolbar into a proper Settings section
 - Settings tab uses a real on/off toggle switch (not a button) for the size-bars option
