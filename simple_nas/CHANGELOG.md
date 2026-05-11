@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.60
+- New: sortable column header in Files tab — click **Name**, **Größe** or **Datum** to sort, click again to reverse direction (▲ / ▼ indicator)
+- Sort key and direction persist in `localStorage` (keys `nas-files-sort-key`, `nas-files-sort-dir`) — defaults to name ascending
+- Folders and files are sorted within their own group (folders always shown first)
+- Date format unified to `dd/mm/yy HH:MM` (no longer locale-dependent) and labeled accordingly in the column header
+
 ## 3.0.59
 - Files tab: size bars, file sizes, dates and action buttons now align in fixed columns across all rows
 - `.factions` column has fixed width (170 px) with right-aligned buttons — delete (rightmost) lines up across rows regardless of how many actions a row has

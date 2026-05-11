@@ -331,6 +331,15 @@
   .file-row .fsize-trunc { color:var(--warn); cursor:help; }
   .file-row .fdate { font-size:11px; color:var(--text-dim); width:130px; flex-shrink:0; }
   .file-row .factions { display:flex; gap:3px; flex-shrink:0; width:170px; justify-content:flex-end; }
+  .file-header { display:flex; align-items:center; gap:10px; padding:8px 14px; border-bottom:1px solid var(--border); font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-dim); background:var(--surface2); user-select:none; }
+  .file-header svg.fhi { width:16px; height:16px; flex-shrink:0; visibility:hidden; }
+  .file-header .fh-name { flex:1; min-width:0; cursor:pointer; }
+  .file-header .fh-bar  { width:90px; flex-shrink:0; }
+  .file-header .fh-size { width:80px; text-align:right; flex-shrink:0; cursor:pointer; }
+  .file-header .fh-date { width:130px; flex-shrink:0; cursor:pointer; }
+  .file-header .fh-act  { width:170px; flex-shrink:0; }
+  .file-header .fh-sortable:hover { color:var(--accent); }
+  .file-header .fh-arrow { display:inline-block; margin-left:3px; opacity:.6; }
   .file-row .factions button { background:none; border:none; cursor:pointer; color:var(--text-dim); padding:3px; border-radius:4px; transition:color .15s,background .15s; width:24px; height:24px; display:inline-flex; align-items:center; justify-content:center; }
   .file-row .factions button:hover { color:var(--accent); background:var(--surface2); }
   .file-row .factions button svg { width:14px; height:14px; }
@@ -761,6 +770,7 @@ const T={
     new_folder_prompt:'Neuer Ordner in {p}:',folder_created:'Ordner erstellt: {p}',
     folder_label:'Ordner',empty_folder:'Leer',
     computing_sizes:'Berechne Größen…',size_truncated:'Größe nicht vollständig — Ordner zu groß, Berechnung abgebrochen',
+    col_name:'Name',col_size:'Größe',col_date:'Datum (dd/mm/yy)',sort_asc:'aufsteigend',sort_desc:'absteigend',
     nav_settings:'Einstellungen',
     settings_title:'Einstellungen',settings_sub:'Anzeige- und Browser-Einstellungen',
     settings_files_title:'Datei-Ansicht',settings_files_sub:'Optionen für den Dateien-Tab',
@@ -853,6 +863,7 @@ const T={
     new_folder_prompt:'New folder in {p}:',folder_created:'Folder created: {p}',
     folder_label:'Folder',empty_folder:'Empty',
     computing_sizes:'Computing sizes…',size_truncated:'Size incomplete — folder too large, computation aborted',
+    col_name:'Name',col_size:'Size',col_date:'Date (dd/mm/yy)',sort_asc:'ascending',sort_desc:'descending',
     nav_settings:'Settings',
     settings_title:'Settings',settings_sub:'Display and browser preferences',
     settings_files_title:'File View',settings_files_sub:'Options for the Files tab',
@@ -1202,9 +1213,38 @@ async function promptNewFolder(){
 // ── File Manager ──
 let _filesPath='/';
 function fmtSize(b){if(b==null)return'';if(b>1e9)return(b/1e9).toFixed(1)+' GB';if(b>1e6)return(b/1e6).toFixed(1)+' MB';if(b>1e3)return(b/1e3).toFixed(1)+' KB';return b+' B';}
-function fmtTime(ts){if(!ts)return'';const d=new Date(ts*1000);const loc=t('date_locale');return d.toLocaleDateString(loc,{day:'2-digit',month:'2-digit',year:'2-digit'})+' '+d.toLocaleTimeString(loc,{hour:'2-digit',minute:'2-digit'});}
+function fmtTime(ts){if(!ts)return'';const d=new Date(ts*1000);const p=n=>String(n).padStart(2,'0');return p(d.getDate())+'/'+p(d.getMonth()+1)+'/'+p(d.getFullYear()%100)+' '+p(d.getHours())+':'+p(d.getMinutes());}
 
 let _showSizeBars=localStorage.getItem('nas-show-sizebars')==='1';
+let _filesSortKey=localStorage.getItem('nas-files-sort-key')||'name';
+let _filesSortDir=localStorage.getItem('nas-files-sort-dir')||'asc';
+function setFilesSort(key){
+  if(_filesSortKey===key){_filesSortDir=_filesSortDir==='asc'?'desc':'asc';}
+  else{_filesSortKey=key;_filesSortDir='asc';}
+  localStorage.setItem('nas-files-sort-key',_filesSortKey);
+  localStorage.setItem('nas-files-sort-dir',_filesSortDir);
+  loadFiles();
+}
+function _sortEntries(arr){
+  const k=_filesSortKey,dir=_filesSortDir==='asc'?1:-1;
+  return arr.slice().sort((a,b)=>{
+    let va,vb;
+    if(k==='size'){va=typeof a.size==='number'?a.size:-1;vb=typeof b.size==='number'?b.size:-1;return (va-vb)*dir;}
+    if(k==='date'){va=a.modified||0;vb=b.modified||0;return (va-vb)*dir;}
+    return a.name.localeCompare(b.name)*dir;
+  });
+}
+function _sortArrow(key){return _filesSortKey===key?'<span class="fh-arrow">'+(_filesSortDir==='asc'?'▲':'▼')+'</span>':'';}
+function _filesHeaderHtml(){
+  return '<div class="file-header">'+
+    '<svg class="fhi" viewBox="0 0 24 24"></svg>'+
+    '<span class="fh-name fh-sortable" onclick="setFilesSort(\'name\')" title="'+t('col_name')+'">'+t('col_name')+_sortArrow('name')+'</span>'+
+    (_showSizeBars?'<span class="fh-bar"></span>':'')+
+    '<span class="fh-size fh-sortable" onclick="setFilesSort(\'size\')" title="'+t('col_size')+'">'+t('col_size')+_sortArrow('size')+'</span>'+
+    '<span class="fh-date fh-sortable" onclick="setFilesSort(\'date\')" title="'+t('col_date')+'">'+t('col_date')+_sortArrow('date')+'</span>'+
+    '<span class="fh-act"></span>'+
+  '</div>';
+}
 function onSettingsSizebarsToggle(checked){
   _showSizeBars=!!checked;
   localStorage.setItem('nas-show-sizebars',_showSizeBars?'1':'0');
@@ -1252,10 +1292,10 @@ async function loadFiles(path){
       return last?sep+'<span class="bc-part current">'+lb+'</span>':sep+'<span class="bc-part" onclick="loadFiles(\''+p.path+'\')">'+lb+'</span>';
     }).join('');
     // File list
-    let rows=[];
+    let rows=[_filesHeaderHtml()];
     if(d.parent)rows.push('<div class="file-row" onclick="loadFiles(\''+d.parent+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg><span class="fname" style="color:var(--text-dim)">'+t('up')+'</span>'+(_showSizeBars?'<span class="fbar"></span>':'')+'<span class="fsize"></span><span class="fdate"></span><span class="factions"></span></div>');
-    const dirs=d.entries.filter(e=>e.is_dir).sort((a,b)=>a.name.localeCompare(b.name));
-    const files=d.entries.filter(e=>!e.is_dir).sort((a,b)=>a.name.localeCompare(b.name));
+    const dirs=_sortEntries(d.entries.filter(e=>e.is_dir));
+    const files=_sortEntries(d.entries.filter(e=>!e.is_dir));
     // Max log size across both folders and files for relative bar widths
     let maxLog=1;
     if(_showSizeBars){
