@@ -397,11 +397,25 @@ def flatten_devices(devices, parent=None, mounted_fs=None, mem_fs=None):
             result.extend(flatten_devices([child], dev, mounted_fs, mem_fs))
     return result
 
+def _has_medium(name):
+    """Return True if the disk has an actual medium inserted.
+    Reads /sys/block/<name>/size — 0 means empty card-reader slot,
+    USB hub port without device, etc."""
+    try:
+        with open(f"/sys/block/{name}/size") as f:
+            return int(f.read().strip()) > 0
+    except Exception:
+        return True  # if we can't tell, don't hide it
+
+
 @app.route("/api/drives")
 def api_drives():
     system_devs = get_system_devices()
     devices = flatten_devices(list_block_devices())
     drives = [d for d in devices if d["type"] in ("disk", "part")]
+    # Hide phantom disks (card-reader slots without medium etc.)
+    drives = [d for d in drives
+              if d["type"] != "disk" or _has_medium(d["name"])]
     for d in drives:
         d["system_device"] = d["name"] in system_devs
     return jsonify(drives)
@@ -625,12 +639,21 @@ def _parse_parted(text):
 
 
 def _mounted_paths():
-    out = set()
+    """Return {device_path: mountpoint} from /proc/mounts.
+    Resolves realpath so /dev/disk/by-id/... matches /dev/sdb2.
+    `in _mounted_paths()` still works (dict membership)."""
+    out = {}
     try:
         with open('/proc/mounts') as f:
             for line in f:
                 p = line.split()
-                if p: out.add(p[0])
+                if len(p) >= 2 and p[0].startswith('/dev/'):
+                    out.setdefault(p[0], p[1])
+                    try:
+                        real = os.path.realpath(p[0])
+                        out.setdefault(real, p[1])
+                    except Exception:
+                        pass
     except Exception: pass
     return out
 
@@ -640,6 +663,8 @@ def api_disk_partitions(name):
     path = _safe_disk_path(name)
     if not path:
         return jsonify({"error": f"invalid disk: {name}"}), 400
+    if not _has_medium(name):
+        return jsonify({"error": f"no medium in /dev/{name} (empty card-reader / hub port)"}), 410
     rc, out = _helper_call("PARTLIST", path, timeout=15)
     # decode the \n encoding from helper
     out = (out or "").replace('\\n', '\n')
@@ -661,7 +686,8 @@ def api_disk_partitions(name):
     for p in parsed["partitions"]:
         if not p["free"]:
             p["device"] = f"{path}{p['num']}" if not name[-1].isdigit() else f"{path}p{p['num']}"
-            p["mounted"] = p["device"] in mounted
+            p["mountpoint"] = mounted.get(p["device"])
+            p["mounted"] = p["mountpoint"] is not None
     return jsonify(parsed)
 
 

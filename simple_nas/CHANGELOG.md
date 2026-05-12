@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.62
+- Fix: hide phantom disks (empty card-reader slots / USB hub ports without medium) — checks `/sys/block/<name>/size` and filters in `/api/drives`; `/api/disk/<name>/partitions` returns 410 if no medium
+- Improve: each partition in `/api/disk/<name>/partitions` now reports its real `mountpoint` (string) from `/proc/mounts`, not just a bool
+- `_mounted_paths()` resolves `realpath` both ways so `/dev/disk/by-id/...` matches `/dev/sdb2`
+- (Ports v3.1.1 + v3.1.2 from sibling project NotSoSimpleNas)
+
 ## 3.0.61
 - New: **Disk Manager** — manage partition tables and formatting directly from the Drives tab
   - Gear icon on every non-system drive card opens the disk manager modal
