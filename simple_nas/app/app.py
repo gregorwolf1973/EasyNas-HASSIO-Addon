@@ -800,7 +800,8 @@ def api_partition_format(name, num):
     part_path = f"{path}{num}" if not name[-1].isdigit() else f"{path}p{num}"
     if part_path in _mounted_paths():
         return jsonify({"error": "Partition is mounted — unmount first"}), 409
-    rc, out = _helper_call("MKFS", part_path, fstype, label, timeout=300)
+    # mkfs.ntfs on a multi-TB drive can take 15+ min; ext4 quick, exfat fast.
+    rc, out = _helper_call("MKFS", part_path, fstype, label, timeout=1800)
     if rc != 0:
         return jsonify({"error": out or "mkfs failed"}), 500
     # Refresh known FS-type memory so the drive list shows the new type

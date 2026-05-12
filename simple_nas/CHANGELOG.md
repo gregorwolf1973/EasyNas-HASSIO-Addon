@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.66
+- Fix: **multiple `Format` clicks queueing up** — long operations now disable their button and show an in-button spinner so the user can't accidentally fire several mkfs in a row
+  - Applies to Format, Create partition, and Initialize partition table
+- Bump server-side MKFS timeout from 5 min → 30 min (mkfs.ntfs on multi-TB drives easily exceeds 5 min)
+
 ## 3.0.65
 - New: **collapse/expand partitions per disk** in the Drives tab — click the disk icon (▸/▾ caret indicates state) to hide or show sda1, sda2, … under the parent disk
 - Partition rows are now slightly indented under their parent

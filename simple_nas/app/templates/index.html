@@ -1295,8 +1295,20 @@ function pinitCheckConfirm(){
   const ok=document.getElementById('pinit-confirm').value.trim()===_pinitCtx.disk;
   const b=document.getElementById('pinit-go-btn');b.disabled=!ok;b.style.opacity=ok?'1':'.4';
 }
+// Disable a button + change its label while a long operation runs.
+// Returns a restore fn the caller MUST invoke in finally{}.
+function _busyBtn(id, busyLabel){
+  const b=document.getElementById(id);
+  if(!b) return ()=>{};
+  const origText=b.innerHTML, origDisabled=b.disabled, origOpacity=b.style.opacity;
+  b.disabled=true; b.style.opacity='.6';
+  b.innerHTML='<span class="spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>'+busyLabel;
+  return ()=>{ b.innerHTML=origText; b.disabled=origDisabled; b.style.opacity=origOpacity||''; };
+}
+
 async function doPartInit(){
   const table=document.getElementById('pinit-table').value;
+  const restore=_busyBtn('pinit-go-btn','Initializing…');
   try{
     await api('POST','/disk/'+_pinitCtx.disk+'/init',{table,confirm:_pinitCtx.disk});
     toast('Partition table initialized');
@@ -1304,6 +1316,7 @@ async function doPartInit(){
     refreshDiskManager();
     loadDrives();
   }catch(e){toast(e.message,true);}
+  finally{ restore(); }
 }
 
 // Create partition
@@ -1330,6 +1343,7 @@ async function doPartAdd(){
   // handles the GPT backup-header margin itself instead of us overflowing it.
   const useAll = sz >= Math.floor(_paddCtx.size) - 1;
   const end = useAll ? "100%" : Math.min(_paddCtx.end, start+sz);
+  const restore=_busyBtn('padd-go-btn','Creating…');
   try{
     await api('POST','/disk/'+_paddCtx.disk+'/partition',{
       start_mib:start, end_mib:end, confirm:_paddCtx.disk
@@ -1339,6 +1353,7 @@ async function doPartAdd(){
     refreshDiskManager();
     loadDrives();
   }catch(e){toast(e.message,true);}
+  finally{ restore(); }
 }
 
 // Delete partition
@@ -1385,6 +1400,7 @@ function fmtCheckConfirm(){
 async function doFormat(){
   const fstype=document.getElementById('fmt-fstype').value;
   const label=document.getElementById('fmt-label').value.trim();
+  const restore=_busyBtn('fmt-go-btn','Formatting… (can take minutes)');
   try{
     await api('POST','/disk/'+_fmtCtx.disk+'/partition/'+_fmtCtx.num+'/format',{
       fstype, label, confirm:_fmtCtx.partName
@@ -1394,6 +1410,7 @@ async function doFormat(){
     refreshDiskManager();
     loadDrives();
   }catch(e){toast(e.message,true);}
+  finally{ restore(); }
 }
 
 // ── Shares ──
