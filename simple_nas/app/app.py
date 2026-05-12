@@ -716,6 +716,21 @@ def api_disk_init(name):
         return jsonify({"error": "table must be 'gpt' or 'msdos'"}), 400
     if body.get("confirm") != name:
         return jsonify({"error": "confirmation does not match"}), 400
+    # Pre-check: parted refuses mklabel ("Partition(s) on /dev/sdX are being
+    # used.") if ANY partition of the disk is currently mounted. List them
+    # explicitly so the user knows exactly what to unmount.
+    mounted = _mounted_paths()
+    busy = []
+    prefix_p = f"{path}p"
+    prefix_n = path
+    for dev, mp in mounted.items():
+        if dev.startswith(prefix_p) and dev[len(prefix_p):].isdigit():
+            busy.append((dev, mp))
+        elif dev.startswith(prefix_n) and dev[len(prefix_n):].isdigit():
+            busy.append((dev, mp))
+    if busy:
+        listing = ", ".join(f"{d} → {m}" for d, m in busy)
+        return jsonify({"error": f"Unmount first: {listing}"}), 409
     rc, out = _helper_call("PARTMKLABEL", path, table, timeout=30)
     if rc != 0:
         return jsonify({"error": out or "mklabel failed"}), 500

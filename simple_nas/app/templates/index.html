@@ -726,6 +726,7 @@
   <div class="warn-box" style="margin-bottom:10px;">
     <p><strong>⚠ This wipes the existing partition table.</strong> Any existing partitions become inaccessible.</p>
   </div>
+  <div id="pinit-mounted-warn" style="display:none;margin-bottom:10px;padding:10px;border:1px solid var(--danger);border-radius:8px;background:rgba(255,80,80,.08);color:var(--danger);font-size:12px"></div>
   <div class="form-group"><label>Partition table type</label>
     <select id="pinit-table">
       <option value="gpt">GPT (recommended for ≥2 TiB / modern systems)</option>
@@ -1297,12 +1298,29 @@ function openPartInitModal(){
   document.getElementById('pinit-confirm-name').textContent=_diskMgrName;
   const inp=document.getElementById('pinit-confirm');inp.value='';inp.placeholder=_diskMgrName;
   document.getElementById('pinit-table').value='gpt';
-  const b=document.getElementById('pinit-go-btn');b.disabled=true;b.style.opacity='.4';
+  // Show a hard block if any partition of this disk is currently mounted —
+  // parted will refuse with "Partition(s) on /dev/sdX are being used."
+  const warn=document.getElementById('pinit-mounted-warn');
+  const b=document.getElementById('pinit-go-btn');
+  const mounted = (_diskMgrData && _diskMgrData.partitions || [])
+    .filter(p => !p.free && p.mounted);
+  if(mounted.length){
+    warn.innerHTML = '<strong>🛑 Unmount first:</strong> '+
+      mounted.map(p => p.device+' → <span style="font-family:monospace">'+(p.mountpoint||'?')+'</span>').join(', ')+
+      '<br><span style="color:var(--text-dim)">parted refuses to wipe a partition table while any partition of the disk is in use.</span>';
+    warn.style.display='block';
+    b.disabled=true; b.style.opacity='.4'; b.dataset.blocked='1';
+  } else {
+    warn.style.display='none'; warn.innerHTML='';
+    b.disabled=true; b.style.opacity='.4'; delete b.dataset.blocked;
+  }
   openModal('modal-partinit');
 }
 function pinitCheckConfirm(){
+  const b=document.getElementById('pinit-go-btn');
+  if(b.dataset.blocked){ b.disabled=true; b.style.opacity='.4'; return; }
   const ok=document.getElementById('pinit-confirm').value.trim()===_pinitCtx.disk;
-  const b=document.getElementById('pinit-go-btn');b.disabled=!ok;b.style.opacity=ok?'1':'.4';
+  b.disabled=!ok;b.style.opacity=ok?'1':'.4';
 }
 // Disable a button + change its label while a long operation runs,
 // AND switch the page cursor to the OS wait/hourglass cursor so the

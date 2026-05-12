@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.1
+- Fix: **"Error: Partition(s) on /dev/sdX are being used"** when initializing a partition table
+  - Server: pre-checks `/proc/mounts` and returns a clear "Unmount first: …" message listing exactly which partition + mountpoint is blocking, instead of forwarding parted's terse error
+  - UI: when opening the Initialize-partition-table modal, mounted partitions are listed up-front and the Initialize button is hard-disabled (typing the confirm string won't bypass it)
+
 ## 3.1.0
 - Fix: disk rows no longer say "not mounted" — disks themselves are never mounted, only their partitions are. Disk rows now show the partition count instead (e.g. "3 Partitionen"), or nothing if the disk has no partitions yet
 - Version bump 3.0.x → 3.1.0 marking the Disk-Manager line as feature-complete (partition management, phantom-disk filter, mountpoint reporting, collapse/expand, busy-cursor, FIFO race fix)
