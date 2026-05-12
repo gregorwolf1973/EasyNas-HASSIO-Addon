@@ -184,6 +184,18 @@
     box-shadow: var(--shadow);
   }
   .drive-icon { width: 32px; height: 32px; flex-shrink: 0; color: var(--text-dim); }
+  .drive-icon.toggle { cursor: pointer; transition: color .15s, transform .15s; }
+  .drive-icon.toggle:hover { color: var(--accent); }
+  .drive-icon-wrap { position: relative; flex-shrink: 0; display: flex; align-items: center; }
+  .drive-icon-caret {
+    position: absolute; bottom: -2px; right: -4px;
+    width: 14px; height: 14px;
+    background: var(--surface); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; color: var(--text-dim); font-weight: 700;
+    pointer-events: none;
+  }
+  .drive-item.is-part { margin-left: 28px; }
   .drive-info { flex: 1; min-width: 0; }
   .drive-name { font-weight: 600; color: var(--text-bright); font-size: 14px; }
   .drive-meta { font-size: 11px; color: var(--text-dim); margin-top: 3px; display: flex; gap: 8px; flex-wrap: wrap; }
@@ -1059,14 +1071,39 @@ async function loadStatus(){try{
 async function restartSamba(){try{await api('POST','/samba/restart');toast(t('samba_restarted'));setTimeout(loadStatus,2000);}catch(e){toast(e.message,true);}}
 
 // ── Drives ──
+// Per-disk expanded state (default = collapsed). Persisted across reloads.
+let _expandedDisks = (function(){
+  try { return new Set(JSON.parse(localStorage.getItem('expandedDisks')||'[]')); }
+  catch(e){ return new Set(); }
+})();
+function _saveExpandedDisks(){
+  try { localStorage.setItem('expandedDisks', JSON.stringify([..._expandedDisks])); }
+  catch(e){}
+}
+function toggleDiskPartitions(name){
+  if(_expandedDisks.has(name)) _expandedDisks.delete(name);
+  else _expandedDisks.add(name);
+  _saveExpandedDisks();
+  loadDrives();
+}
 async function loadDrives(){
   const list=document.getElementById('drive-list');
   list.innerHTML='<div class="empty"><span class="spinner"></span></div>';
-  try{const drives=await api('GET','/drives');if(!drives.length){list.innerHTML='<div class="empty"><p>'+t('no_drives')+'</p></div>';return;}list.innerHTML=drives.map(d=>driveCard(d)).join('');}
+  try{
+    const drives=await api('GET','/drives');
+    if(!drives.length){list.innerHTML='<div class="empty"><p>'+t('no_drives')+'</p></div>';return;}
+    // Count partitions per parent disk so the caret can show child-count
+    const partCount={};
+    for(const d of drives){ if(d.type==='part' && d.parent){ partCount[d.parent]=(partCount[d.parent]||0)+1; } }
+    // Filter: always show disks; show partitions only if their parent disk is expanded
+    const visible = drives.filter(d => d.type!=='part' || _expandedDisks.has(d.parent));
+    list.innerHTML = visible.map(d => driveCard(d, partCount[d.name]||0)).join('');
+  }
   catch(e){list.innerHTML='<div class="empty"><p style="color:var(--danger)">'+e.message+'</p></div>';}
 }
-function driveCard(d){
+function driveCard(d, partChildCount){
   const mounted=!!d.mountpoint, isDisk=d.type==='disk';
+  partChildCount = partChildCount || 0;
   const label=d.label?'<span class="tag accent">'+d.label+'</span>':'';
   const fs=d.fstype?'<span class="tag">'+d.fstype+'</span>':'';
   const rm=d.removable?'<span class="tag warn">'+t('removable')+'</span>':'';
@@ -1085,7 +1122,23 @@ function driveCard(d){
     ?'<button class="btn btn-ghost btn-sm" onclick="openUnmountModal(\''+d.path+'\',\''+d.mountpoint+'\','+!!d.system_device+')">'+t('btn_unmount')+'</button>'+diskBtn
     :'<button class="btn btn-primary btn-sm" onclick="openMountModal('+mountArgAttr+',\''+(d.fstype||'')+'\','+!!d.system_device+')">'+t('btn_mount')+'</button>'+diskBtn);
   const model=d.model?'<span>'+d.model.trim()+'</span>':'';
-  return '<div class="drive-item"><svg class="drive-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">'+(isDisk?'<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="17" cy="12" r="2"/>':'<path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>')+'</svg><div class="drive-info"><div class="drive-name">'+d.path+(d.size?' <span style="font-size:12px;color:var(--text-dim);font-weight:400">'+d.size+'</span>':'')+'</div><div class="drive-meta">'+model+label+fs+rm+sys+'</div>'+byId+'<div style="margin-top:4px">'+mi+'</div></div><div class="drive-actions">'+btn+'</div></div>';
+  // Disk icon: clickable toggle when this disk has partition children
+  const expanded = isDisk && _expandedDisks.has(d.name);
+  const canToggle = isDisk && partChildCount > 0;
+  const iconClasses = 'drive-icon' + (canToggle ? ' toggle' : '');
+  const iconTitle = canToggle
+    ? (expanded ? partChildCount+' Partition(en) ausblenden' : partChildCount+' Partition(en) einblenden')
+    : '';
+  const iconClick = canToggle ? ' onclick="toggleDiskPartitions(\''+d.name+'\')"' : '';
+  const caret = canToggle
+    ? '<span class="drive-icon-caret">'+(expanded?'▾':'▸')+'</span>'
+    : '';
+  const iconSvg = '<svg class="'+iconClasses+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"'+iconClick+' title="'+iconTitle+'">'
+    +(isDisk?'<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="17" cy="12" r="2"/>':'<path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>')
+    +'</svg>';
+  const iconWrap = '<div class="drive-icon-wrap">'+iconSvg+caret+'</div>';
+  const itemClass = 'drive-item'+(d.type==='part'?' is-part':'');
+  return '<div class="'+itemClass+'">'+iconWrap+'<div class="drive-info"><div class="drive-name">'+d.path+(d.size?' <span style="font-size:12px;color:var(--text-dim);font-weight:400">'+d.size+'</span>':'')+'</div><div class="drive-meta">'+model+label+fs+rm+sys+'</div>'+byId+'<div style="margin-top:4px">'+mi+'</div></div><div class="drive-actions">'+btn+'</div></div>';
 }
 
 let _mountDevice='',_mountFstype='',_unmountDevice='',_unmountMp='';

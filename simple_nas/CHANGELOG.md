@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.65
+- New: **collapse/expand partitions per disk** in the Drives tab — click the disk icon (▸/▾ caret indicates state) to hide or show sda1, sda2, … under the parent disk
+- Partition rows are now slightly indented under their parent
+- State is persisted in `localStorage` (`expandedDisks`), default is collapsed
+
 ## 3.0.64
 - Fix: **`FIFO-Fehler: [Errno 6] No such device or address: '/tmp/mount_cmd'`** when issuing disk-manager commands back-to-back
   - `mount_helper.sh` opens the FIFO persistently on fd 3 (+ dummy writer on fd 4) so there's no moment between iterations where the FIFO has no reader
