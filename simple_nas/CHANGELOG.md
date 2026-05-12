@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.61
+- New: **Disk Manager** — manage partition tables and formatting directly from the Drives tab
+  - Gear icon on every non-system drive card opens the disk manager modal
+  - Shows partition layout with sizes, FS types, labels, mount status, and free-space gaps
+  - Create partition in free space, delete partition, format partition (ext4 / exfat / ntfs / vfat / ext3 / ext2)
+  - Initialize partition table (GPT or MBR/msdos) on uninitialized disks
+  - Safety: system disks blocked entirely; mounted partitions require unmount first; every destructive action requires typing the device/partition name to confirm
+- Dockerfile: added `parted`, `dosfstools`, `ntfs-3g-progs`
+- `mount_helper.sh`: new actions `PARTLIST`, `PARTMKLABEL`, `PARTADD`, `PARTRM`, `MKFS`, `PARTPROBE`
+- `app.py`: new endpoints `GET /api/disk/<name>/partitions`, `POST /api/disk/<name>/init`, `POST /api/disk/<name>/partition`, `DELETE /api/disk/<name>/partition/<n>`, `POST /api/disk/<name>/partition/<n>/format`
+
 ## 3.0.60
 - New: sortable column header in Files tab — click **Name**, **Größe** or **Datum** to sort, click again to reverse direction (▲ / ▼ indicator)
 - Sort key and direction persist in `localStorage` (keys `nas-files-sort-key`, `nas-files-sort-dir`) — defaults to name ascending

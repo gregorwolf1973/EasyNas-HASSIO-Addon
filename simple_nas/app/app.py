@@ -551,6 +551,219 @@ def api_unmount():
     reload_samba()
     return jsonify({"ok": True})
 
+# ─────────────────────────── disk / partition API ───────────────────
+
+_DEVNAME_RE = re.compile(r'^[a-zA-Z0-9_]+$')
+
+
+def _safe_disk_path(name):
+    """Return /dev/<name> if name is a plain block device name and the
+    device exists, otherwise None. Blocks path-traversal / shell tricks."""
+    if not name or not _DEVNAME_RE.match(name):
+        return None
+    path = f"/dev/{name}"
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    import stat as _stat
+    if not _stat.S_ISBLK(st.st_mode):
+        return None
+    return path
+
+
+def _is_system_disk(name):
+    sys_devs = get_system_devices()
+    # name might be a partition (sdc1) or whole disk (sdc) — strip partition suffix too
+    base = re.sub(r'p?\d+$', '', name)
+    return name in sys_devs or base in sys_devs
+
+
+def _parse_parted(text):
+    """Parse `parted -m -s <dev> unit MiB print free` output."""
+    lines = [l for l in text.strip().split('\n') if l]
+    if not lines or not lines[0].startswith('BYT'):
+        return None
+    if len(lines) < 2:
+        return None
+    di = lines[1].rstrip(';').split(':')
+    if len(di) < 6:
+        return None
+    def to_mib(s):
+        try: return float(s.replace('MiB', '').replace('MB', '').replace('GB', ''))
+        except: return 0.0
+    disk = {
+        'path':     di[0],
+        'size_mib': to_mib(di[1]),
+        'table':    di[5] if len(di) > 5 else '',
+        'model':    di[6] if len(di) > 6 else '',
+    }
+    parts = []
+    for line in lines[2:]:
+        f = line.rstrip(';').split(':')
+        if len(f) < 4:
+            continue
+        start, end, size = to_mib(f[1]), to_mib(f[2]), to_mib(f[3])
+        is_free = (len(f) >= 5 and 'free' in f[4].lower())
+        if is_free:
+            parts.append({
+                'free':     True,
+                'start_mib': start, 'end_mib': end, 'size_mib': size,
+            })
+        else:
+            try:    num = int(f[0])
+            except: num = 0
+            parts.append({
+                'free':     False,
+                'num':      num,
+                'start_mib': start, 'end_mib': end, 'size_mib': size,
+                'fstype':   f[4] if len(f) > 4 else '',
+                'label':    f[5] if len(f) > 5 else '',
+                'flags':    f[6] if len(f) > 6 else '',
+            })
+    return {'disk': disk, 'partitions': parts}
+
+
+def _mounted_paths():
+    out = set()
+    try:
+        with open('/proc/mounts') as f:
+            for line in f:
+                p = line.split()
+                if p: out.add(p[0])
+    except Exception: pass
+    return out
+
+
+@app.route("/api/disk/<name>/partitions", methods=["GET"])
+def api_disk_partitions(name):
+    path = _safe_disk_path(name)
+    if not path:
+        return jsonify({"error": f"invalid disk: {name}"}), 400
+    rc, out = _helper_call("PARTLIST", path, timeout=15)
+    # decode the \n encoding from helper
+    out = (out or "").replace('\\n', '\n')
+    parsed = _parse_parted(out) if rc == 0 else None
+    if not parsed:
+        # Disk might have no partition table at all — return blank layout
+        try: sz_bytes = int(open(f"/sys/class/block/{name}/size").read().strip()) * 512
+        except: sz_bytes = 0
+        return jsonify({
+            "disk": {"path": path, "name": name, "size_mib": sz_bytes / 1024 / 1024,
+                     "table": "", "model": ""},
+            "partitions": [],
+            "system_device": _is_system_disk(name),
+            "raw_error": out if rc != 0 else None,
+        })
+    parsed["disk"]["name"] = name
+    parsed["system_device"] = _is_system_disk(name)
+    mounted = _mounted_paths()
+    for p in parsed["partitions"]:
+        if not p["free"]:
+            p["device"] = f"{path}{p['num']}" if not name[-1].isdigit() else f"{path}p{p['num']}"
+            p["mounted"] = p["device"] in mounted
+    return jsonify(parsed)
+
+
+@app.route("/api/disk/<name>/init", methods=["POST"])
+def api_disk_init(name):
+    path = _safe_disk_path(name)
+    if not path:
+        return jsonify({"error": f"invalid disk: {name}"}), 400
+    if _is_system_disk(name):
+        return jsonify({"error": "Refusing to touch a system disk"}), 403
+    body  = request.get_json(force=True) or {}
+    table = body.get("table", "gpt")
+    if table not in ("gpt", "msdos"):
+        return jsonify({"error": "table must be 'gpt' or 'msdos'"}), 400
+    if body.get("confirm") != name:
+        return jsonify({"error": "confirmation does not match"}), 400
+    rc, out = _helper_call("PARTMKLABEL", path, table, timeout=30)
+    if rc != 0:
+        return jsonify({"error": out or "mklabel failed"}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/api/disk/<name>/partition", methods=["POST"])
+def api_disk_partition_add(name):
+    path = _safe_disk_path(name)
+    if not path:
+        return jsonify({"error": f"invalid disk: {name}"}), 400
+    if _is_system_disk(name):
+        return jsonify({"error": "Refusing to touch a system disk"}), 403
+    body = request.get_json(force=True) or {}
+    if body.get("confirm") != name:
+        return jsonify({"error": "confirmation does not match"}), 400
+    try:
+        start_mib = float(body.get("start_mib"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "start_mib required (number)"}), 400
+    end = body.get("end_mib", "100%")
+    if isinstance(end, str) and end.strip().endswith("%"):
+        end_arg = end.strip()
+    else:
+        try:    end_arg = f"{float(end):.2f}MiB"
+        except: return jsonify({"error": "end_mib invalid"}), 400
+    rc, out = _helper_call("PARTADD", path, f"{start_mib:.2f}", end_arg, timeout=60)
+    if rc != 0:
+        return jsonify({"error": out or "mkpart failed"}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/api/disk/<name>/partition/<int:num>", methods=["DELETE"])
+def api_disk_partition_rm(name, num):
+    path = _safe_disk_path(name)
+    if not path:
+        return jsonify({"error": f"invalid disk: {name}"}), 400
+    if _is_system_disk(name):
+        return jsonify({"error": "Refusing to touch a system disk"}), 403
+    body = request.get_json(silent=True) or {}
+    part_name = f"{name}{num}" if not name[-1].isdigit() else f"{name}p{num}"
+    if body.get("confirm") != part_name:
+        return jsonify({"error": "confirmation does not match"}), 400
+    part_path = f"{path}{num}" if not name[-1].isdigit() else f"{path}p{num}"
+    if part_path in _mounted_paths():
+        return jsonify({"error": "Partition is mounted — unmount first"}), 409
+    rc, out = _helper_call("PARTRM", path, str(num), timeout=30)
+    if rc != 0:
+        return jsonify({"error": out or "rm failed"}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/api/disk/<name>/partition/<int:num>/format", methods=["POST"])
+def api_partition_format(name, num):
+    path = _safe_disk_path(name)
+    if not path:
+        return jsonify({"error": f"invalid disk: {name}"}), 400
+    if _is_system_disk(name):
+        return jsonify({"error": "Refusing to touch a system disk"}), 403
+    body = request.get_json(force=True) or {}
+    part_name = f"{name}{num}" if not name[-1].isdigit() else f"{name}p{num}"
+    if body.get("confirm") != part_name:
+        return jsonify({"error": "confirmation does not match"}), 400
+    fstype = (body.get("fstype") or "").strip().lower()
+    if fstype not in ("ext4", "ext3", "ext2", "exfat", "vfat", "fat32", "ntfs"):
+        return jsonify({"error": f"unsupported fstype: {fstype}"}), 400
+    label = (body.get("label") or "").strip()
+    # Cap label length per FS limits
+    label_limits = {"vfat": 11, "fat32": 11, "exfat": 15, "ext2": 16, "ext3": 16, "ext4": 16, "ntfs": 32}
+    label = label[:label_limits.get(fstype, 16)]
+    part_path = f"{path}{num}" if not name[-1].isdigit() else f"{path}p{num}"
+    if part_path in _mounted_paths():
+        return jsonify({"error": "Partition is mounted — unmount first"}), 409
+    rc, out = _helper_call("MKFS", part_path, fstype, label, timeout=300)
+    if rc != 0:
+        return jsonify({"error": out or "mkfs failed"}), 500
+    # Refresh known FS-type memory so the drive list shows the new type
+    try:
+        dev_name = os.path.basename(part_path)
+        memory = load_json(FSTYPE_MEMORY_FILE, {}) or {}
+        memory[dev_name] = "ntfs" if fstype == "ntfs" else fstype
+        save_json(FSTYPE_MEMORY_FILE, memory)
+    except Exception: pass
+    return jsonify({"ok": True})
+
+
 # ─────────────────────────── shares API ─────────────────────────
 
 @app.route("/api/shares", methods=["GET"])

@@ -648,6 +648,84 @@
   <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-unmount')" data-i18n="modal_cancel">Abbrechen</button><button class="btn btn-danger" id="unmount-go-btn" onclick="doUnmount()" data-i18n="btn_do_unmount">Aushängen</button></div>
 </div></div>
 
+<!-- ══ MODAL: Disk Manager (partition table editor) ══ -->
+<div class="modal-overlay" id="modal-disk"><div class="modal" style="max-width:640px;">
+  <div class="modal-title">Disk Manager — <span id="disk-mgr-name" style="font-family:monospace;color:var(--accent)"></span></div>
+  <div id="disk-mgr-info" style="font-size:13px;color:var(--text-dim);margin-bottom:10px;"></div>
+  <div id="disk-mgr-body">
+    <div class="empty"><span class="spinner"></span></div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" onclick="closeModal('modal-disk')">Close</button>
+  </div>
+</div></div>
+
+<!-- ══ MODAL: Format partition ══ -->
+<div class="modal-overlay" id="modal-format"><div class="modal" style="max-width:480px;">
+  <div class="modal-title">Format <span id="fmt-target" style="font-family:monospace;color:var(--accent)"></span></div>
+  <div class="warn-box" style="margin-bottom:10px;">
+    <p><strong>⚠ All data on this partition will be permanently destroyed.</strong></p>
+  </div>
+  <div class="form-group"><label>Filesystem</label>
+    <select id="fmt-fstype" onchange="fmtUpdateLabelLimit()">
+      <option value="ext4">ext4 (Linux)</option>
+      <option value="exfat">exFAT (Linux/Win/macOS)</option>
+      <option value="ntfs">NTFS (Win/Linux)</option>
+      <option value="vfat">FAT32 (legacy, ≤2 TiB)</option>
+      <option value="ext3">ext3</option>
+      <option value="ext2">ext2</option>
+    </select>
+  </div>
+  <div class="form-group"><label>Label <span id="fmt-label-hint" style="color:var(--text-dim);font-size:11px"></span></label>
+    <input type="text" id="fmt-label" placeholder="data" maxlength="32">
+  </div>
+  <div class="form-group"><label>Type partition name to confirm: <strong id="fmt-confirm-name" style="font-family:monospace"></strong></label>
+    <input type="text" id="fmt-confirm" placeholder="" oninput="fmtCheckConfirm()">
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" onclick="closeModal('modal-format')">Cancel</button>
+    <button class="btn btn-danger" id="fmt-go-btn" onclick="doFormat()" disabled style="opacity:.4">Format</button>
+  </div>
+</div></div>
+
+<!-- ══ MODAL: Create partition ══ -->
+<div class="modal-overlay" id="modal-partadd"><div class="modal" style="max-width:480px;">
+  <div class="modal-title">Create partition on <span id="padd-disk" style="font-family:monospace;color:var(--accent)"></span></div>
+  <div id="padd-info" style="font-size:13px;color:var(--text-dim);margin-bottom:10px;"></div>
+  <div class="form-group"><label>Size (MiB) — use the full free range or smaller</label>
+    <input type="number" id="padd-size" min="1" step="1">
+    <div style="font-size:11px;color:var(--text-dim);margin-top:3px;">Available: <span id="padd-max"></span> MiB</div>
+  </div>
+  <div class="form-group"><label>Type disk name to confirm: <strong id="padd-confirm-name" style="font-family:monospace"></strong></label>
+    <input type="text" id="padd-confirm" oninput="paddCheckConfirm()">
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" onclick="closeModal('modal-partadd')">Cancel</button>
+    <button class="btn btn-primary" id="padd-go-btn" onclick="doPartAdd()" disabled style="opacity:.4">Create</button>
+  </div>
+</div></div>
+
+<!-- ══ MODAL: Initialize partition table ══ -->
+<div class="modal-overlay" id="modal-partinit"><div class="modal" style="max-width:480px;">
+  <div class="modal-title">Initialize partition table on <span id="pinit-disk" style="font-family:monospace;color:var(--accent)"></span></div>
+  <div class="warn-box" style="margin-bottom:10px;">
+    <p><strong>⚠ This wipes the existing partition table.</strong> Any existing partitions become inaccessible.</p>
+  </div>
+  <div class="form-group"><label>Partition table type</label>
+    <select id="pinit-table">
+      <option value="gpt">GPT (recommended for ≥2 TiB / modern systems)</option>
+      <option value="msdos">MBR/msdos (legacy, ≤2 TiB)</option>
+    </select>
+  </div>
+  <div class="form-group"><label>Type disk name to confirm: <strong id="pinit-confirm-name" style="font-family:monospace"></strong></label>
+    <input type="text" id="pinit-confirm" oninput="pinitCheckConfirm()">
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" onclick="closeModal('modal-partinit')">Cancel</button>
+    <button class="btn btn-danger" id="pinit-go-btn" onclick="doPartInit()" disabled style="opacity:.4">Initialize</button>
+  </div>
+</div></div>
+
 <!-- ══ MODAL: Share ══ -->
 <div class="modal-overlay" id="modal-share"><div class="modal" style="max-width:520px;">
   <div class="modal-title" id="share-modal-title" data-i18n="modal_new_share">Neue Freigabe</div>
@@ -1000,9 +1078,12 @@ function driveCard(d){
   // — escape them as &quot; for HTML attribute use.
   const mountArg=(d.by_id||d.path);
   const mountArgAttr=JSON.stringify(mountArg).replace(/"/g,'&quot;');
-  const btn=isDisk?'':mounted
-    ?'<button class="btn btn-ghost btn-sm" onclick="openUnmountModal(\''+d.path+'\',\''+d.mountpoint+'\','+!!d.system_device+')">'+t('btn_unmount')+'</button>'
-    :'<button class="btn btn-primary btn-sm" onclick="openMountModal('+mountArgAttr+',\''+(d.fstype||'')+'\','+!!d.system_device+')">'+t('btn_mount')+'</button>';
+  const parentDisk = isDisk ? d.name : (d.name||'').replace(/p?\d+$/, '');
+  const diskBtn = (d.system_device || !parentDisk) ? '' :
+    '<button class="btn btn-ghost btn-sm btn-icon" title="Disk Manager" onclick="openDiskManager(\''+parentDisk+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>';
+  const btn=isDisk?diskBtn:(mounted
+    ?'<button class="btn btn-ghost btn-sm" onclick="openUnmountModal(\''+d.path+'\',\''+d.mountpoint+'\','+!!d.system_device+')">'+t('btn_unmount')+'</button>'+diskBtn
+    :'<button class="btn btn-primary btn-sm" onclick="openMountModal('+mountArgAttr+',\''+(d.fstype||'')+'\','+!!d.system_device+')">'+t('btn_mount')+'</button>'+diskBtn);
   const model=d.model?'<span>'+d.model.trim()+'</span>':'';
   return '<div class="drive-item"><svg class="drive-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">'+(isDisk?'<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="17" cy="12" r="2"/>':'<path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>')+'</svg><div class="drive-info"><div class="drive-name">'+d.path+(d.size?' <span style="font-size:12px;color:var(--text-dim);font-weight:400">'+d.size+'</span>':'')+'</div><div class="drive-meta">'+model+label+fs+rm+sys+'</div>'+byId+'<div style="margin-top:4px">'+mi+'</div></div><div class="drive-actions">'+btn+'</div></div>';
 }
@@ -1079,6 +1160,183 @@ async function doUnmount(force){
     }
     toast(e.message,true);
   }
+}
+
+// ── Disk Manager ──
+let _diskMgrName='', _diskMgrData=null;
+let _fmtCtx=null, _paddCtx=null, _pinitCtx=null;
+
+function fmtMiB(m){if(m>=1024*1024)return(m/1024/1024).toFixed(2)+' TiB';if(m>=1024)return(m/1024).toFixed(2)+' GiB';return m.toFixed(0)+' MiB';}
+
+async function openDiskManager(name){
+  _diskMgrName=name;
+  document.getElementById('disk-mgr-name').textContent='/dev/'+name;
+  document.getElementById('disk-mgr-info').textContent='';
+  document.getElementById('disk-mgr-body').innerHTML='<div class="empty"><span class="spinner"></span></div>';
+  openModal('modal-disk');
+  await refreshDiskManager();
+}
+
+async function refreshDiskManager(){
+  try{
+    const data=await api('GET','/disk/'+_diskMgrName+'/partitions');
+    _diskMgrData=data;
+    renderDiskManager(data);
+  }catch(e){
+    document.getElementById('disk-mgr-body').innerHTML='<div class="empty" style="color:var(--danger)">'+e.message+'</div>';
+  }
+}
+
+function renderDiskManager(d){
+  const disk=d.disk||{}, parts=d.partitions||[];
+  const info=(disk.model?(disk.model+' • '):'')+fmtMiB(disk.size_mib||0)+(disk.table?(' • '+disk.table.toUpperCase()):' • no partition table');
+  document.getElementById('disk-mgr-info').textContent=info;
+  let html='';
+  if(!disk.table){
+    html+='<div class="warn-box" style="margin-bottom:10px;"><p>No partition table found. Initialize one before creating partitions.</p></div>';
+  }
+  // Partition list / free-space rows
+  if(parts.length===0 && disk.table){
+    html+='<div class="empty" style="padding:20px"><p>No partitions yet — create one from the free space.</p></div>';
+  }
+  for(const p of parts){
+    if(p.free){
+      if(p.size_mib<1) continue;  // ignore tiny gaps
+      html+='<div class="drive-item" style="border-left:3px solid var(--text-dim)">'
+           +'<div class="drive-info"><div class="drive-name">Free space <span style="font-size:12px;color:var(--text-dim);font-weight:400">'+fmtMiB(p.size_mib)+'</span></div>'
+           +'<div class="drive-meta"><span class="tag">'+p.start_mib.toFixed(0)+' → '+p.end_mib.toFixed(0)+' MiB</span></div></div>'
+           +'<div class="drive-actions"><button class="btn btn-primary btn-sm" onclick=\'openPartAddModal('+JSON.stringify(p).replace(/\'/g,"&#39;")+')\'>+ Create</button></div></div>';
+    } else {
+      const tags='<span class="tag accent">'+(p.fstype||'unknown')+'</span>'
+              +(p.label?'<span class="tag">'+p.label+'</span>':'')
+              +(p.mounted?'<span class="tag warn">mounted</span>':'');
+      html+='<div class="drive-item">'
+           +'<div class="drive-info"><div class="drive-name">'+_diskMgrName+(p.num||'?')+' <span style="font-size:12px;color:var(--text-dim);font-weight:400">'+fmtMiB(p.size_mib)+'</span></div>'
+           +'<div class="drive-meta">'+tags+'</div></div>'
+           +'<div class="drive-actions">'
+           +(p.mounted?'<span style="font-size:11px;color:var(--text-dim);margin-right:8px">unmount first</span>':
+              '<button class="btn btn-ghost btn-sm" onclick="openFormatModal('+p.num+',\''+(p.fstype||'')+'\')">Format</button>'
+              +'<button class="btn btn-danger btn-sm" onclick="doPartDelete('+p.num+')">Delete</button>')
+           +'</div></div>';
+    }
+  }
+  // Footer actions
+  html+='<div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">'
+       +'<button class="btn btn-ghost btn-sm" onclick="refreshDiskManager()">↻ Refresh</button>'
+       +'<button class="btn btn-danger btn-sm" onclick="openPartInitModal()">Initialize partition table</button>'
+       +'</div>';
+  document.getElementById('disk-mgr-body').innerHTML=html;
+}
+
+// Initialize partition table
+function openPartInitModal(){
+  _pinitCtx={disk:_diskMgrName};
+  document.getElementById('pinit-disk').textContent='/dev/'+_diskMgrName;
+  document.getElementById('pinit-confirm-name').textContent=_diskMgrName;
+  const inp=document.getElementById('pinit-confirm');inp.value='';inp.placeholder=_diskMgrName;
+  document.getElementById('pinit-table').value='gpt';
+  const b=document.getElementById('pinit-go-btn');b.disabled=true;b.style.opacity='.4';
+  openModal('modal-partinit');
+}
+function pinitCheckConfirm(){
+  const ok=document.getElementById('pinit-confirm').value.trim()===_pinitCtx.disk;
+  const b=document.getElementById('pinit-go-btn');b.disabled=!ok;b.style.opacity=ok?'1':'.4';
+}
+async function doPartInit(){
+  const table=document.getElementById('pinit-table').value;
+  try{
+    await api('POST','/disk/'+_pinitCtx.disk+'/init',{table,confirm:_pinitCtx.disk});
+    toast('Partition table initialized');
+    closeModal('modal-partinit');
+    refreshDiskManager();
+    loadDrives();
+  }catch(e){toast(e.message,true);}
+}
+
+// Create partition
+function openPartAddModal(freeSlot){
+  _paddCtx={disk:_diskMgrName,start:freeSlot.start_mib,end:freeSlot.end_mib,size:freeSlot.size_mib};
+  document.getElementById('padd-disk').textContent='/dev/'+_diskMgrName;
+  document.getElementById('padd-info').textContent='Free range: '+freeSlot.start_mib.toFixed(0)+' → '+freeSlot.end_mib.toFixed(0)+' MiB ('+fmtMiB(freeSlot.size_mib)+')';
+  document.getElementById('padd-max').textContent=freeSlot.size_mib.toFixed(0);
+  const sz=document.getElementById('padd-size');sz.value=Math.floor(freeSlot.size_mib);sz.max=Math.floor(freeSlot.size_mib);
+  document.getElementById('padd-confirm-name').textContent=_diskMgrName;
+  const inp=document.getElementById('padd-confirm');inp.value='';inp.placeholder=_diskMgrName;
+  const b=document.getElementById('padd-go-btn');b.disabled=true;b.style.opacity='.4';
+  openModal('modal-partadd');
+}
+function paddCheckConfirm(){
+  const ok=document.getElementById('padd-confirm').value.trim()===_paddCtx.disk;
+  const b=document.getElementById('padd-go-btn');b.disabled=!ok;b.style.opacity=ok?'1':'.4';
+}
+async function doPartAdd(){
+  const sz=parseFloat(document.getElementById('padd-size').value);
+  if(!sz||sz<1){toast('Invalid size',true);return;}
+  const start=_paddCtx.start, end=Math.min(_paddCtx.end, start+sz);
+  try{
+    await api('POST','/disk/'+_paddCtx.disk+'/partition',{
+      start_mib:start, end_mib:end, confirm:_paddCtx.disk
+    });
+    toast('Partition created');
+    closeModal('modal-partadd');
+    refreshDiskManager();
+    loadDrives();
+  }catch(e){toast(e.message,true);}
+}
+
+// Delete partition
+async function doPartDelete(num){
+  const partName=_diskMgrName+num;
+  const conf=prompt('Delete partition '+partName+'?\nAll data will be lost.\n\nType the partition name to confirm:');
+  if(conf!==partName) return;
+  try{
+    await api('DELETE','/disk/'+_diskMgrName+'/partition/'+num,{confirm:partName});
+    toast('Partition '+partName+' deleted');
+    refreshDiskManager();
+    loadDrives();
+  }catch(e){toast(e.message,true);}
+}
+
+// Format partition
+function fmtUpdateLabelLimit(){
+  const fs=document.getElementById('fmt-fstype').value;
+  const limits={vfat:11,fat32:11,exfat:15,ntfs:32,ext2:16,ext3:16,ext4:16};
+  const lim=limits[fs]||16;
+  document.getElementById('fmt-label').maxLength=lim;
+  document.getElementById('fmt-label-hint').textContent='(max '+lim+' chars)';
+}
+function openFormatModal(num,curFs){
+  const partName=_diskMgrName+num;
+  _fmtCtx={disk:_diskMgrName,num,partName};
+  document.getElementById('fmt-target').textContent='/dev/'+partName;
+  document.getElementById('fmt-confirm-name').textContent=partName;
+  const inp=document.getElementById('fmt-confirm');inp.value='';inp.placeholder=partName;
+  // pre-select fstype if known
+  const sel=document.getElementById('fmt-fstype');
+  const fs=(curFs||'').toLowerCase();
+  for(const o of sel.options){if(o.value===fs){sel.value=fs;break;}}
+  if(!sel.value)sel.value='ext4';
+  document.getElementById('fmt-label').value='';
+  fmtUpdateLabelLimit();
+  const b=document.getElementById('fmt-go-btn');b.disabled=true;b.style.opacity='.4';
+  openModal('modal-format');
+}
+function fmtCheckConfirm(){
+  const ok=document.getElementById('fmt-confirm').value.trim()===_fmtCtx.partName;
+  const b=document.getElementById('fmt-go-btn');b.disabled=!ok;b.style.opacity=ok?'1':'.4';
+}
+async function doFormat(){
+  const fstype=document.getElementById('fmt-fstype').value;
+  const label=document.getElementById('fmt-label').value.trim();
+  try{
+    await api('POST','/disk/'+_fmtCtx.disk+'/partition/'+_fmtCtx.num+'/format',{
+      fstype, label, confirm:_fmtCtx.partName
+    });
+    toast('Partition '+_fmtCtx.partName+' formatted as '+fstype);
+    closeModal('modal-format');
+    refreshDiskManager();
+    loadDrives();
+  }catch(e){toast(e.message,true);}
 }
 
 // ── Shares ──

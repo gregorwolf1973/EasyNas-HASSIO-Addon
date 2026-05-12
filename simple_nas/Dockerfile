@@ -14,7 +14,10 @@ RUN apk add --no-cache \
     lsof \
     file \
     ntfs-3g \
+    ntfs-3g-progs \
     exfatprogs \
+    dosfstools \
+    parted \
     bash \
     curl \
     jq \

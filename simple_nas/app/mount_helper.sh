@@ -157,6 +157,91 @@ while true; do
                 mkdir -p "$ARG1" 2>/dev/null
                 printf '0|\n' > "$RESULT"
                 ;;
+            PARTLIST)
+                # Machine-readable partition layout incl. free-space gaps.
+                # ARG1 = /dev/sdX (whole disk)
+                DISK="$ARG1"
+                OUT=$(parted -m -s "$DISK" unit MiB print free 2>&1)
+                RC=$?
+                # Newlines break our FIFO line protocol → encode as \\n
+                ENC=$(printf '%s' "$OUT" | sed ':a;N;$!ba;s/\n/\\n/g')
+                printf '%s|%s\n' "$RC" "$ENC" > "$RESULT"
+                echo "[mount_helper] PARTLIST $DISK rc=$RC"
+                ;;
+            PARTMKLABEL)
+                # Initialize new partition table. ARG1 = /dev/sdX, ARG2 = gpt|msdos
+                DISK="$ARG1"; LBL="$ARG2"
+                echo "[mount_helper] PARTMKLABEL $DISK $LBL"
+                OUT=$(parted -s "$DISK" mklabel "$LBL" 2>&1)
+                RC=$?
+                partprobe "$DISK" 2>/dev/null
+                printf '%s|%s\n' "$RC" "$OUT" > "$RESULT"
+                ;;
+            PARTADD)
+                # Create partition. ARG1 = /dev/sdX, ARG2 = START (MiB),
+                # ARG3 = END (MiB or "100%")
+                DISK="$ARG1"; PSTART="$ARG2"; PEND="$ARG3"
+                echo "[mount_helper] PARTADD $DISK ${PSTART}MiB → $PEND"
+                OUT=$(parted -s -a optimal "$DISK" mkpart primary "${PSTART}MiB" "$PEND" 2>&1)
+                RC=$?
+                partprobe "$DISK" 2>/dev/null
+                # parted itself sometimes returns 0 even when partprobe needs a moment
+                sleep 1
+                printf '%s|%s\n' "$RC" "$OUT" > "$RESULT"
+                ;;
+            PARTRM)
+                # Remove partition. ARG1 = /dev/sdX, ARG2 = partition number
+                DISK="$ARG1"; PNUM="$ARG2"
+                echo "[mount_helper] PARTRM $DISK $PNUM"
+                OUT=$(parted -s "$DISK" rm "$PNUM" 2>&1)
+                RC=$?
+                partprobe "$DISK" 2>/dev/null
+                printf '%s|%s\n' "$RC" "$OUT" > "$RESULT"
+                ;;
+            MKFS)
+                # Format partition. ARG1 = /dev/sdXN, ARG2 = fstype, ARG3 = label
+                PART="$ARG1"; FS="$ARG2"; LABEL="$ARG3"
+                echo "[mount_helper] MKFS $PART -t $FS -L '$LABEL'"
+                if [ ! -b "$PART" ]; then
+                    printf '1|%s ist kein Block-Device\n' "$PART" > "$RESULT"
+                    continue
+                fi
+                # Refuse if currently mounted
+                if grep -q "^$PART " /proc/mounts 2>/dev/null; then
+                    printf '1|%s ist eingehängt — bitte zuerst aushängen\n' "$PART" > "$RESULT"
+                    continue
+                fi
+                case "$FS" in
+                    ext4)
+                        OUT=$(mkfs.ext4 -F -L "$LABEL" "$PART" 2>&1) ;;
+                    ext3)
+                        OUT=$(mkfs.ext3 -F -L "$LABEL" "$PART" 2>&1) ;;
+                    ext2)
+                        OUT=$(mkfs.ext2 -F -L "$LABEL" "$PART" 2>&1) ;;
+                    exfat)
+                        OUT=$(mkfs.exfat -n "$LABEL" "$PART" 2>&1) ;;
+                    vfat|fat32)
+                        OUT=$(mkfs.vfat -F 32 -n "$LABEL" "$PART" 2>&1) ;;
+                    ntfs)
+                        OUT=$(mkfs.ntfs -f -L "$LABEL" "$PART" 2>&1) ;;
+                    *)
+                        OUT="Unsupported filesystem: $FS"
+                        RC=1
+                        printf '%s|%s\n' "$RC" "$OUT" > "$RESULT"
+                        continue
+                        ;;
+                esac
+                RC=$?
+                # New filesystem signature isn't always picked up immediately;
+                # ask kernel to re-read & udev to refresh symlinks
+                partprobe "$(echo "$PART" | sed 's/[0-9]*$//')" 2>/dev/null
+                printf '%s|%s\n' "$RC" "$OUT" > "$RESULT"
+                echo "[mount_helper] MKFS rc=$RC"
+                ;;
+            PARTPROBE)
+                partprobe "$ARG1" 2>/dev/null
+                printf '0|\n' > "$RESULT"
+                ;;
             *)
                 printf '1|Unbekannter Befehl: %s\n' "$ACTION" > "$RESULT"
                 ;;
