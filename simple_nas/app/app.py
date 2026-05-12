@@ -433,12 +433,24 @@ def _helper_call(action, arg1="", arg2="", arg3="", timeout=20):
     try: os.remove(MOUNT_RESULT)
     except FileNotFoundError: pass
     cmd_line = f"{action}|{arg1}|{arg2}|{arg3}\n"
-    try:
-        fd = os.open(MOUNT_FIFO, os.O_WRONLY | os.O_NONBLOCK)
-        os.write(fd, cmd_line.encode())
-        os.close(fd)
-    except OSError as e:
-        return 1, f"FIFO-Fehler: {e}"
+    # Retry a few times on ENXIO — the helper script briefly has no reader
+    # on the FIFO between iterations (race window when it re-opens).
+    last_err = None
+    for attempt in range(20):  # ~2s total
+        try:
+            fd = os.open(MOUNT_FIFO, os.O_WRONLY | os.O_NONBLOCK)
+            os.write(fd, cmd_line.encode())
+            os.close(fd)
+            last_err = None
+            break
+        except OSError as e:
+            last_err = e
+            if e.errno == 6:  # ENXIO: no reader yet
+                time.sleep(0.1)
+                continue
+            return 1, f"FIFO-Fehler: {e}"
+    if last_err is not None:
+        return 1, f"FIFO-Fehler: {last_err}"
     deadline = time.time() + timeout
     while time.time() < deadline:
         if os.path.exists(MOUNT_RESULT):

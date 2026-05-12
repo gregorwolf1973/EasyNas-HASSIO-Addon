@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.64
+- Fix: **`FIFO-Fehler: [Errno 6] No such device or address: '/tmp/mount_cmd'`** when issuing disk-manager commands back-to-back
+  - `mount_helper.sh` opens the FIFO persistently on fd 3 (+ dummy writer on fd 4) so there's no moment between iterations where the FIFO has no reader
+  - `app.py` retries the FIFO open on `ENXIO` for ~2s before giving up
+
 ## 3.0.63
 - Fix: **create partition failed with 500** on fresh disks — the free-space entry from `parted` starts at 0.02 MiB (inside the GPT primary header) and end-MiB equal to disk size overflows the GPT backup header
   - Server: align start UP to whole MiB (min 1 MiB), align end DOWN to whole MiB

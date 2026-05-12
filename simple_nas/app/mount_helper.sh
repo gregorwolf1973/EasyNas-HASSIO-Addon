@@ -29,8 +29,15 @@ do_mount() {
     return $_RC
 }
 
+# Keep the FIFO open persistently on fd 3 so there's no moment between
+# command-iterations where the FIFO has no reader. Without this, the Python
+# side (which opens with O_NONBLOCK) hits ENXIO right after each command.
+# We also open fd 4 as a dummy writer so `read` never sees EOF when the
+# client side closes — that would otherwise drop us out of the loop.
+exec 3<"$FIFO" 4>"$FIFO"
+
 while true; do
-    if read -r line < "$FIFO"; then
+    if read -r line <&3; then
         ACTION=$(echo "$line" | cut -d'|' -f1)
         ARG1=$(  echo "$line" | cut -d'|' -f2)
         ARG2=$(  echo "$line" | cut -d'|' -f3)
