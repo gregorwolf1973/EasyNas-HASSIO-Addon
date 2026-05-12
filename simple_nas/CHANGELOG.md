@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.0.67
+- New: hourglass / wait cursor on the entire page while a long disk-manager operation (Format, Create, Init) is running — extra visual signal that something is happening
+
 ## 3.0.66
 - Fix: **multiple `Format` clicks queueing up** — long operations now disable their button and show an in-button spinner so the user can't accidentally fire several mkfs in a row
   - Applies to Format, Create partition, and Initialize partition table

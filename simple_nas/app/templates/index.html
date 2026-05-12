@@ -196,6 +196,9 @@
     pointer-events: none;
   }
   .drive-item.is-part { margin-left: 28px; }
+
+  /* Global wait/hourglass cursor while a long operation runs */
+  body.busy, body.busy * { cursor: wait !important; }
   .drive-info { flex: 1; min-width: 0; }
   .drive-name { font-weight: 600; color: var(--text-bright); font-size: 14px; }
   .drive-meta { font-size: 11px; color: var(--text-dim); margin-top: 3px; display: flex; gap: 8px; flex-wrap: wrap; }
@@ -1295,15 +1298,21 @@ function pinitCheckConfirm(){
   const ok=document.getElementById('pinit-confirm').value.trim()===_pinitCtx.disk;
   const b=document.getElementById('pinit-go-btn');b.disabled=!ok;b.style.opacity=ok?'1':'.4';
 }
-// Disable a button + change its label while a long operation runs.
+// Disable a button + change its label while a long operation runs,
+// AND switch the page cursor to the OS wait/hourglass cursor so the
+// user has unmistakable feedback that something is happening.
 // Returns a restore fn the caller MUST invoke in finally{}.
 function _busyBtn(id, busyLabel){
+  document.body.classList.add('busy');
   const b=document.getElementById(id);
-  if(!b) return ()=>{};
+  if(!b) return ()=>{ document.body.classList.remove('busy'); };
   const origText=b.innerHTML, origDisabled=b.disabled, origOpacity=b.style.opacity;
   b.disabled=true; b.style.opacity='.6';
   b.innerHTML='<span class="spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>'+busyLabel;
-  return ()=>{ b.innerHTML=origText; b.disabled=origDisabled; b.style.opacity=origOpacity||''; };
+  return ()=>{
+    b.innerHTML=origText; b.disabled=origDisabled; b.style.opacity=origOpacity||'';
+    document.body.classList.remove('busy');
+  };
 }
 
 async function doPartInit(){
