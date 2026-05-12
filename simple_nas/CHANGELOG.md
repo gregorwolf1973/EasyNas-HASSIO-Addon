@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.0
+- Fix: disk rows no longer say "not mounted" — disks themselves are never mounted, only their partitions are. Disk rows now show the partition count instead (e.g. "3 Partitionen"), or nothing if the disk has no partitions yet
+- Version bump 3.0.x → 3.1.0 marking the Disk-Manager line as feature-complete (partition management, phantom-disk filter, mountpoint reporting, collapse/expand, busy-cursor, FIFO race fix)
+
 ## 3.0.67
 - New: hourglass / wait cursor on the entire page while a long disk-manager operation (Format, Create, Init) is running — extra visual signal that something is happening
 

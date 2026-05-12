@@ -1112,7 +1112,13 @@ function driveCard(d, partChildCount){
   const rm=d.removable?'<span class="tag warn">'+t('removable')+'</span>':'';
   const sys=d.system_device?'<span class="tag" style="background:var(--danger);color:#fff">'+t('tag_system')+'</span>':'';
   const byId=d.by_id?'<div style="font-family:monospace;font-size:10px;color:var(--text-dim);margin-top:2px;word-break:break-all">'+d.by_id+'</div>':'';
-  const mi=mounted?'<span style="font-family:monospace;font-size:11px;color:var(--accent)">'+d.mountpoint+'</span>':'<span style="color:var(--text-dim);font-size:11px">'+t('not_mounted')+'</span>';
+  // Mount status: disks themselves are never mounted (only their partitions are),
+  // so suppress the misleading "not mounted" text on disk rows.
+  const mi = isDisk
+    ? (partChildCount>0 ? '<span style="color:var(--text-dim);font-size:11px">'+partChildCount+' Partition'+(partChildCount===1?'':'en')+'</span>' : '')
+    : (mounted
+        ? '<span style="font-family:monospace;font-size:11px;color:var(--accent)">'+d.mountpoint+'</span>'
+        : '<span style="color:var(--text-dim);font-size:11px">'+t('not_mounted')+'</span>');
   // Pass by_id (or fallback to path) and system_device flag to mount modal.
   // JSON.stringify() embeds literal double-quotes which would break onclick="…"
   // — escape them as &quot; for HTML attribute use.
