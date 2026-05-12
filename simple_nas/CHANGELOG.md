@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.63
+- Fix: **create partition failed with 500** on fresh disks — the free-space entry from `parted` starts at 0.02 MiB (inside the GPT primary header) and end-MiB equal to disk size overflows the GPT backup header
+  - Server: align start UP to whole MiB (min 1 MiB), align end DOWN to whole MiB
+  - UI: when user keeps the default size (= all free space), send `end_mib: "100%"` so parted handles the backup-header margin itself
+
 ## 3.0.62
 - Fix: hide phantom disks (empty card-reader slots / USB hub ports without medium) — checks `/sys/block/<name>/size` and filters in `/api/drives`; `/api/disk/<name>/partitions` returns 410 if no medium
 - Improve: each partition in `/api/disk/<name>/partitions` now reports its real `mountpoint` (string) from `/proc/mounts`, not just a bool

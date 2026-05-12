@@ -724,13 +724,24 @@ def api_disk_partition_add(name):
         start_mib = float(body.get("start_mib"))
     except (TypeError, ValueError):
         return jsonify({"error": "start_mib required (number)"}), 400
+    # Align start: parted refuses to place a partition in the GPT header
+    # region (first ~1 MiB) and also wants MiB-aligned starts for performance.
+    # Round UP to the next whole MiB, with a minimum of 1 MiB.
+    import math
+    start_mib = max(1.0, math.ceil(start_mib))
     end = body.get("end_mib", "100%")
     if isinstance(end, str) and end.strip().endswith("%"):
         end_arg = end.strip()
     else:
-        try:    end_arg = f"{float(end):.2f}MiB"
-        except: return jsonify({"error": "end_mib invalid"}), 400
-    rc, out = _helper_call("PARTADD", path, f"{start_mib:.2f}", end_arg, timeout=60)
+        try:
+            # Round end DOWN to whole MiB so we never overflow the free region.
+            end_mib = math.floor(float(end))
+            if end_mib <= start_mib:
+                return jsonify({"error": f"end_mib ({end_mib}) must be greater than start_mib ({start_mib})"}), 400
+            end_arg = f"{end_mib}MiB"
+        except (TypeError, ValueError):
+            return jsonify({"error": "end_mib invalid"}), 400
+    rc, out = _helper_call("PARTADD", path, f"{int(start_mib)}", end_arg, timeout=60)
     if rc != 0:
         return jsonify({"error": out or "mkpart failed"}), 500
     return jsonify({"ok": True})

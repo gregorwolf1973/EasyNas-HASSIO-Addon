@@ -1272,7 +1272,11 @@ function paddCheckConfirm(){
 async function doPartAdd(){
   const sz=parseFloat(document.getElementById('padd-size').value);
   if(!sz||sz<1){toast('Invalid size',true);return;}
-  const start=_paddCtx.start, end=Math.min(_paddCtx.end, start+sz);
+  const start=_paddCtx.start;
+  // If user picked (essentially) all remaining space, send "100%" so parted
+  // handles the GPT backup-header margin itself instead of us overflowing it.
+  const useAll = sz >= Math.floor(_paddCtx.size) - 1;
+  const end = useAll ? "100%" : Math.min(_paddCtx.end, start+sz);
   try{
     await api('POST','/disk/'+_paddCtx.disk+'/partition',{
       start_mib:start, end_mib:end, confirm:_paddCtx.disk
