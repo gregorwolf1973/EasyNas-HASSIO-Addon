@@ -1402,6 +1402,20 @@ def api_files_download():
         return jsonify({"error": "Datei nicht gefunden"}), 404
     return send_file(path, as_attachment=True)
 
+@app.route("/api/files/view")
+def api_files_view():
+    """Serve a file inline (for browser-native preview of PDFs, images,
+    videos, audio, text). Falls back to download for unknown MIME types."""
+    from flask import send_file
+    import mimetypes
+    path = request.args.get("path", "").strip()
+    if not path or not os.path.isfile(path):
+        return jsonify({"error": "Datei nicht gefunden"}), 404
+    mime, _ = mimetypes.guess_type(path)
+    # send_file in modern Flask supports Range requests via conditional=True
+    # which is the default — videos/audio can seek without full download
+    return send_file(path, mimetype=mime, as_attachment=False, conditional=True)
+
 @app.route("/api/files/content")
 def api_files_content():
     path = request.args.get("path", "").strip()

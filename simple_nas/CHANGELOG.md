@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.2
+- New: double-click a file in the Files tab to preview it in a new browser tab — PDFs use the browser's built-in viewer, images / videos / audio play inline, text files open in the existing editor
+- New backend endpoint `/api/files/view` serves files inline with proper MIME type and HTTP Range support (videos/audio are seekable without full download)
+- Files that the browser can preview show a pointer cursor and a "Double-click to open" tooltip; everything else still uses the Download button as before
+
 ## 3.1.1
 - Fix: **"Error: Partition(s) on /dev/sdX are being used"** when initializing a partition table
   - Server: pre-checks `/proc/mounts` and returns a clear "Unmount first: …" message listing exactly which partition + mountpoint is blocking, instead of forwarding parted's terse error

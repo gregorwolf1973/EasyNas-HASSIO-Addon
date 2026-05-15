@@ -899,6 +899,7 @@ const T={
     samba_restarted:'Samba neu gestartet',mounted_ok:'Eingehängt: {m}',unmounted_ok:'Ausgehängt',
     deleted:'Gelöscht',title_edit:'Bearbeiten',title_delete:'Löschen',title_rename:'Umbenennen',
     title_copy:'Kopieren',title_move:'Verschieben',date_locale:'de-DE',logout_title:'Abmelden',
+    dblclick_open:'Doppelklick zum Öffnen',
   },
   en:{
     nav_overview:'Overview',nav_drives:'Drives',nav_shares:'Shares',
@@ -992,6 +993,7 @@ const T={
     samba_restarted:'Samba restarted',mounted_ok:'Mounted: {m}',unmounted_ok:'Unmounted',
     deleted:'Deleted',title_edit:'Edit',title_delete:'Delete',title_rename:'Rename',
     title_copy:'Copy',title_move:'Move',date_locale:'en-US',logout_title:'Logout',
+    dblclick_open:'Double-click to open',
   }
 };
 let _lang=localStorage.getItem('nas-lang')||'en';
@@ -1674,7 +1676,12 @@ async function loadFiles(path){
     }
     for(const e of files){
       const barHtml=_showSizeBars?_sizeBarHtml(e.size,maxLog):'';
-      rows.push('<div class="file-row"><svg viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="fname">'+e.name+'</span>'+barHtml+'<span class="fsize">'+fmtSize(e.size)+'</span><span class="fdate">'+fmtTime(e.modified)+'</span><span class="factions">'+fileActionBtns(e)+'</span></div>');
+      const pEsc=e.path.replace(/'/g,"\\'");
+      const nEsc=e.name.replace(/'/g,"\\'");
+      const viewable=_isViewable(e.name);
+      const nameStyle=viewable?' style="cursor:pointer" title="'+t('dblclick_open')+'"':'';
+      const dbl=viewable?' ondblclick="openFileViewer(\''+pEsc+'\',\''+nEsc+'\')"':'';
+      rows.push('<div class="file-row"'+dbl+'><svg viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="fname"'+nameStyle+'>'+e.name+'</span>'+barHtml+'<span class="fsize">'+fmtSize(e.size)+'</span><span class="fdate">'+fmtTime(e.modified)+'</span><span class="factions">'+fileActionBtns(e)+'</span></div>');
     }
     if(!dirs.length&&!files.length&&!d.parent)rows.push('<div style="padding:30px;text-align:center;color:var(--text-dim)">'+t('empty_folder')+'</div>');
     list.innerHTML=rows.join('');
@@ -1684,6 +1691,19 @@ async function loadFiles(path){
 
 const _TEXT_EXT=new Set(['txt','md','yaml','yml','json','sh','py','js','ts','html','css','conf','cfg','ini','log','xml','csv','env','toml','properties','gitignore','dockerfile','bashrc','profile','sql','php','rb','rs','go','java','c','cpp','h']);
 function _isTextFile(name){const ext=name.split('.').pop().toLowerCase();return _TEXT_EXT.has(ext);}
+const _VIEW_EXT=new Set(['pdf','jpg','jpeg','png','gif','webp','svg','bmp','ico','avif','heic','mp4','webm','mov','m4v','ogv','mp3','m4a','wav','ogg','flac','aac','opus']);
+function _isViewable(name){const ext=name.split('.').pop().toLowerCase();return _VIEW_EXT.has(ext)||_TEXT_EXT.has(ext);}
+function openFileViewer(path,name){
+  const ext=name.split('.').pop().toLowerCase();
+  if(_TEXT_EXT.has(ext)){openFileEdit(path,name);return;}
+  if(_VIEW_EXT.has(ext)){
+    const url=location.pathname.replace(/\/+$/,'')+'/api/files/view?path='+encodeURIComponent(path);
+    window.open(url,'_blank','noopener');return;
+  }
+  // Unknown type → trigger download
+  const url=location.pathname.replace(/\/+$/,'')+'/api/files/download?path='+encodeURIComponent(path);
+  window.open(url,'_blank','noopener');
+}
 
 function fileActionBtns(e){
   const p=e.path.replace(/'/g,"\\'");
