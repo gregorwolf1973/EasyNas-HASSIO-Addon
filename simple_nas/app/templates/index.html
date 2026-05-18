@@ -161,14 +161,16 @@
   .card-actions { display: flex; gap: 4px; }
 
   /* ── Stats ── */
-  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: var(--gutter); }
-  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: var(--gutter); }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); display: flex; flex-direction: column; min-height: 140px; }
   .stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
   .stat-value { font-size: 22px; font-weight: 700; color: var(--text-bright); font-variant-numeric: tabular-nums; }
   .stat-unit { font-size: 13px; color: var(--text-dim); margin-left: 2px; }
+  .stat-body { flex: 1 1 auto; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+  .stat-foot { margin-top: auto; }
 
   /* ── Progress ── */
-  .progress-wrap { margin-top: 8px; }
+  .progress-wrap { margin-top: auto; padding-top: 8px; }
   .progress-bar-bg { background: var(--surface2); border-radius: 99px; height: 6px; overflow: hidden; margin-top: 4px; }
   .progress-bar-fill { height: 100%; border-radius: 99px; background: var(--accent); transition: width .5s ease; }
   .progress-bar-fill.warn { background: var(--warn); }
@@ -413,12 +415,16 @@
     <div class="stat-grid" id="stat-grid">
       <div class="stat-card">
         <div class="stat-label">CPU</div>
-        <div class="stat-value" id="stat-cpu">–<span class="stat-unit">%</span></div>
+        <div class="stat-body">
+          <div class="stat-value" id="stat-cpu">–<span class="stat-unit">%</span></div>
+        </div>
         <div class="progress-wrap"><div class="progress-bar-bg"><div class="progress-bar-fill" id="bar-cpu" style="width:0%"></div></div></div>
       </div>
       <div class="stat-card">
         <div class="stat-label">RAM</div>
-        <div class="stat-value" id="stat-mem">–<span class="stat-unit">%</span></div>
+        <div class="stat-body">
+          <div class="stat-value" id="stat-mem">–<span class="stat-unit">%</span></div>
+        </div>
         <div class="progress-wrap">
           <div class="progress-label"><span id="mem-used">–</span><span id="mem-total">–</span></div>
           <div class="progress-bar-bg"><div class="progress-bar-fill" id="bar-mem" style="width:0%"></div></div>
@@ -426,19 +432,26 @@
       </div>
       <div class="stat-card">
         <div class="stat-label" data-i18n="stat_disk">System-Disk</div>
-        <div class="stat-value" id="stat-disk">–<span class="stat-unit">%</span></div>
+        <div class="stat-body">
+          <div class="stat-value" id="stat-disk">–<span class="stat-unit">%</span></div>
+        </div>
         <div class="progress-wrap">
           <div class="progress-label"><span id="disk-used">–</span><span id="disk-total">–</span></div>
           <div class="progress-bar-bg"><div class="progress-bar-fill" id="bar-disk" style="width:0%"></div></div>
         </div>
       </div>
-      <div class="stat-card" style="display:flex;flex-direction:column;justify-content:space-between;">
+      <div class="stat-card">
         <div class="stat-label" data-i18n="stat_samba">Samba-Dienste</div>
-        <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px;">
+        <div class="stat-body">
           <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-family:monospace;font-size:13px;">smbd</span><span class="status-pill pill-off" id="smbd-status"><span class="dot"></span><span>–</span></span></div>
           <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-family:monospace;font-size:13px;">nmbd</span><span class="status-pill pill-off" id="nmbd-status"><span class="dot"></span><span>–</span></span></div>
         </div>
-        <button class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%;" onclick="restartSamba()" data-i18n="samba_restart">Samba neu starten</button>
+        <div class="stat-foot"><button class="btn btn-ghost btn-sm" style="width:100%;" onclick="restartSamba()" data-i18n="samba_restart">Samba neu starten</button></div>
+      </div>
+      <div class="stat-card" id="smart-card" style="display:none">
+        <div class="stat-label" data-i18n="stat_smart">Laufwerks-Gesundheit (SMART)</div>
+        <div class="stat-body" id="smart-card-body"></div>
+        <div class="stat-foot"><button class="btn btn-ghost btn-sm" style="width:100%;" onclick="loadOverviewSmart(true)" data-i18n="smart_refresh">Aktualisieren</button></div>
       </div>
     </div>
     <div class="section-header" style="margin-top:0"><div class="section-title" data-i18n="active_shares">Aktive Freigaben</div><button class="btn btn-ghost btn-sm" onclick="switchTab('shares')" data-i18n="all_arrow">Alle →</button></div>
@@ -911,6 +924,8 @@ const T={
     dblclick_open:'Doppelklick zum Öffnen',
     // SMART
     btn_smart_title:'SMART-Werte anzeigen',modal_smart_title:'SMART-Status',modal_close:'Schließen',
+    stat_smart:'Laufwerks-Gesundheit',smart_refresh:'Aktualisieren',
+    smart_passed_short:'OK',smart_failed_short:'FEHLER',smart_n_a:'k. A.',
     smart_unavailable:'SMART-Daten nicht verfügbar',
     smart_unavailable_hint:'Manche USB-Adapter leiten SMART-Befehle nicht durch. Bei intern eingebauten Datenträgern funktioniert es zuverlässig.',
     smart_passed:'BESTANDEN',smart_failed:'FEHLGESCHLAGEN',
@@ -1022,6 +1037,8 @@ const T={
     smart_unavailable:'SMART data not available',
     smart_unavailable_hint:'Some USB enclosures do not forward SMART commands. Internal drives work reliably.',
     smart_passed:'PASSED',smart_failed:'FAILED',
+    stat_smart:'Drive health',smart_refresh:'Refresh',
+    smart_passed_short:'OK',smart_failed_short:'FAILED',smart_n_a:'n/a',
     smart_status:'Health status',smart_model:'Model',smart_serial:'Serial number',
     smart_firmware:'Firmware',smart_capacity:'Capacity',smart_type:'Type',
     smart_temp:'Temperature',smart_poh:'Power-on hours',smart_cycles:'Power cycles',
@@ -1058,7 +1075,7 @@ function toggleLang(){
   // Re-render dynamic JS-built content so it picks up the new language
   const active=document.querySelector('nav button.active');
   const tab=active?active.id.replace('tab-',''):'overview';
-  if(tab==='overview'){loadStatus();loadDrives();}
+  if(tab==='overview'){loadStatus();loadDrives();loadOverviewSmart();}
   else if(tab==='drives')loadDrives();
   else if(tab==='shares')loadShares();
   else if(tab==='users'){loadUsers();loadGroups();}
@@ -1112,6 +1129,70 @@ async function loadStatus(){try{
   const bd=document.getElementById('bar-disk');bd.style.width=d.percent+'%';bd.className='progress-bar-fill'+(d.percent>85?' danger':d.percent>65?' warn':'');
 }catch(e){console.error(e);}}
 async function restartSamba(){try{await api('POST','/samba/restart');toast(t('samba_restarted'));setTimeout(loadStatus,2000);}catch(e){toast(e.message,true);}}
+
+// ── Overview SMART summary ──
+let _overviewSmartCache = null;       // {ts, html} — 5 min TTL
+async function loadOverviewSmart(forceRefresh){
+  const card = document.getElementById('smart-card');
+  const body = document.getElementById('smart-card-body');
+  if(!card || !body) return;
+  // Cache check
+  if(!forceRefresh && _overviewSmartCache && (Date.now()-_overviewSmartCache.ts) < 5*60*1000){
+    return; // already populated, still fresh
+  }
+  // Show spinner if first load
+  if(!_overviewSmartCache){
+    body.innerHTML='<div class="empty" style="padding:8px"><span class="spinner"></span></div>';
+    card.style.display='';
+  }
+  try{
+    const drives = await api('GET','/drives');
+    // Only physical disks (not partitions)
+    const disks = drives.filter(d => d.type==='disk');
+    if(!disks.length){ card.style.display='none'; return; }
+    const results = [];
+    for(const d of disks){
+      try{
+        const s = await api('GET','/drives/'+encodeURIComponent(d.name)+'/smart');
+        results.push({disk:d, smart:s});
+      }catch(e){
+        results.push({disk:d, smart:{error:e.message}});
+      }
+    }
+    // Only show card if at least one disk returned SMART data
+    const usable = results.filter(r => r.smart && (r.smart.passed!==undefined || r.smart.attributes?.length));
+    if(!usable.length){
+      card.style.display='none';
+      _overviewSmartCache = {ts:Date.now(), html:''};
+      return;
+    }
+    let html='';
+    for(const r of results){
+      const s = r.smart || {};
+      const haveData = s.passed!==undefined || (s.attributes||[]).length;
+      const dot = haveData
+        ? (s.passed===true ? '<span style="color:#1f8c4c">●</span>'
+          : s.passed===false ? '<span style="color:var(--danger)">●</span>'
+          : '<span style="color:var(--text-dim)">●</span>')
+        : '<span style="color:var(--text-dim)">○</span>';
+      const status = haveData
+        ? (s.passed===true ? t('smart_passed_short')
+          : s.passed===false ? t('smart_failed_short')
+          : '—')
+        : t('smart_n_a');
+      const temp = (s.temperature_c!==null && s.temperature_c!==undefined) ? s.temperature_c+'°C' : '';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;cursor:pointer" onclick="openSmartModal(\''+r.disk.name+'\')" title="'+t('btn_smart_title')+'">'
+        +  '<span style="font-family:monospace">'+dot+' /dev/'+r.disk.name+'</span>'
+        +  '<span style="color:var(--text-dim);font-size:11px">'+temp+' · '+status+'</span>'
+        +'</div>';
+    }
+    body.innerHTML = html;
+    card.style.display='';
+    _overviewSmartCache = {ts:Date.now(), html};
+  }catch(e){
+    body.innerHTML='<div style="color:var(--text-dim);font-size:12px;padding:4px">'+e.message+'</div>';
+  }
+}
 
 // ── Drives ──
 // Per-disk expanded state (default = collapsed). Persisted across reloads.
@@ -2028,7 +2109,7 @@ async function deleteBackup(id){if(!confirm(t('confirm_del_backup')))return;try{
 // ── Init ──
 window.addEventListener('click',e=>{if(e.target.classList.contains('modal-overlay')){e.target.classList.remove('open');_browserSelected=null;}});
 applyLang();
-(async()=>{await loadStatus();try{const s=await api('GET','/shares');renderOverviewShares(s);}catch(e){}setInterval(loadStatus,10000);})();
+(async()=>{await loadStatus();loadOverviewSmart();try{const s=await api('GET','/shares');renderOverviewShares(s);}catch(e){}setInterval(loadStatus,10000);setInterval(()=>loadOverviewSmart(),5*60*1000);})();
 </script>
 </body>
 </html>

@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.4
+- New: Drive health (SMART) card on the Overview page lists every disk with a colored status dot — click an entry to open the full SMART modal
+- Overview card layout is now consistent: every card uses the same flex-column structure with the action / progress area always pinned to the bottom (e.g. CPU usage bar, RAM bar, Disk bar, Samba restart button, SMART refresh button all align on the same baseline)
+- Overview SMART data is cached for 5 minutes to keep page loads snappy; a "Refresh" button forces a re-query
+
 ## 3.1.3
 - New: SMART status modal for every drive in the Drives tab
 - Pulse-icon button next to each drive opens a popup with health status (PASSED / FAILED), model, serial, firmware, capacity, drive type (SSD vs RPM), temperature, power-on hours, power-cycle count, ATA error count, and a curated table of SMART attributes
