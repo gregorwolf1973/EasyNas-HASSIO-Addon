@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.1.3
+- New: SMART status modal for every drive in the Drives tab
+- Pulse-icon button next to each drive opens a popup with health status (PASSED / FAILED), model, serial, firmware, capacity, drive type (SSD vs RPM), temperature, power-on hours, power-cycle count, ATA error count, and a curated table of SMART attributes
+- NVMe drives show wear used, available spare, media errors, unsafe shutdowns
+- Backend uses `smartctl --json` with automatic fallback through several USB-bridge modes (`sat`, `scsi`, `usbjmicron`, `usbprolific`, `usbsunplus`) so most USB enclosures work too
+- Cleanly degrades to a "SMART data not available" hint when the USB bridge filters SMART commands
+- Dockerfile: `smartmontools` added
+
 ## 3.1.2
 - New: double-click a file in the Files tab to preview it in a new browser tab — PDFs use the browser's built-in viewer, images / videos / audio play inline, text files open in the existing editor
 - New backend endpoint `/api/files/view` serves files inline with proper MIME type and HTTP Range support (videos/audio are seekable without full download)

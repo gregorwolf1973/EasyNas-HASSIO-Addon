@@ -663,6 +663,15 @@
   <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-unmount')" data-i18n="modal_cancel">Abbrechen</button><button class="btn btn-danger" id="unmount-go-btn" onclick="doUnmount()" data-i18n="btn_do_unmount">Aushängen</button></div>
 </div></div>
 
+<!-- ══ MODAL: SMART data ══ -->
+<div class="modal-overlay" id="modal-smart"><div class="modal" style="max-width:720px">
+  <div class="modal-title"><span data-i18n="modal_smart_title">SMART status</span> <span id="smart-device" style="color:var(--text-dim);font-weight:400;font-size:13px"></span></div>
+  <div id="smart-body" style="max-height:65vh;overflow-y:auto;">
+    <div class="empty"><span class="spinner"></span></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-smart')" data-i18n="modal_close">Schließen</button></div>
+</div></div>
+
 <!-- ══ MODAL: Disk Manager (partition table editor) ══ -->
 <div class="modal-overlay" id="modal-disk"><div class="modal" style="max-width:640px;">
   <div class="modal-title">Disk Manager — <span id="disk-mgr-name" style="font-family:monospace;color:var(--accent)"></span></div>
@@ -900,6 +909,20 @@ const T={
     deleted:'Gelöscht',title_edit:'Bearbeiten',title_delete:'Löschen',title_rename:'Umbenennen',
     title_copy:'Kopieren',title_move:'Verschieben',date_locale:'de-DE',logout_title:'Abmelden',
     dblclick_open:'Doppelklick zum Öffnen',
+    // SMART
+    btn_smart_title:'SMART-Werte anzeigen',modal_smart_title:'SMART-Status',modal_close:'Schließen',
+    smart_unavailable:'SMART-Daten nicht verfügbar',
+    smart_unavailable_hint:'Manche USB-Adapter leiten SMART-Befehle nicht durch. Bei intern eingebauten Datenträgern funktioniert es zuverlässig.',
+    smart_passed:'BESTANDEN',smart_failed:'FEHLGESCHLAGEN',
+    smart_status:'Gesundheits-Status',smart_model:'Modell',smart_serial:'Seriennummer',
+    smart_firmware:'Firmware',smart_capacity:'Kapazität',smart_type:'Typ',
+    smart_temp:'Temperatur',smart_poh:'Betriebsstunden',smart_cycles:'Einschaltzyklen',
+    smart_errors:'ATA-Fehler',
+    smart_wear:'Verschleiß',smart_spare:'Reserve-Blöcke',smart_media_errors:'Medien-Fehler',
+    smart_unsafe_shutdowns:'Unsaubere Abschaltungen',
+    smart_attributes:'SMART-Attribute',
+    smart_attr_name:'Name',smart_attr_value:'Wert',smart_attr_worst:'Schlechtester',
+    smart_attr_thresh:'Schwelle',smart_attr_raw:'Rohwert',
   },
   en:{
     nav_overview:'Overview',nav_drives:'Drives',nav_shares:'Shares',
@@ -994,6 +1017,20 @@ const T={
     deleted:'Deleted',title_edit:'Edit',title_delete:'Delete',title_rename:'Rename',
     title_copy:'Copy',title_move:'Move',date_locale:'en-US',logout_title:'Logout',
     dblclick_open:'Double-click to open',
+    // SMART
+    btn_smart_title:'Show SMART data',modal_smart_title:'SMART status',modal_close:'Close',
+    smart_unavailable:'SMART data not available',
+    smart_unavailable_hint:'Some USB enclosures do not forward SMART commands. Internal drives work reliably.',
+    smart_passed:'PASSED',smart_failed:'FAILED',
+    smart_status:'Health status',smart_model:'Model',smart_serial:'Serial number',
+    smart_firmware:'Firmware',smart_capacity:'Capacity',smart_type:'Type',
+    smart_temp:'Temperature',smart_poh:'Power-on hours',smart_cycles:'Power cycles',
+    smart_errors:'ATA errors',
+    smart_wear:'Wear used',smart_spare:'Spare blocks',smart_media_errors:'Media errors',
+    smart_unsafe_shutdowns:'Unsafe shutdowns',
+    smart_attributes:'SMART attributes',
+    smart_attr_name:'Name',smart_attr_value:'Value',smart_attr_worst:'Worst',
+    smart_attr_thresh:'Thresh',smart_attr_raw:'Raw',
   }
 };
 let _lang=localStorage.getItem('nas-lang')||'en';
@@ -1130,9 +1167,12 @@ function driveCard(d, partChildCount){
   const parentDisk = isDisk ? d.name : (d.name||'').replace(/p?\d+$/, '');
   const diskBtn = (d.system_device || !parentDisk) ? '' :
     '<button class="btn btn-ghost btn-sm btn-icon" title="Disk Manager" onclick="openDiskManager(\''+parentDisk+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>';
-  const btn=isDisk?diskBtn:(mounted
-    ?'<button class="btn btn-ghost btn-sm" onclick="openUnmountModal(\''+d.path+'\',\''+d.mountpoint+'\','+!!d.system_device+')">'+t('btn_unmount')+'</button>'+diskBtn
-    :'<button class="btn btn-primary btn-sm" onclick="openMountModal('+mountArgAttr+',\''+(d.fstype||'')+'\','+!!d.system_device+')">'+t('btn_mount')+'</button>'+diskBtn);
+  // SMART button: shown for every drive, queries parent disk
+  const smartBtn = !parentDisk ? '' :
+    '<button class="btn btn-ghost btn-sm btn-icon" title="'+t('btn_smart_title')+'" onclick="openSmartModal(\''+(isDisk?d.name:parentDisk)+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></button>';
+  const btn=isDisk?(smartBtn+diskBtn):(mounted
+    ?'<button class="btn btn-ghost btn-sm" onclick="openUnmountModal(\''+d.path+'\',\''+d.mountpoint+'\','+!!d.system_device+')">'+t('btn_unmount')+'</button>'+smartBtn+diskBtn
+    :'<button class="btn btn-primary btn-sm" onclick="openMountModal('+mountArgAttr+',\''+(d.fstype||'')+'\','+!!d.system_device+')">'+t('btn_mount')+'</button>'+smartBtn+diskBtn);
   const model=d.model?'<span>'+d.model.trim()+'</span>':'';
   // Disk icon: clickable toggle when this disk has partition children
   const expanded = isDisk && _expandedDisks.has(d.name);
@@ -1225,6 +1265,86 @@ async function doUnmount(force){
     }
     toast(e.message,true);
   }
+}
+
+// ── SMART data ──
+function _smartFmt(v, unit){ return (v===null||v===undefined)?'—':(v+(unit||'')); }
+function _smartFmtHours(h){
+  if(h===null||h===undefined) return '—';
+  const d=Math.floor(h/24), y=Math.floor(d/365);
+  if(y>0) return h+' h ('+y+'y '+(d-y*365)+'d)';
+  if(d>0) return h+' h ('+d+'d)';
+  return h+' h';
+}
+function _smartFmtBytes(b){
+  if(b===null||b===undefined) return '—';
+  const u=['B','KB','MB','GB','TB'];
+  let i=0; while(b>=1024 && i<u.length-1){b/=1024;i++;}
+  return b.toFixed(i?2:0)+' '+u[i];
+}
+async function openSmartModal(diskName){
+  document.getElementById('smart-device').textContent='/dev/'+diskName;
+  document.getElementById('smart-body').innerHTML='<div class="empty"><span class="spinner"></span></div>';
+  openModal('modal-smart');
+  try{
+    const s=await api('GET','/drives/'+encodeURIComponent(diskName)+'/smart');
+    renderSmart(s);
+  }catch(e){
+    document.getElementById('smart-body').innerHTML='<div class="empty"><p style="color:var(--danger)">'+e.message+'</p></div>';
+  }
+}
+function renderSmart(s){
+  if(!s.smart_supported && !s.passed && !(s.attributes||[]).length && !s.nvme){
+    document.getElementById('smart-body').innerHTML='<div class="empty"><p>'+t('smart_unavailable')+'</p><p style="color:var(--text-dim);font-size:12px;margin-top:8px">'+t('smart_unavailable_hint')+'</p></div>';
+    return;
+  }
+  const healthOk = s.passed===true;
+  const healthBadge = s.passed===true
+    ? '<span class="tag" style="background:#1f8c4c;color:#fff">'+t('smart_passed')+'</span>'
+    : s.passed===false
+      ? '<span class="tag" style="background:var(--danger);color:#fff">'+t('smart_failed')+'</span>'
+      : '<span class="tag">—</span>';
+  let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:13px;margin-bottom:14px">';
+  const row=(k,v)=>'<div style="color:var(--text-dim)">'+k+'</div><div style="font-family:monospace">'+v+'</div>';
+  html += row(t('smart_status'), healthBadge);
+  html += row(t('smart_model'), s.model||'—');
+  html += row(t('smart_serial'), s.serial||'—');
+  html += row(t('smart_firmware'), s.firmware||'—');
+  html += row(t('smart_capacity'), _smartFmtBytes(s.capacity_bytes));
+  html += row(t('smart_type'), s.rotation_rate===0?'SSD':(s.rotation_rate?(s.rotation_rate+' RPM'):'—'));
+  html += row(t('smart_temp'), _smartFmt(s.temperature_c,' °C'));
+  html += row(t('smart_poh'), _smartFmtHours(s.power_on_hours));
+  html += row(t('smart_cycles'), _smartFmt(s.power_cycles));
+  if(s.errors!==null && s.errors!==undefined) html += row(t('smart_errors'), s.errors);
+  html += '</div>';
+  // NVMe-specific block
+  if(s.nvme){
+    html += '<div style="border-top:1px solid var(--border);padding-top:10px;margin-bottom:12px"><div style="font-weight:600;margin-bottom:6px">NVMe Health</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;font-size:13px">';
+    html += row(t('smart_wear'), _smartFmt(s.nvme.percentage_used,' %'));
+    html += row(t('smart_spare'), _smartFmt(s.nvme.available_spare,' %'));
+    html += row(t('smart_media_errors'), _smartFmt(s.nvme.media_errors));
+    html += row(t('smart_unsafe_shutdowns'), _smartFmt(s.nvme.unsafe_shutdowns));
+    html += '</div></div>';
+  }
+  // ATA attributes table
+  if((s.attributes||[]).length){
+    html += '<div style="font-weight:600;margin-bottom:6px">'+t('smart_attributes')+'</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:left;border-bottom:1px solid var(--border)"><th style="padding:4px">ID</th><th>'+t('smart_attr_name')+'</th><th style="text-align:right">'+t('smart_attr_value')+'</th><th style="text-align:right">'+t('smart_attr_worst')+'</th><th style="text-align:right">'+t('smart_attr_thresh')+'</th><th>'+t('smart_attr_raw')+'</th></tr></thead><tbody>';
+    for(const a of s.attributes){
+      const color = a.failing?'color:var(--danger);font-weight:600':'';
+      html += '<tr style="border-bottom:1px solid var(--border);'+color+'">'
+        +'<td style="padding:3px 4px">'+a.id+'</td>'
+        +'<td>'+a.name+'</td>'
+        +'<td style="text-align:right;font-family:monospace">'+_smartFmt(a.value)+'</td>'
+        +'<td style="text-align:right;font-family:monospace">'+_smartFmt(a.worst)+'</td>'
+        +'<td style="text-align:right;font-family:monospace">'+_smartFmt(a.thresh)+'</td>'
+        +'<td style="font-family:monospace">'+(a.raw_str||a.raw||'—')+'</td>'
+      +'</tr>';
+    }
+    html += '</tbody></table>';
+  }
+  document.getElementById('smart-body').innerHTML = html;
 }
 
 // ── Disk Manager ──

@@ -420,6 +420,115 @@ def api_drives():
         d["system_device"] = d["name"] in system_devs
     return jsonify(drives)
 
+
+def _run_smartctl(dev_path):
+    """Run smartctl with several fallback modes for USB bridges.
+    Returns the parsed JSON dict (smartctl --json always emits valid JSON
+    even on error, with smartctl.exit_status describing the issue)."""
+    attempts = [
+        ["smartctl", "--json", "-a", dev_path],
+        ["smartctl", "--json", "-a", "-d", "sat", dev_path],
+        ["smartctl", "--json", "-a", "-d", "scsi", dev_path],
+        ["smartctl", "--json", "-a", "-d", "usbjmicron", dev_path],
+        ["smartctl", "--json", "-a", "-d", "usbprolific", dev_path],
+        ["smartctl", "--json", "-a", "-d", "usbsunplus", dev_path],
+    ]
+    last = None
+    for cmd in attempts:
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            data = json.loads(r.stdout) if r.stdout else {}
+            last = data
+            # exit_status bits: 0=ok, 1=cmdline err, 2=device open failed,
+            # 3=some smart cmd failed, etc. 0,4,64,128 are "device responded".
+            status = data.get("smartctl", {}).get("exit_status", -1)
+            if status in (0, 4, 64, 128):
+                data["_smartctl_cmd"] = " ".join(cmd)
+                return data
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError) as e:
+            last = {"error": str(e)}
+    if isinstance(last, dict):
+        last["_smartctl_cmd"] = "(all attempts failed)"
+    return last or {"error": "smartctl failed"}
+
+
+def _smart_summary(data):
+    """Boil the full smartctl JSON down to the fields we want to show."""
+    s = {
+        "device":           data.get("device", {}).get("name"),
+        "model":            data.get("model_name") or data.get("scsi_model_name"),
+        "serial":           data.get("serial_number"),
+        "firmware":         data.get("firmware_version"),
+        "capacity_bytes":   data.get("user_capacity", {}).get("bytes"),
+        "rotation_rate":    data.get("rotation_rate"),   # 0 = SSD
+        "smart_supported":  data.get("smart_support", {}).get("available", False),
+        "smart_enabled":    data.get("smart_support", {}).get("enabled", False),
+        "passed":           data.get("smart_status", {}).get("passed"),
+        "temperature_c":    (data.get("temperature") or {}).get("current"),
+        "power_on_hours":   (data.get("power_on_time") or {}).get("hours"),
+        "power_cycles":     data.get("power_cycle_count"),
+        "attributes":       [],
+        "errors":           None,
+        "raw":               data,                       # full JSON for debugging
+    }
+    # ATA attribute table: pull a curated set if present
+    keep = {1: "Read Error Rate", 5: "Reallocated Sectors", 9: "Power-On Hours",
+            12: "Power Cycle Count", 187: "Reported Uncorrectable", 188: "Command Timeout",
+            190: "Airflow Temperature", 194: "Temperature", 196: "Reallocation Events",
+            197: "Pending Sectors", 198: "Offline Uncorrectable",
+            199: "UDMA CRC Errors", 231: "SSD Life Left", 241: "Total LBAs Written"}
+    for a in (data.get("ata_smart_attributes") or {}).get("table", []) or []:
+        aid = a.get("id")
+        if aid in keep:
+            s["attributes"].append({
+                "id":     aid,
+                "name":   keep[aid],
+                "value":  a.get("value"),
+                "worst":  a.get("worst"),
+                "thresh": a.get("thresh"),
+                "raw":    (a.get("raw") or {}).get("value"),
+                "raw_str":(a.get("raw") or {}).get("string"),
+                "failing":a.get("when_failed") not in (None, "", "-"),
+            })
+    # NVMe-style health log (if present)
+    nvme = data.get("nvme_smart_health_information_log")
+    if nvme:
+        s["nvme"] = {
+            "critical_warning":     nvme.get("critical_warning"),
+            "percentage_used":      nvme.get("percentage_used"),
+            "available_spare":      nvme.get("available_spare"),
+            "available_spare_thresh": nvme.get("available_spare_threshold"),
+            "media_errors":         nvme.get("media_errors"),
+            "unsafe_shutdowns":     nvme.get("unsafe_shutdowns"),
+            "data_units_read":      nvme.get("data_units_read"),
+            "data_units_written":   nvme.get("data_units_written"),
+        }
+    # error counts (ATA)
+    errlog = data.get("ata_smart_error_log") or {}
+    if errlog:
+        s["errors"] = (errlog.get("summary") or {}).get("count")
+    return s
+
+
+@app.route("/api/drives/<name>/smart")
+def api_drive_smart(name):
+    # Whitelist: only allow real device names from our list
+    devices = flatten_devices(list_block_devices())
+    if not any(d["name"] == name for d in devices):
+        return jsonify({"error": "unknown device"}), 404
+    # SMART on partitions makes no sense — use the parent disk
+    parent = name
+    if name and name[-1:].isdigit():
+        # strip trailing digits (sdb1 -> sdb, nvme0n1p1 -> nvme0n1)
+        import re
+        parent = re.sub(r"(p?\d+)$", "", name)
+    dev_path = f"/dev/{parent}"
+    raw = _run_smartctl(dev_path)
+    summary = _smart_summary(raw)
+    summary["queried_device"] = dev_path
+    return jsonify(summary)
+
+
 MOUNT_FIFO   = "/tmp/mount_cmd"
 MOUNT_RESULT = "/tmp/mount_result"
 
