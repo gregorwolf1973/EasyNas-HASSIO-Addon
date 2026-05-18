@@ -407,6 +407,11 @@
     <span data-i18n="nav_settings">Einstellungen</span></button>
 </nav>
 
+<div id="protection-banner" style="display:none;margin:12px var(--gutter) 0;padding:12px 16px;background:rgba(244,180,0,0.15);border:1px solid var(--warn);border-left:4px solid var(--warn);border-radius:var(--radius);color:var(--text);font-size:14px;line-height:1.45;">
+  <strong style="color:var(--warn);" data-i18n="protection_title">⚠ Gesicherter Modus aktiv</strong>
+  <div style="margin-top:4px;" data-i18n="protection_body">Der Schutzmodus des Add-ons ist in Home Assistant aktiviert. Ohne erweiterte Rechte können keine Laufwerke gemountet, formatiert oder verwaltet werden. Bitte in den Add-on-Informationen den „Schutzmodus" deaktivieren und das Add-on neu starten.</div>
+</div>
+
 <main>
   <!-- ══ OVERVIEW ══ -->
   <div class="panel active" id="panel-overview">
@@ -926,6 +931,8 @@ const T={
     btn_smart_title:'SMART-Werte anzeigen',modal_smart_title:'SMART-Status',modal_close:'Schließen',
     stat_smart:'Laufwerks-Gesundheit',smart_refresh:'Aktualisieren',
     smart_passed_short:'OK',smart_failed_short:'FEHLER',smart_n_a:'k. A.',
+    protection_title:'⚠ Gesicherter Modus aktiv',
+    protection_body:'Der Schutzmodus des Add-ons ist in Home Assistant aktiviert. Ohne erweiterte Rechte können keine Laufwerke gemountet, formatiert oder verwaltet werden. Bitte in den Add-on-Informationen den „Schutzmodus" deaktivieren und das Add-on neu starten.',
     smart_unavailable:'SMART-Daten nicht verfügbar',
     smart_unavailable_hint:'Manche USB-Adapter leiten SMART-Befehle nicht durch. Bei intern eingebauten Datenträgern funktioniert es zuverlässig.',
     smart_passed:'BESTANDEN',smart_failed:'FEHLGESCHLAGEN',
@@ -1039,6 +1046,8 @@ const T={
     smart_passed:'PASSED',smart_failed:'FAILED',
     stat_smart:'Drive health',smart_refresh:'Refresh',
     smart_passed_short:'OK',smart_failed_short:'FAILED',smart_n_a:'n/a',
+    protection_title:'⚠ Protection mode is active',
+    protection_body:'The add-on protection mode is enabled in Home Assistant. Without elevated privileges, drives cannot be mounted, formatted or managed. Please disable "Protection mode" on the add-on info page and restart the add-on.',
     smart_status:'Health status',smart_model:'Model',smart_serial:'Serial number',
     smart_firmware:'Firmware',smart_capacity:'Capacity',smart_type:'Type',
     smart_temp:'Temperature',smart_poh:'Power-on hours',smart_cycles:'Power cycles',
@@ -1127,6 +1136,7 @@ async function loadStatus(){try{
   const d=s.disk;document.getElementById('stat-disk').innerHTML=d.percent+'<span class="stat-unit">%</span>';
   document.getElementById('disk-used').textContent=fmt(d.used);document.getElementById('disk-total').textContent=fmt(d.total);
   const bd=document.getElementById('bar-disk');bd.style.width=d.percent+'%';bd.className='progress-bar-fill'+(d.percent>85?' danger':d.percent>65?' warn':'');
+  const pb=document.getElementById('protection-banner');if(pb)pb.style.display=s.protection_mode?'block':'none';
 }catch(e){console.error(e);}}
 async function restartSamba(){try{await api('POST','/samba/restart');toast(t('samba_restarted'));setTimeout(loadStatus,2000);}catch(e){toast(e.message,true);}}
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.5
+- New: Warning banner across all tabs when Home Assistant's add-on "Protection mode" (gesicherter Modus) is active — explains that drive mounting/management is blocked and points to the fix
+- Detection via `CapEff` in `/proc/self/status` (CAP_SYS_ADMIN bit); reported by `/api/status` as `protection_mode`
+
 ## 3.1.4
 - New: Drive health (SMART) card on the Overview page lists every disk with a colored status dot — click an entry to open the full SMART modal
 - Overview card layout is now consistent: every card uses the same flex-column structure with the action / progress area always pinned to the bottom (e.g. CPU usage bar, RAM bar, Disk bar, Samba restart button, SMART refresh button all align on the same baseline)

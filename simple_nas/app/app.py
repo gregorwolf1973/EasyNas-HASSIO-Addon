@@ -1121,6 +1121,24 @@ def api_delete_group(name):
 
 # ─────────────────────────── status API ─────────────────────────
 
+def _protection_mode_active():
+    """Detect Home Assistant 'Protection mode' / 'Gesicherter Modus'.
+
+    When protection is enabled, the supervisor strips privileged capabilities
+    (notably CAP_SYS_ADMIN, bit 21) even though config.yaml requests them.
+    Without CAP_SYS_ADMIN we cannot mount drives, so we surface a clear warning.
+    """
+    try:
+        with open("/proc/self/status", "r") as fh:
+            for line in fh:
+                if line.startswith("CapEff:"):
+                    cap_eff = int(line.split()[1], 16)
+                    # CAP_SYS_ADMIN = 21
+                    return not (cap_eff & (1 << 21))
+    except Exception:
+        pass
+    return False
+
 @app.route("/api/status")
 def api_status():
     import psutil
@@ -1135,6 +1153,7 @@ def api_status():
         "memory": {"total": mem.total, "used": mem.used, "percent": mem.percent},
         "disk": {"total": disk.total, "used": disk.used, "free": disk.free,
                  "percent": round(disk.used / disk.total * 100, 1)},
+        "protection_mode": _protection_mode_active(),
     })
 
 @app.route("/api/samba/restart", methods=["POST"])
