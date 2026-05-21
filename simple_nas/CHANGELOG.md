@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.6
+- Safety: migration step in `run.sh` now strips any leftover bind-mount entries / fields from `/data/mounts.json` on startup — closes a remaining footgun from the removed 3.0.38–3.0.47 bind-mount feature where `rm -rf /share/<name>` could recurse through a still-active bind and wipe the underlying drive
+- DOCS.md: prominent warning section for users upgrading from 3.0.38–3.0.47 with safety instructions (use `rmdir` instead of `rm -rf`, verify with `mount | grep`)
+
 ## 3.1.5
 - New: Warning banner across all tabs when Home Assistant's add-on "Protection mode" (gesicherter Modus) is active — explains that drive mounting/management is blocked and points to the fix
 - Detection via `CapEff` in `/proc/self/status` (CAP_SYS_ADMIN bit); reported by `/api/status` as `protection_mode`

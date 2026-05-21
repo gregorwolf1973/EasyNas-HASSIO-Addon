@@ -176,6 +176,27 @@ except Exception:
     mounts = []
 
 changed = 0
+# Clean up leftover bind-mount entries/fields from versions 3.0.38–3.0.47.
+# The bind-mount feature was removed in 3.0.48 because it was ineffective
+# (HA OS slave namespaces) AND dangerous (rm -rf /share/<name> would recurse
+# through the bind and wipe the underlying drive). Make sure no leftover
+# entry can ever re-create such a bind mount on startup.
+BIND_FIELDS = ("share_bind", "share_bind_name", "bind_path", "bind", "bind_target")
+cleaned_mounts = []
+for m in mounts:
+    if m.get("type") == "bind" or m.get("kind") == "bind":
+        print(f"[MIGRATE] removed obsolete bind-mount entry for {m.get('mountpoint') or m.get('device')}")
+        changed += 1
+        continue
+    removed = [k for k in BIND_FIELDS if k in m]
+    for k in removed:
+        m.pop(k, None)
+    if removed:
+        print(f"[MIGRATE] removed obsolete bind-mount fields {removed} from {m.get('device')}")
+        changed += 1
+    cleaned_mounts.append(m)
+mounts = cleaned_mounts
+
 for m in mounts:
     dev = m.get("device", "")
     # Only migrate raw /dev/sd*, /dev/hd*, /dev/vd* paths — leave by-id and others alone
@@ -192,7 +213,7 @@ for m in mounts:
 if changed:
     with open(MOUNTS_FILE, "w") as f:
         json.dump(mounts, f, indent=2)
-    print(f"[MIGRATE] {changed} entry/entries migrated to by-id.")
+    print(f"[MIGRATE] {changed} change(s) written to mounts.json.")
 else:
     print("[MIGRATE] No migration needed.")
 PYEOF

@@ -82,6 +82,27 @@ Most add-ons with media or storage support have an SMB/CIFS mount option in thei
 
 ---
 
+## ⚠️ Important warning for upgraders from versions 3.0.38–3.0.47
+
+Versions 3.0.38 through 3.0.47 included an experimental "bind-mount" feature that exposed mounted drives under `/share/<name>` for cross-add-on access. **This feature was removed in v3.0.48** because:
+
+1. It was **ineffective** — HA OS uses slave mount namespaces (`master:118`), so the bind never actually propagated to HA Core or other add-on containers.
+2. It was **dangerous** — bind mounts look like normal folders. Running `rm -rf /share/<name>` (e.g. to clean up what looks like an empty leftover folder) **recurses through the bind mount and deletes everything on the underlying drive**.
+
+**If you have ever used Simple NAS between versions 3.0.38 and 3.0.47**, please observe the following:
+
+- **NEVER run `rm -rf /share/<name>`** on a folder name that matches one of your previously mounted drives (e.g. `/share/nas`) without first verifying it is NOT a bind mount. Check with:
+  ```
+  mount | grep '/share/<name>'
+  ```
+  If anything appears in the output → it is still a bind mount, do NOT delete it. Reboot the add-on first to clear the bind.
+
+- After upgrading to v3.0.48 or later **and restarting the add-on at least once**, any leftover bind mount is gone. The empty `/share/<name>` directory can then be removed safely with `rmdir` (NOT `rm -rf`) — `rmdir` refuses to delete a non-empty directory and will safely error out if a bind is still active.
+
+Since v3.0.56 the migration step in `run.sh` automatically cleans any obsolete bind-mount entries from `/data/mounts.json` on startup, so the feature can never re-activate itself after an upgrade.
+
+---
+
 ## Automation: reconnect shares after HA restart
 
 When Home Assistant restarts, HA Core may try to access a network path (backup location, media source) before Simple NAS has finished starting up. The automation below waits for Simple NAS to be ready and then triggers a Samba reload to ensure all shares are available.
