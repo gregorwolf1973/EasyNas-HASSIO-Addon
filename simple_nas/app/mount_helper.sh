@@ -29,6 +29,32 @@ do_mount() {
     return $_RC
 }
 
+# Mount with a specific FS type. For NTFS, prefer the in-kernel ntfs3 driver
+# (Linux 5.15+, no FUSE required) and fall back to ntfs-3g (FUSE) only if the
+# kernel driver isn't available. HA-OS add-on containers expose no /dev/fuse,
+# so ntfs-3g fails there with "fuse device is missing, try 'modprobe fuse'".
+mount_fs() {
+    _FS="$1"; shift
+    case "$_FS" in
+        ntfs|ntfs-3g|ntfs3|fuseblk)
+            echo "[mount_helper] NTFS: trying kernel driver ntfs3 first"
+            _OUT=$(do_mount -t ntfs3 "$@" 2>&1)
+            _RC=$?
+            if [ $_RC -ne 0 ]; then
+                echo "[mount_helper] ntfs3 failed ($_OUT) — falling back to ntfs-3g (FUSE)"
+                _OUT=$(do_mount -t ntfs-3g "$@" 2>&1)
+                _RC=$?
+            fi
+            ;;
+        *)
+            _OUT=$(do_mount -t "$_FS" "$@" 2>&1)
+            _RC=$?
+            ;;
+    esac
+    echo "$_OUT"
+    return $_RC
+}
+
 # Keep the FIFO open persistently on fd 3 so there's no moment between
 # command-iterations where the FIFO has no reader. Without this, the Python
 # side (which opens with O_NONBLOCK) hits ENXIO right after each command.
@@ -62,7 +88,7 @@ while true; do
                 # Try mount
                 if [ -n "$FSTYPE" ] && [ "$FSTYPE" != "auto" ]; then
                     echo "[mount_helper] Trying: mount -t $FSTYPE $DEVICE $MOUNTPOINT"
-                    OUT=$(do_mount -t "$FSTYPE" "$DEVICE" "$MOUNTPOINT" 2>&1)
+                    OUT=$(mount_fs "$FSTYPE" "$DEVICE" "$MOUNTPOINT" 2>&1)
                     RC=$?
                 else
                     # AUTO: blkid/lsblk sometimes return nothing for by-id
@@ -91,14 +117,11 @@ while true; do
                         esac
                         [ -n "$DETECTED" ] && echo "[mount_helper] auto: file -s detected '$DETECTED'"
                     fi
-                    case "$DETECTED" in
-                        ntfs)  DETECTED=ntfs-3g ;;
-                    esac
                     RC=1
                     if [ -n "$DETECTED" ]; then
                         echo "[mount_helper] auto: detected '$DETECTED'"
                         echo "[mount_helper] Trying: mount -t $DETECTED $DEVICE $MOUNTPOINT"
-                        OUT=$(do_mount -t "$DETECTED" "$DEVICE" "$MOUNTPOINT" 2>&1)
+                        OUT=$(mount_fs "$DETECTED" "$DEVICE" "$MOUNTPOINT" 2>&1)
                         RC=$?
                     fi
                     # Last resort: brute-force the common Linux/Windows types.
@@ -110,8 +133,8 @@ while true; do
                         else
                             echo "[mount_helper] auto: no FS detected — brute-force common types"
                         fi
-                        for TRY_FS in ext4 ext3 ext2 ntfs-3g vfat exfat btrfs xfs; do
-                            OUT=$(do_mount -t "$TRY_FS" "$DEVICE" "$MOUNTPOINT" 2>&1)
+                        for TRY_FS in ext4 ext3 ext2 ntfs3 vfat exfat btrfs xfs; do
+                            OUT=$(mount_fs "$TRY_FS" "$DEVICE" "$MOUNTPOINT" 2>&1)
                             RC=$?
                             if [ $RC -eq 0 ]; then
                                 echo "[mount_helper] auto: brute-force succeeded with -t $TRY_FS"

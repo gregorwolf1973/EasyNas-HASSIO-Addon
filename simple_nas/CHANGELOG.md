@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.7
+- Fix: NTFS drives failed to mount with `Failed to create '/dev/fuse': Read-only file system` / `ntfs-3g-mount: fuse device is missing` — HA OS add-on containers expose no `/dev/fuse`, so the userspace ntfs-3g driver cannot run
+- Mount helper now uses the in-kernel `ntfs3` driver (Linux 5.15+, no FUSE required) and only falls back to `ntfs-3g` if the kernel driver is unavailable — applies to explicit NTFS selection, auto-detection and the brute-force loop
+- `fuseblk` (how `/proc/mounts` reports old ntfs-3g mounts) is now recognized on restore and normalized to the `ntfs` tag in the drive list
+
 ## 3.1.6
 - Safety: migration step in `run.sh` now strips any leftover bind-mount entries / fields from `/data/mounts.json` on startup — closes a remaining footgun from the removed 3.0.38–3.0.47 bind-mount feature where `rm -rf /share/<name>` could recurse through a still-active bind and wipe the underlying drive
 - DOCS.md: prominent warning section for users upgrading from 3.0.38–3.0.47 with safety instructions (use `rmdir` instead of `rm -rf`, verify with `mount | grep`)

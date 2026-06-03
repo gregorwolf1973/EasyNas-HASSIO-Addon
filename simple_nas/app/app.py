@@ -615,6 +615,10 @@ def api_mount():
                         break
         except Exception:
             pass
+    # /proc/mounts reports ntfs-3g (FUSE) mounts as "fuseblk" — normalize to a
+    # meaningful tag and a value that mount_fs understands on restore.
+    if resolved_fs == "fuseblk":
+        resolved_fs = "ntfs"
     # Persist the resolved type so the tag stays visible after unmount
     if resolved_fs and resolved_fs != "auto":
         update_fstype_memory({os.path.basename(os.path.realpath(stable_dev)): resolved_fs})
