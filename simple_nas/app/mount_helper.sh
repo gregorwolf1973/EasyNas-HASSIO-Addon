@@ -29,6 +29,14 @@ do_mount() {
     return $_RC
 }
 
+# Detect the classic "no CAP_SYS_ADMIN" symptom. On Home Assistant this means
+# Protection Mode is still ENABLED — which makes the Supervisor ignore the
+# add-on's full_access / privileged / apparmor:false settings, so mount(2)
+# returns EPERM.
+is_perm_error() {
+    echo "$1" | grep -qiE "permission denied|operation not permitted|are you root"
+}
+
 # Mount with a specific FS type. For NTFS, prefer the in-kernel ntfs3 driver
 # (Linux 5.15+, no FUSE required) and fall back to ntfs-3g (FUSE) only if the
 # kernel driver isn't available. HA-OS add-on containers expose no /dev/fuse,
@@ -159,6 +167,19 @@ while true; do
                     echo "[mount_helper] DEBUG: blkid $DEVICE = $(blkid "$DEVICE" 2>&1)"
                     echo "[mount_helper] DEBUG: mountinfo (last 5):"
                     tail -5 /proc/self/mountinfo 2>/dev/null
+                    # Permission error → almost always Protection Mode still on
+                    if is_perm_error "$OUT"; then
+                        CAPEFF=$(grep CapEff /proc/self/status 2>/dev/null | awk '{print $2}')
+                        echo "[mount_helper] ====================================================="
+                        echo "[mount_helper] PERMISSION ERROR — this is NOT a filesystem problem."
+                        echo "[mount_helper] CapEff=$CAPEFF (all-zero = NO capabilities granted)"
+                        echo "[mount_helper] The add-on has no CAP_SYS_ADMIN, so mount() returns EPERM."
+                        echo "[mount_helper] CAUSE: 'Protection mode' is still ENABLED for this add-on."
+                        echo "[mount_helper] FIX:  Open the add-on page -> Info tab ->"
+                        echo "[mount_helper]       turn OFF the 'Protection mode' toggle -> Restart."
+                        echo "[mount_helper] ====================================================="
+                        OUT="Permission denied (no CAP_SYS_ADMIN). Disable 'Protection mode' in the add-on Info tab and restart the add-on. (raw: $OUT)"
+                    fi
                 fi
 
                 printf '%s|%s\n' "$RC" "$OUT" > "$RESULT"

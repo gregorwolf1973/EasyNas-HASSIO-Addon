@@ -166,6 +166,30 @@ You can also create **manual snapshots** from the Backup tab (up to 10 kept). Ea
 
 ---
 
+## ⚠️ Important: disable Protection Mode
+
+This add-on needs `CAP_SYS_ADMIN` to run `mount` / `umount`. Home Assistant only grants the add-on's elevated permissions (`full_access`, `privileged`, `apparmor: false`) when **Protection Mode is turned OFF**.
+
+**If Protection Mode is still ON, every mount fails** with:
+
+```
+mount: permission denied (are you root?)
+... Operation not permitted
+```
+
+(and NTFS additionally fails to create `/dev/fuse` because `/dev` is read-only).
+
+**Fix:**
+
+1. Open the **Simple NAS** add-on page in Home Assistant
+2. Go to the **Info** tab
+3. Turn **OFF** the **Protection mode** toggle
+4. **Restart** the add-on
+
+You can confirm it worked in the add-on log: at startup the helper prints its capabilities, and `CapEff` should be a non-zero value (an all-zero `CapEff` means no capabilities = Protection Mode still on).
+
+---
+
 ## Security rating explanation
 
 Home Assistant assigns this add-on a **security score of 1 (low)** because of the following required capabilities:
@@ -189,6 +213,9 @@ Home Assistant assigns this add-on a **security score of 1 (low)** because of th
 ---
 
 ## Troubleshooting
+
+**Mount fails with "permission denied (are you root?)" / "Operation not permitted"**  
+Protection Mode is still enabled. Turn it OFF in the add-on Info tab and restart — see the "Important: disable Protection Mode" section above. This is the #1 cause of mount failures on a fresh install.
 
 **Drive not remounted after reboot**  
 Upgrade to v3.0.49 or later. Older versions used `fstype: auto` when restoring mounts on startup, which fails on some USB devices. The current version saves and reuses the detected filesystem type (e.g. `ext4`) so the drive mounts reliably on every start.

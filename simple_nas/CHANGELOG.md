@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.1.8
+- Fix: clear diagnosis for the #1 mount failure — `mount: permission denied (are you root?)` / `Operation not permitted`. This is not a filesystem problem but the result of **Protection Mode still being enabled**, which makes HA strip the add-on's `CAP_SYS_ADMIN`
+- Mount helper now detects permission errors, logs `CapEff` (all-zero = no capabilities) and prints a clear instruction: turn OFF Protection Mode in the add-on Info tab and restart
+- The GUI error message now says exactly this instead of showing a cryptic mount error
+- DOCS.md: new prominent "disable Protection Mode" section + troubleshooting entry
+
 ## 3.1.7
 - Fix: NTFS drives failed to mount with `Failed to create '/dev/fuse': Read-only file system` / `ntfs-3g-mount: fuse device is missing` — HA OS add-on containers expose no `/dev/fuse`, so the userspace ntfs-3g driver cannot run
 - Mount helper now uses the in-kernel `ntfs3` driver (Linux 5.15+, no FUSE required) and only falls back to `ntfs-3g` if the kernel driver is unavailable — applies to explicit NTFS selection, auto-detection and the brute-force loop
