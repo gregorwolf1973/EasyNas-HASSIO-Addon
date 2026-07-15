@@ -1,6 +1,9 @@
 # Changelog
 
-## 3.1.8
+## 3.1.9
+- Fix (#8): share creation crashed with `PermissionError: Operation not permitted` on exFAT/FAT32 drives — these filesystems have no POSIX permission model, so `os.chmod()` fails. New `ensure_share_dir()` helper tolerates the failure and creates the share anyway (permissions are irrelevant on those filesystems)
+- Fix (#7): macOS Finder / iOS Files app now show correct filenames and metadata — added `vfs objects = catia fruit streams_xattr` plus fruit tuning to the global Samba config (harmless for Windows/Linux clients)
+- Fix (#7): mobile web-GUI file list reflows into a 3-row grid below 600 px so long file/folder names no longer push size/date/action buttons off-screen
 - Fix: clear diagnosis for the #1 mount failure — `mount: permission denied (are you root?)` / `Operation not permitted`. This is not a filesystem problem but the result of **Protection Mode still being enabled**, which makes HA strip the add-on's `CAP_SYS_ADMIN`
 - Mount helper now detects permission errors, logs `CapEff` (all-zero = no capabilities) and prints a clear instruction: turn OFF Protection Mode in the add-on Info tab and restart
 - The GUI error message now says exactly this instead of showing a cryptic mount error

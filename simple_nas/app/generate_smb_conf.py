@@ -116,6 +116,16 @@ conf = f"""[global]
    wins support = yes
    # Custom SMB port (default 445; change if official Samba add-on is also running)
    smb ports = {smb_port}
+   # macOS Finder / iOS Files app compatibility (resource forks, metadata,
+   # correct filename display). Harmless for Windows/Linux clients. (Issue #7)
+   vfs objects = catia fruit streams_xattr
+   fruit:metadata = stream
+   fruit:model = MacSamba
+   fruit:posix_rename = yes
+   fruit:veto_appledouble = no
+   fruit:nfs_aces = no
+   fruit:wipe_intentionally_left_blank_rfork = yes
+   fruit:delete_empty_adfiles = yes
    # Suppress macOS junk files on all shares
    veto files = /.DS_Store/._.DS_Store/._*/.TemporaryItems/.Trashes/.fseventsd/.Spotlight-V100/
    delete veto files = yes

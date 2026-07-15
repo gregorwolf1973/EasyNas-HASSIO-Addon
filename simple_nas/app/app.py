@@ -944,6 +944,31 @@ def api_partition_format(name, num):
 
 # ─────────────────────────── shares API ─────────────────────────
 
+def ensure_share_dir(path):
+    """Create the share directory and apply Samba-friendly permissions.
+
+    exFAT / FAT32 / NTFS do not support POSIX permissions, so os.chmod()
+    raises PermissionError (EPERM) or OSError (ENOTSUP/EINVAL) on them. That
+    is harmless — those filesystems grant access to everyone anyway — so we
+    only warn and continue instead of failing share creation. (Issue #8)
+    """
+    try:
+        os.makedirs(path, mode=0o2775, exist_ok=True)
+    except FileExistsError:
+        pass
+    except OSError as e:
+        # Directory may already exist on a non-POSIX FS, or the parent is
+        # read-only. Re-raise only if the path is genuinely not there.
+        if not os.path.isdir(path):
+            raise
+        print(f"ensure_share_dir: makedirs({path}) warning: {e}", flush=True)
+    try:
+        os.chmod(path, 0o2775)
+    except OSError as e:
+        # exFAT/FAT/NTFS have no Unix permission model — skip silently-ish
+        print(f"ensure_share_dir: chmod not supported on {path} "
+              f"(likely exFAT/FAT/NTFS): {e}", flush=True)
+
 @app.route("/api/shares", methods=["GET"])
 def api_get_shares():
     shares = load_json(SHARES_FILE, [])
@@ -961,9 +986,8 @@ def api_create_share():
         return jsonify({"error": "name and path required"}), 400
     name = re.sub(r"[^a-zA-Z0-9_\-]", "_", name)
 
-    # Create directory with Samba-friendly permissions
-    os.makedirs(path, mode=0o2775, exist_ok=True)
-    os.chmod(path, 0o2775)
+    # Create directory with Samba-friendly permissions (tolerates exFAT/FAT)
+    ensure_share_dir(path)
 
     shares = load_json(SHARES_FILE, [])
     if any(s["name"] == name for s in shares):
@@ -995,8 +1019,7 @@ def api_update_share(name):
             # Ensure share directory exists with correct permissions
             p = s.get("path", "")
             if p:
-                os.makedirs(p, mode=0o2775, exist_ok=True)
-                os.chmod(p, 0o2775)
+                ensure_share_dir(p)
             save_json(SHARES_FILE, shares)
             reload_samba()
             return jsonify(s)
