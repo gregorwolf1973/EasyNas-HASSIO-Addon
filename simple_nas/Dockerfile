@@ -25,8 +25,15 @@ RUN apk add --no-cache \
     avahi-tools \
     dbus \
     rsync \
-    smartmontools \
-    hd-idle
+    smartmontools
+
+# hd-idle for optional HDD spindown (hdd_idle_seconds).
+# Kept in a separate, NON-FATAL step so the add-on still builds even if the
+# package is missing in the base image's repositories. The runtime checks
+# `command -v hd-idle` and simply disables the feature if it's absent.
+RUN apk add --no-cache hd-idle \
+    || apk add --no-cache hd-idle --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community \
+    || echo "WARNING: hd-idle unavailable in repos — HDD spindown will be disabled at runtime"
 
 # Install Python packages
 RUN pip3 install --break-system-packages flask psutil

@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.11
+- Fix: add-on could fail to build/install because `hd-idle` (added in 3.1.10) was in the main `apk add` line — if the package is missing from the base image repos, the whole build aborted
+- `hd-idle` is now installed in a separate, non-fatal step (tries default repos, then edge/community, otherwise continues) — the spindown feature degrades gracefully if the package is unavailable
+
 ## 3.1.10
 - New: HDD spindown via `hdd_idle_seconds` option — mounted drives spin down after N seconds of inactivity to save power and reduce noise/wear (0 = disabled, default)
 - Uses I/O-based `hd-idle` (watches `/proc/diskstats`), which works on USB-SATA bridges where `hdparm -S` does not
