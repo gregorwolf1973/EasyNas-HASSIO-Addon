@@ -33,6 +33,9 @@ export WEB_GUI_ENABLED
 WEB_GUI_ENABLED=$(bashio::config 'web_gui_enabled')
 bashio::log.info "Web GUI enabled: ${WEB_GUI_ENABLED}"
 
+export HDD_IDLE_SECONDS
+HDD_IDLE_SECONDS=$(bashio::config 'hdd_idle_seconds')
+
 # Auto-restore settings from /config/.simplenas/auto (reinstall-safe backup)
 python3 - << 'PYEOF'
 import os, shutil, json
@@ -225,6 +228,27 @@ python3 /app/restore_mounts.py
 # are correctly marked available = yes instead of available = no
 bashio::log.info "Regenerating smb.conf after mount restore..."
 python3 /app/generate_smb_conf.py "$WORKGROUP" "$NAS_NAME" "$SMB_PORT"
+
+# ── HDD Spindown (hd-idle) ─────────────────────────────────────
+# Spin down user-mounted drives after inactivity. Started AFTER restore_mounts
+# so the devices exist. Global default '-i 0' means no disk is touched unless
+# it is explicitly named below — this guarantees the HA system disk keeps
+# spinning (it is never in mounts.json).
+if [ "${HDD_IDLE_SECONDS:-0}" -gt 0 ] 2>/dev/null; then
+    if command -v hd-idle > /dev/null 2>&1; then
+        HD_IDLE_ARGS=$(python3 /app/hd_idle_args.py "${HDD_IDLE_SECONDS}")
+        if [ -n "${HD_IDLE_ARGS}" ]; then
+            hd-idle -i 0 ${HD_IDLE_ARGS} &
+            bashio::log.info "hd-idle started: spin down mounted drives after ${HDD_IDLE_SECONDS}s idle (${HD_IDLE_ARGS})"
+        else
+            bashio::log.info "hd-idle: no user-mounted drives found — not starting"
+        fi
+    else
+        bashio::log.warning "hd-idle not installed — spindown unavailable"
+    fi
+else
+    bashio::log.info "HDD spindown disabled (hdd_idle_seconds: 0)"
+fi
 
 # Start Samba daemons
 bashio::log.info "Starting Samba daemons (smbd + nmbd)..."

@@ -25,7 +25,8 @@ RUN apk add --no-cache \
     avahi-tools \
     dbus \
     rsync \
-    smartmontools
+    smartmontools \
+    hd-idle
 
 # Install Python packages
 RUN pip3 install --break-system-packages flask psutil

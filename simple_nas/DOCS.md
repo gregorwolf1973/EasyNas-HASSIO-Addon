@@ -42,6 +42,7 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 | `admin_username` | string | `admin` | Web GUI username |
 | `admin_password` | string | _(empty)_ | Web GUI password |
 | `web_gui_enabled` | bool | `true` | Set to `false` to run Samba only, without the web interface |
+| `hdd_idle_seconds` | int | `0` | Spin down mounted drives after this many seconds of inactivity (0 = disabled). See "Drive spindown / power saving" below |
 
 ---
 
@@ -65,6 +66,28 @@ Simple NAS automatically resolves `/dev/sdX` device names to their stable `/dev/
 - Saved mounts are **automatically restored on every add-on start**, using the filesystem type that was detected at mount time (e.g. `ext4`) rather than relying on kernel auto-detection, which can fail on some USB devices.
 
 > ⚠️ **Devices that back the HA system (`/`, `/boot`, …) are marked SYSTEM** in the GUI and require explicit confirmation before mounting/unmounting.
+
+---
+
+## Drive spindown / power saving
+
+Set `hdd_idle_seconds` to a value greater than `0` (e.g. `1800` for 30 minutes) to have mounted drives spin down after a period of inactivity. This saves power and reduces noise and mechanical wear on spinning HDDs.
+
+**How it works:**
+
+- Uses `hd-idle`, which monitors actual disk I/O via `/proc/diskstats` and issues the standby command when a drive has been idle long enough. This is the robust approach for **USB drives**, where the drive's built-in `hdparm -S` standby timer often does not work because USB-SATA bridges do not pass the ATA standby command through.
+- **Only the drives you mounted in Simple NAS are affected.** hd-idle is started with a global default of `-i 0` (never spin down) and is then explicitly pointed only at the base disks of the devices listed in `mounts.json`. **The HA system disk is never spun down**, because it is never part of your mounts.
+
+**Important caveats:**
+
+- Spindown only happens when **nothing** touches the drive. On a Home Assistant system many processes may poll the disk periodically:
+  - An active Samba client keeping a connection open
+  - SMART monitoring / status checks
+  - Backup jobs
+  - HA media source scanning
+- If any of these access the drive, the idle timer resets and the drive stays awake. If your drive never spins down, check what is accessing it.
+- The **first access after spindown is slow** (a few seconds) while the drive spins back up. This is normal.
+- SSDs do not benefit from this and can safely ignore the setting.
 
 ---
 

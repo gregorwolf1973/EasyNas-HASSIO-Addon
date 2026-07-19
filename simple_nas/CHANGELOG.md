@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.1.10
+- New: HDD spindown via `hdd_idle_seconds` option — mounted drives spin down after N seconds of inactivity to save power and reduce noise/wear (0 = disabled, default)
+- Uses I/O-based `hd-idle` (watches `/proc/diskstats`), which works on USB-SATA bridges where `hdparm -S` does not
+- Safe by design: hd-idle runs with a global `-i 0` default and is only pointed at the base disks of drives listed in `mounts.json` — the HA system disk is never spun down
+- Added `hd-idle` to the Dockerfile and `hd_idle_args.py` helper that maps mounted devices to their base disks (e.g. `sdb1 → sdb`)
+
 ## 3.1.9
 - Fix (#8): share creation crashed with `PermissionError: Operation not permitted` on exFAT/FAT32 drives — these filesystems have no POSIX permission model, so `os.chmod()` fails. New `ensure_share_dir()` helper tolerates the failure and creates the share anyway (permissions are irrelevant on those filesystems)
 - Fix (#7): macOS Finder / iOS Files app now show correct filenames and metadata — added `vfs objects = catia fruit streams_xattr` plus fruit tuning to the global Samba config (harmless for Windows/Linux clients)
