@@ -307,6 +307,23 @@ bashio::log.info "Network discovery active"
 python3 /app/llmnr_responder.py "${NAS_NAME}" &
 bashio::log.info "LLMNR responder started (\\\\${NAS_NAME} name resolution for Windows)"
 
+# ── Delayed smb.conf reload for slow-mounting USB drives ───────
+# Some USB drives take 60-120s to mount. The smb.conf generated above
+# may have marked those shares as inactive. This background job waits,
+# then regenerates smb.conf and reloads Samba so late-mounting shares
+# become available without a manual restart.
+(
+    sleep 90
+    NEW_CONF=$(python3 /app/generate_smb_conf.py "$WORKGROUP" "$NAS_NAME" "$SMB_PORT" 2>&1)
+    if echo "$NEW_CONF" | grep -q "inactive"; then
+        # Still inactive — try again after another 90s
+        sleep 90
+        python3 /app/generate_smb_conf.py "$WORKGROUP" "$NAS_NAME" "$SMB_PORT"
+    fi
+    smbcontrol smbd reload-config 2>/dev/null || pkill -HUP smbd 2>/dev/null
+    echo "[delayed-reload] smb.conf regenerated and Samba reloaded"
+) &
+
 # ── Web GUI ────────────────────────────────────────────────────
 if [ "${WEB_GUI_ENABLED}" = "true" ]; then
     bashio::log.info "Starting Web GUI on port ${WEB_PORT}..."
