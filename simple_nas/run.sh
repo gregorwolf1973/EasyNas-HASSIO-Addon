@@ -302,6 +302,11 @@ fi
 
 bashio::log.info "Network discovery active"
 
+# 4) LLMNR responder – answers Windows 11 name queries for \\NAS_NAME
+#    without any client-side configuration (UDP multicast on port 5355)
+python3 /app/llmnr_responder.py "${NAS_NAME}" &
+bashio::log.info "LLMNR responder started (\\\\${NAS_NAME} name resolution for Windows)"
+
 # ── Web GUI ────────────────────────────────────────────────────
 if [ "${WEB_GUI_ENABLED}" = "true" ]; then
     bashio::log.info "Starting Web GUI on port ${WEB_PORT}..."
