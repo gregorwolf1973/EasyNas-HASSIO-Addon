@@ -30,13 +30,13 @@ Architectures: `aarch64` (Raspberry Pi 4/5), `amd64`, `armv7`.
 [![Add to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fgregorwolf1973%2FEasyNas-HASSIO-Addon)
 
 Click the button → the repository is added to Home Assistant → install
-**Simple NAS** from the Add-on Store → Start.
+**Simple NAS** from the store → Start.
 
 Or by hand:
 
-1. In Home Assistant: **Settings → Add-ons → Add-on Store**
+1. In Home Assistant: **Settings → Apps** → **Install app**
 2. Top right **⋮ → Repositories**
-3. Enter this URL:
+3. Paste this URL and select **Add**:
    ```
    https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon
    ```

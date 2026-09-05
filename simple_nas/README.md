@@ -34,7 +34,7 @@ A lightweight NAS add-on for Home Assistant OS. Turns your Raspberry Pi (or othe
 Click the button → repository is automatically added → continue with step 4.
 
 Or manually:
-1. In Home Assistant: **Settings → Add-ons → Add-on Store**
+1. In Home Assistant: **Settings → Apps** → **Install app**
 2. Top right **⋮ → Repositories**
 3. Enter URL: `https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon`
 4. **Simple NAS** appears in the store → **Install**
@@ -59,7 +59,7 @@ Or manually:
            ├── index.html
            └── login.html
    ```
-2. **Settings → Add-ons → Add-on Store → ⋮ → Reload local add-ons**
+2. **Settings → Apps → ⋮ → Reload local apps**
 3. **Simple NAS** under "Local add-ons" → **Install** → **Start**
 
 ## Quick Start

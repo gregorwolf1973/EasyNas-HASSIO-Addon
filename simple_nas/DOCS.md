@@ -19,7 +19,7 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 
 ## Installation
 
-1. Add this repository to Home Assistant: **Settings → Add-ons → Add-on Store → ⋮ → Repositories**
+1. Add this repository to Home Assistant: **Settings → Apps → ⋮ → Repositories**
    ```
    https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon
    ```
