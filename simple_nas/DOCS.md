@@ -179,6 +179,49 @@ max_exceeded: silent
 
 ---
 
+## Sharing files on the internet (web sharing)
+
+Since 3.4.0 the add-on can publish folders and files through links. The share site is a **separate web application on its own port** (default 8101). Nothing from the admin interface exists on that port: a bug on the public site cannot reach the file manager, the Samba settings or the drive tools.
+
+### Prerequisites
+
+1. `admin_password_enabled: true` with a non-empty `admin_password`. The public site refuses to start without it, on purpose.
+2. `sharing_enabled: true`.
+3. A reverse proxy with TLS in front of port 8101. The add-on never terminates TLS itself. Nginx Proxy Manager (available as an add-on) is the tested path.
+4. `share_public_url` set to the address people will use, e.g. `https://files.example.com`. It is only used to build the links shown in the Sharing tab.
+
+### Nginx Proxy Manager
+
+Create a proxy host for your domain pointing at the HA host on port 8101 (scheme `http`), request a Let's Encrypt certificate and enable *Force SSL*. In the **Advanced** tab add:
+
+```
+client_max_body_size 0;
+proxy_request_buffering off;
+proxy_buffering off;
+proxy_read_timeout 3600s;
+proxy_send_timeout 3600s;
+```
+
+Without `client_max_body_size` every upload fails at nginx's 1 MB default; without `proxy_buffering off` nginx spools a whole folder download to disk before the browser sees the first byte.
+
+**If Nginx Proxy Manager runs as an add-on on the same host, set `share_bind: 127.0.0.1`.** The share site is then reachable *only* through the proxy. Note that because this add-on uses `host_network`, the `ports:` entry in the add-on UI is informational - the port is open on the LAN as soon as the site listens, unless bound to 127.0.0.1.
+
+### How links work
+
+- A link is a 22-character token that cannot be guessed. Every failed password on a link counts against the link (20 per 15 minutes) *and* against the IP (10 per 15 minutes); a link locked this way shows "Locked" in the Sharing tab with a one-click unlock.
+- An unknown, disabled, expired or exhausted link, and a link whose folder is no longer mounted, all show the *same* page. Nobody can tell whether a token exists.
+- Changing a link's password, access mode or account list ends every session on that link immediately. "Generate new link" replaces the token.
+- Share accounts are separate from the Samba users. Their password hashes live in `/data/share_accounts.json` (mode 600) and, like all settings, in the reinstall-safe copy under `/config/.simplenas/auto` - which means they are part of your Home Assistant backups.
+- HTML and SVG files are never shown inline on the share site, only offered as downloads. A visitor-uploaded page served from your own domain would otherwise run scripts against every later visitor.
+
+### Access log
+
+Every view, login, failed login, download and lock-out is written to `/data/share_access.log` (JSON lines, rotated at `share_log_max_mb`). The Sharing tab shows the last entries with filters. The log records link ids and paths relative to the link, never tokens or absolute paths.
+
+### Known limitation
+
+This add-on runs as root with `full_access` because of its drive-management features. A code-execution flaw in the public site would therefore be a compromise of the whole host. The share site is small, has no upload path yet, sets strict headers and rate limits, but the honest mitigation is the reverse proxy being the only way in and `share_bind: 127.0.0.1` wherever possible. Running the share site as a separate unprivileged process is on the roadmap.
+
 ## Reinstall-safe backup
 
 Every time you save a setting (share, user, group, mount) the add-on writes a backup to `/config/.simplenas/auto/`. This directory survives an add-on uninstall/reinstall because it lives in the persistent `/config` volume.

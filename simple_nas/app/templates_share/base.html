@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{% block title %}{{ L.title }}{% endblock %} · Simple NAS</title>
+<style>
+  :root { color-scheme: light dark;
+    --bg:#f5f6fa; --surface:#fff; --surface2:#f0f2f5; --border:#e1e5eb; --text:#1c1c1c; --dim:#6e7681;
+    --accent:#03a9f4; --accent-text:#fff; --danger:#db4437; --warn-bg:#fff8e1; --warn-bd:#ffe082; --warn-tx:#7a5b00; --radius:12px; }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg:#111318; --surface:#1c1f27; --surface2:#252830; --border:#333842; --text:#c8cdd5; --dim:#6b7280;
+    --accent:#4fc3f7; --accent-text:#0a0a0a; --danger:#f44336; --warn-bg:rgba(255,183,77,.1); --warn-bd:rgba(255,183,77,.3); --warn-tx:#ffb74d; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:900px; margin:0 auto; padding:24px 16px 48px; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; }
+  h1 { font-size:1.15rem; margin:0; overflow-wrap:anywhere; }
+  .sub { color:var(--dim); font-size:.82rem; margin-top:2px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; }
+  .btn { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border); background:var(--surface2); color:var(--text);
+         border-radius:9px; padding:8px 14px; font:inherit; cursor:pointer; text-decoration:none; }
+  .btn.primary { background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
+  .btn.sm { padding:5px 10px; font-size:.8rem; }
+  input[type=text], input[type=password] { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:9px;
+         background:var(--bg); color:var(--text); font:inherit; }
+  label { display:block; font-size:.78rem; color:var(--dim); margin:12px 0 4px; }
+  .err { color:var(--danger); font-size:.85rem; margin-top:10px; }
+  .warn { background:var(--warn-bg); border:1px solid var(--warn-bd); color:var(--warn-tx); border-radius:9px; padding:10px 12px; font-size:.85rem; }
+  .crumbs { font-family:ui-monospace,Menlo,monospace; font-size:.8rem; color:var(--dim); margin-bottom:10px; overflow-wrap:anywhere; }
+  .crumbs a { color:var(--accent); text-decoration:none; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:.72rem; color:var(--dim); text-transform:uppercase; letter-spacing:.04em; padding:6px 8px; border-bottom:1px solid var(--border); }
+  td { padding:9px 8px; border-bottom:1px solid var(--border); vertical-align:middle; overflow-wrap:anywhere; }
+  td.num { text-align:right; white-space:nowrap; color:var(--dim); font-size:.82rem; }
+  td.act { text-align:right; white-space:nowrap; }
+  a.name { color:var(--text); text-decoration:none; font-weight:500; }
+  a.name:hover { color:var(--accent); }
+  .ico { display:inline-block; width:16px; text-align:center; margin-right:6px; color:var(--dim); }
+  .foot { margin-top:22px; font-size:.75rem; color:var(--dim); display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .foot a { color:var(--dim); }
+  .center { text-align:center; padding:36px 12px; }
+  .big { font-size:1.4rem; margin:0 0 6px; }
+  @media (max-width:600px) { th.hide, td.hide { display:none; } }
+</style>
+</head>
+<body>
+<main>
+{% block body %}{% endblock %}
+<div class="foot">
+  <span>{{ L.shared_by }}</span>
+  <span><a href="{{ url_for('share_lang', code='de') }}">DE</a> · <a href="{{ url_for('share_lang', code='en') }}">EN</a></span>
+</div>
+</main>
+</body>
+</html>

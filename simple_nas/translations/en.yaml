@@ -47,3 +47,15 @@ configuration:
   share_allowed_roots:
     name: Folders allowed for sharing
     description: Only folders below these directories can be shared via link. /config and /data are always excluded.
+  share_trusted_proxies:
+    name: Trusted proxies
+    description: "X-Forwarded-For/-Proto are only honoured from these addresses. Default: localhost and the Supervisor network (where Nginx Proxy Manager runs as an add-on)."
+  share_cookie_secure:
+    name: Share cookie over HTTPS only
+    description: Keep on when the site is published over HTTPS (the normal case). Only switch off for testing over http://.
+  share_session_hours:
+    name: Share site session length (hours)
+    description: How long a login to a link stays valid.
+  share_log_max_mb:
+    name: Access log size (MB)
+    description: The log rotates at this size; one older copy is kept.

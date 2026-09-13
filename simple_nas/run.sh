@@ -327,6 +327,17 @@ bashio::log.info "LLMNR responder started (\\\\${NAS_NAME} name resolution for W
 ) &
 
 # ── Web GUI ────────────────────────────────────────────────────
+# The public sharing site must never run without a working admin password.
+# app.py checks this again on its own.
+if bashio::config.true 'sharing_enabled'; then
+    if ! bashio::config.true 'admin_password_enabled' || bashio::config.is_empty 'admin_password'; then
+        bashio::log.fatal "sharing_enabled verlangt admin_password_enabled und ein gesetztes admin_password."
+        bashio::log.fatal "Die oeffentliche Freigabe-Seite wird NICHT gestartet."
+    elif bashio::config.is_empty 'share_public_url'; then
+        bashio::log.warning "share_public_url ist leer - Freigabe-Links zeigen auf die LAN-Adresse."
+    fi
+fi
+
 # Request bodies are buffered to a temp file before the app sees them. On
 # Home Assistant OS /tmp is RAM, so point TMPDIR at the data partition.
 mkdir -p /data/tmp

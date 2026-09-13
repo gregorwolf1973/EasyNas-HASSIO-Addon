@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Simple NAS with Samba shares and web GUI for drive management"
-version: "3.3.0"
+version: "3.4.0"
 url: "https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon"
 slug: "simple_nas"
 init: false
@@ -15,6 +15,10 @@ ingress_port: 8100
 panel_icon: "mdi:nas"
 panel_title: "Simple NAS"
 host_network: true
+ports:
+  8101/tcp: 8101
+ports_description:
+  8101/tcp: "Public file-sharing site - publish only through a reverse proxy with TLS (Nginx Proxy Manager)"
 privileged:
   - SYS_ADMIN
   - SYS_RAWIO
@@ -46,6 +50,13 @@ options:
     - "/media"
     - "/mnt"
     - "/share"
+  share_trusted_proxies:
+    - "127.0.0.1"
+    - "::1"
+    - "172.30.32.0/23"
+  share_cookie_secure: true
+  share_session_hours: 8
+  share_log_max_mb: 5
 schema:
   workgroup: str
   nas_name: str
@@ -65,6 +76,11 @@ schema:
   share_public_url: str?
   share_allowed_roots:
     - "str"
+  share_trusted_proxies:
+    - "str"
+  share_cookie_secure: bool
+  share_session_hours: int(1,720)
+  share_log_max_mb: int(1,100)
 map:
   - share:rw
   - media:rw

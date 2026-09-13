@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.4.0
+- **Die oeffentliche Freigabe-Seite ist da.** Eine zweite, eigenstaendige Anwendung auf Port 8101 (Option `share_port`), auf der ausschliesslich `/s/<link>` existiert. Verwaltung, Dateimanager und Samba-Einstellungen sind dort nicht erreichbar; das Addon verweigert den Start, sollte dort je etwas anderes registriert sein.
+- Sie startet nur mit `sharing_enabled: true` **und** gesetztem Admin-Passwort. run.sh und app.py pruefen das unabhaengig voneinander.
+- Links mit Passwort, Links fuer bestimmte Konten und offene Links; Blaettern in Unterordnern, Download mit Fortsetzen, Vorschau nur fuer Bilder, Video, Audio, PDF und Text. HTML und SVG werden nie inline ausgeliefert.
+- Unbekannte, deaktivierte, abgelaufene und erschoepfte Links sowie Links auf nicht eingehaengte Ordner zeigen dieselbe, byteweise identische Seite.
+- Sperren gegen Passwortraten: je IP (10 Fehlversuche in 15 Minuten), je Link (20, auch ueber viele Adressen verteilt), je Konto (10), 240 Anfragen je Minute und IP. Gesperrte Links zeigen im Reiter Teilen ein Etikett mit Entsperr-Knopf.
+- Zugriffsprotokoll `/data/share_access.log` (JSON-Zeilen, rotierend) mit Ansicht und Filtern im Reiter Teilen. Es enthaelt Link-IDs und relative Pfade, nie Tokens oder absolute Pfade.
+- Strenge Antwortkopfzeilen (CSP, X-Frame-Options, nosniff, Referrer-Policy, HSTS bei HTTPS), eigener Sitzungsschluessel und Cookie-Name, `X-Forwarded-*` nur von `share_trusted_proxies`.
+- Neue Optionen: `share_trusted_proxies`, `share_cookie_secure`, `share_session_hours`, `share_log_max_mb`. Kapitel "Sharing files on the internet" in DOCS.md mit der Einrichtung im Nginx Proxy Manager.
+- Noch nicht enthalten: Hochladen (Ablage-Links zeigen einen Hinweis) und Ordner als ZIP. Beides folgt.
+
 ## 3.3.0
 - **Neuer Reiter "Teilen":** Links und Freigabe-Konten anlegen, bearbeiten, loeschen. Jeder Link hat einen Modus (Herunterladen, Hochladen, beides), eine Zugriffsart (Link + Passwort, nur bestimmte Konten, jeder mit dem Link), optional Ablaufdatum, Download-Limit, Upload-Kontingent und maximale Dateigroesse. Ein Link kann auch eine einzelne Datei sein.
 - Im Dateien-Reiter gibt es je Zeile ein Teilen-Symbol, das den Link-Dialog vorbefuellt.

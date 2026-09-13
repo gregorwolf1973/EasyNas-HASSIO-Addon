@@ -16,6 +16,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 import safepath
 import sharing_store
+import share_web
+import accesslog
+from ratelimit import LIMITER, AUTHFAIL_LINK
 
 app = Flask(__name__)
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024  # 4 GB per request; bodies are buffered to TMPDIR first
@@ -1608,6 +1611,7 @@ def _link_out(link):
     out["live"] = sharing_store.link_is_live(link)
     out.pop("password_hash", None)
     out["has_password"] = bool(link.get("password_hash"))
+    out["locked"] = LIMITER.locked(f"authfail:link:{link['id']}", *AUTHFAIL_LINK)
     return out
 
 
@@ -1622,7 +1626,7 @@ def api_sharing_status():
     _, fallback = public_link_url("x")
     return jsonify({
         "sharing_enabled": bool(_opt("sharing_enabled", False)),
-        "public_site_running": False,        # the public listener arrives in the next release
+        "public_site_running": share_web.RUNNING,
         "share_port": int(_opt("share_port", 8101)),
         "share_bind": _opt("share_bind", "0.0.0.0"),
         "public_url": (_opt("share_public_url", "") or "").strip(),
@@ -1676,6 +1680,26 @@ def api_sharing_reset_counters(link_id):
         return jsonify({"error": "Link nicht gefunden"}), 404
     sharing_store.reset_counters(link_id)
     return jsonify(_link_out(sharing_store.get_link(link_id)))
+
+
+@app.route("/api/sharing/links/<link_id>/unlock", methods=["POST"])
+def api_sharing_unlock(link_id):
+    if not sharing_store.get_link(link_id):
+        return jsonify({"error": "Link nicht gefunden"}), 404
+    LIMITER.clear(key=f"authfail:link:{link_id}")
+    return jsonify(_link_out(sharing_store.get_link(link_id)))
+
+
+@app.route("/api/sharing/log", methods=["GET"])
+def api_sharing_log():
+    limit = max(1, min(int(request.args.get("limit", 200)), 1000))
+    return jsonify(accesslog.tail(limit, request.args.get("event") or None, request.args.get("link_id") or None))
+
+
+@app.route("/api/sharing/log", methods=["DELETE"])
+def api_sharing_log_clear():
+    accesslog.clear()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/sharing/accounts", methods=["GET"])
@@ -2187,6 +2211,38 @@ def _install_safe_getfqdn():
     socket.getfqdn = safe_getfqdn
 
 
+def _sharing_should_start():
+    """The public site needs sharing_enabled AND a working admin password.
+    run.sh checks the same thing; two independent checks for the one
+    condition that must never fail."""
+    if not _opt("sharing_enabled", False):
+        return False
+    if _admin_auth.get("setup_required") or not _admin_auth.get("enabled") or not _admin_auth.get("password_hash"):
+        print("[SHARE] sharing_enabled, aber kein Admin-Passwort - oeffentliche Seite bleibt aus", flush=True)
+        return False
+    return True
+
+
+def start_share_site():
+    """Public share app on its own port, in a daemon thread. Returns True if started."""
+    import threading
+    try:
+        from waitress import create_server
+    except ImportError:
+        print("[SHARE] waitress fehlt - oeffentliche Seite bleibt aus", flush=True)
+        return False
+    share_app = share_web.create_share_app(_opt, lambda: load_json(SHARES_FILE, []), share_roots, DATA_DIR)
+    share_web.assert_public_surface(share_app)
+    host = str(_opt("share_bind", "0.0.0.0") or "0.0.0.0")
+    port = int(_opt("share_port", 8101) or 8101)
+    srv = create_server(share_app, host=host, port=port, threads=8, ident=None,
+                        channel_timeout=300, max_request_body_size=64 * 1024, asyncore_use_poll=True)
+    threading.Thread(target=srv.run, daemon=True, name="share-http").start()
+    share_web.RUNNING = True
+    print(f"[SHARE] oeffentliche Freigabe-Seite auf {host}:{port}", flush=True)
+    return True
+
+
 def serve(wsgi_app, port):
     """Run the admin UI on waitress, a production WSGI server.
 
@@ -2223,5 +2279,12 @@ if __name__ == "__main__":
         if not os.path.exists(fpath):
             save_json(fpath, default)
     _setup_admin_auth()
+    if _sharing_should_start():
+        try:
+            start_share_site()
+        except SystemExit:
+            raise
+        except Exception as e:
+            print(f"[SHARE] Start der oeffentlichen Seite fehlgeschlagen: {e}", flush=True)
     port = int(os.environ.get("WEB_PORT", 8100))
     serve(app, port)

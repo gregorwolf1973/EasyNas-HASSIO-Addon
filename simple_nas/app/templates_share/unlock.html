@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ link.name }}{% endblock %}
+{% block body %}
+<header><div><h1>{{ link.name }}</h1><div class="sub">{% if link.access == 'users' %}{{ L.login_needed }}{% else %}{{ L.protected }}{% endif %}</div></div></header>
+<div class="card" style="max-width:420px;margin:0 auto">
+  {% if locked %}
+    <div class="warn">{{ L.locked }}</div>
+  {% else %}
+  <form method="post" action="{{ url_for('share_auth', token=token) }}" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% if link.access == 'users' %}
+      <label for="u">{{ L.username }}</label>
+      <input type="text" id="u" name="username" autocapitalize="none" autocorrect="off" required autofocus>
+      <label for="p">{{ L.password }}</label>
+      <input type="password" id="p" name="password" required>
+    {% else %}
+      <label for="p">{{ L.password }}</label>
+      <input type="password" id="p" name="password" required autofocus>
+    {% endif %}
+    {% if error %}<div class="err">{{ L[error] }}</div>{% endif %}
+    <p style="margin-top:16px"><button class="btn primary" type="submit">{% if link.access == 'users' %}{{ L.login }}{% else %}{{ L.unlock }}{% endif %}</button></p>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

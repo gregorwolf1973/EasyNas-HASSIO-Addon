@@ -47,3 +47,15 @@ configuration:
   share_allowed_roots:
     name: Fuer Freigaben erlaubte Ordner
     description: Nur Ordner unterhalb dieser Verzeichnisse koennen per Link geteilt werden. /config und /data sind grundsaetzlich ausgeschlossen.
+  share_trusted_proxies:
+    name: Vertrauenswuerdige Proxys
+    description: "Nur von diesen Adressen werden X-Forwarded-For/-Proto uebernommen. Vorgabe: localhost und das Supervisor-Netz (dort laeuft der Nginx Proxy Manager als Addon)."
+  share_cookie_secure:
+    name: Freigabe-Cookie nur ueber HTTPS
+    description: An lassen, wenn die Seite ueber HTTPS veroeffentlicht wird (Normalfall). Nur zum Testen ueber http:// ausschalten.
+  share_session_hours:
+    name: Sitzungsdauer der Freigabe-Seite (Stunden)
+    description: Wie lange eine Anmeldung an einem Link gilt.
+  share_log_max_mb:
+    name: Groesse des Zugriffsprotokolls (MB)
+    description: Das Protokoll wird bei dieser Groesse rotiert, eine aeltere Kopie bleibt erhalten.

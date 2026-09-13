@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ link.name }}{% endblock %}
+{% block body %}
+<header>
+  <div>
+    <h1>{{ link.name }}</h1>
+    <div class="sub">
+      {% if single %}{{ L.file }}{% else %}{{ L.folder }}{% endif %}
+      {% if session.get('su') %} · {{ session.get('su') }}{% endif %}
+    </div>
+  </div>
+  {% if link.access != 'public' %}
+  <a class="btn sm" href="{{ url_for('share_logout', token=token) }}">{{ L.logout }}</a>
+  {% endif %}
+</header>
+
+{% if upload_only %}
+  <div class="card center">
+    <p class="big">📥</p>
+    <p>{{ L.upload_soon }}</p>
+  </div>
+
+{% elif single %}
+  <div class="card center">
+    <p class="big">📄</p>
+    <p style="font-weight:500;overflow-wrap:anywhere">{{ single.name }}</p>
+    {% if single.size is not none %}<p class="sub">{{ fmt_size(single.size) }}</p>{% endif %}
+    <p style="margin-top:16px"><a class="btn primary" href="{{ url_for('share_download', token=token, sub=single.rel) }}">⬇ {{ L.download }}</a></p>
+  </div>
+
+{% else %}
+  {% if crumbs %}
+  <div class="crumbs">
+    <a href="{{ url_for('share_landing', token=token) }}">{{ link.name }}</a>
+    {% for c in crumbs %} / <a href="{{ url_for('share_browse', token=token, sub=c.rel) }}">{{ c.name }}</a>{% endfor %}
+  </div>
+  {% endif %}
+  <div class="card" style="padding:6px 8px">
+  {% if not dirs and not files %}
+    <p class="center" style="color:var(--dim)">{{ L.empty }}</p>
+  {% else %}
+    <table>
+      <thead><tr><th>{{ L.name }}</th><th class="hide" style="text-align:right">{{ L.size }}</th><th class="hide" style="text-align:right">{{ L.modified }}</th><th></th></tr></thead>
+      <tbody>
+      {% if parent is not none %}
+        <tr><td colspan="4"><a class="name" href="{% if parent %}{{ url_for('share_browse', token=token, sub=parent) }}{% else %}{{ url_for('share_landing', token=token) }}{% endif %}"><span class="ico">↩</span>{{ L.up }}</a></td></tr>
+      {% endif %}
+      {% for d in dirs %}
+        <tr>
+          <td>{% if link.allow_subdirs %}<a class="name" href="{{ url_for('share_browse', token=token, sub=d.rel) }}"><span class="ico">📁</span>{{ d.name }}</a>{% else %}<span class="ico">📁</span>{{ d.name }}{% endif %}</td>
+          <td class="num hide"></td>
+          <td class="num hide">{{ d.mtime | int | string }}</td>
+          <td class="act"></td>
+        </tr>
+      {% endfor %}
+      {% for f in files %}
+        <tr>
+          <td>{% if f.inline %}<a class="name" href="{{ url_for('share_view', token=token, sub=f.rel) }}" target="_blank" rel="noopener"><span class="ico">📄</span>{{ f.name }}</a>{% else %}<a class="name" href="{{ url_for('share_download', token=token, sub=f.rel) }}"><span class="ico">📄</span>{{ f.name }}</a>{% endif %}</td>
+          <td class="num hide">{{ fmt_size(f.size) }}</td>
+          <td class="num hide">{{ f.mtime | int | string }}</td>
+          <td class="act"><a class="btn sm" href="{{ url_for('share_download', token=token, sub=f.rel) }}">⬇</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+  </div>
+  <script>
+    // dates are rendered client-side so they appear in the visitor's own zone
+    document.querySelectorAll('td.num.hide').forEach(td => {
+      const n = parseInt(td.textContent, 10);
+      if (!isNaN(n) && n > 1000000000) td.textContent = new Date(n * 1000).toLocaleString();
+    });
+  </script>
+{% endif %}
+{% endblock %}

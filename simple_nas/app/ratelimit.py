@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""Sliding-window rate limiting and lockouts, in memory, stdlib only.
+
+One process serves both ports, so a single shared LIMITER is enough. State
+is lost on restart, which is fine: the point is to make guessing slow, not
+to keep a permanent record.
+"""
+
+import threading
+import time
+from collections import deque
+
+
+class Limiter:
+    def __init__(self, clock=None):
+        self._clock = clock or time.monotonic
+        self._buckets = {}
+        self._lock = threading.Lock()
+        self._ops = 0
+
+    def _prune(self, key, window, now):
+        q = self._buckets.get(key)
+        if q is None:
+            return None
+        while q and q[0] <= now - window:
+            q.popleft()
+        if not q:
+            self._buckets.pop(key, None)
+            return None
+        return q
+
+    def _sweep(self, now):
+        """Every few hundred calls drop buckets whose newest entry is old."""
+        self._ops += 1
+        if self._ops % 200:
+            return
+        for key in list(self._buckets):
+            q = self._buckets[key]
+            if not q or q[-1] <= now - 3600:
+                self._buckets.pop(key, None)
+
+    def hit(self, key, limit, window):
+        """Record one event. Returns (allowed, retry_after_seconds)."""
+        now = self._clock()
+        with self._lock:
+            self._sweep(now)
+            q = self._prune(key, window, now)
+            if q is None:
+                q = self._buckets[key] = deque()
+            if len(q) >= limit:
+                return False, max(1, int(q[0] + window - now) + 1)
+            q.append(now)
+            return True, 0
+
+    def count(self, key, window):
+        now = self._clock()
+        with self._lock:
+            q = self._prune(key, window, now)
+            return len(q) if q else 0
+
+    def record(self, key):
+        """Add an event without checking a limit (for failure counters)."""
+        with self._lock:
+            self._buckets.setdefault(key, deque()).append(self._clock())
+
+    def locked(self, key, limit, window):
+        return self.count(key, window) >= limit
+
+    def retry_after(self, key, window):
+        now = self._clock()
+        with self._lock:
+            q = self._prune(key, window, now)
+            return max(1, int(q[0] + window - now) + 1) if q else 0
+
+    def clear(self, key=None, prefix=None):
+        with self._lock:
+            if key is not None:
+                self._buckets.pop(key, None)
+            if prefix is not None:
+                for k in list(self._buckets):
+                    if k.startswith(prefix):
+                        self._buckets.pop(k, None)
+
+
+# Limits for the public share site. (limit, window seconds)
+REQ_PER_IP = (240, 60)
+AUTHFAIL_IP = (10, 15 * 60)
+AUTHFAIL_LINK = (20, 15 * 60)
+AUTHFAIL_USER = (10, 15 * 60)
+UPLOAD_PER_IP = (30, 60 * 60)
+
+LIMITER = Limiter()
