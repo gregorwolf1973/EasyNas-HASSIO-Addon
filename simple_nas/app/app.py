@@ -250,6 +250,13 @@ def _restore_from(src_dir):
         for f in os.listdir(samba_src):
             shutil.copy2(os.path.join(samba_src, f), os.path.join(samba_dst, f))
 
+def _mirroring_enabled():
+    """The auto-backup writes into the add-on's /config mapping. Off unless we
+    really run from the add-on's data directory - a test run or a one-off
+    start on a workstation must not scribble into whatever /config is there."""
+    return os.path.abspath(DATA_DIR) == os.path.abspath("/data")
+
+
 def _auto_backup():
     """Sync /data to auto-backup slot (reinstall-safe, always overwritten)."""
     global _backup_lock
@@ -268,7 +275,8 @@ def save_json(path, data, mirror=True):
         json.dump(data, f, indent=2)
     # Auto-sync to reinstall-safe location after every settings change.
     # mirror=False for things written per request (download counters).
-    if mirror and os.path.dirname(os.path.abspath(path)) == os.path.abspath(DATA_DIR):
+    if mirror and _mirroring_enabled() and \
+            os.path.dirname(os.path.abspath(path)) == os.path.abspath(DATA_DIR):
         _auto_backup()
 
 
@@ -1687,6 +1695,44 @@ def _share_export_path():
     return DEFAULT_EXPORT_PATH if path in LEGACY_EXPORT_PATHS else path
 
 
+def _crowdsec_can_read(path):
+    """Can the CrowdSec add-on open this file?
+
+    Both add-ons map the Home Assistant config directory, so /config is the
+    one place each of them reaches. /share is mapped here but not there - a
+    log kept there makes CrowdSec start with "No matching files for pattern"
+    and no scenario ever fires.
+    """
+    return bool(path) and path.startswith("/config/")
+
+
+def _crowdsec_log_path(export):
+    """The file the acquisition should name: the configured export when
+    CrowdSec can read it, otherwise the default next to it."""
+    return export if _crowdsec_can_read(export) else DEFAULT_EXPORT_PATH
+
+
+def _crowdsec_installed():
+    return os.path.exists(os.path.join(CROWDSEC_DIR, "acquis.d", "simplenas-share.yaml"))
+
+
+def _apply_export_paths(export, announce=False):
+    """Open the configured export and, when CrowdSec is set up, make sure the
+    file its acquisition names is written too. Returns the CrowdSec path."""
+    max_mb = _opt("share_log_max_mb", 5)
+    if export:
+        accesslog.set_export(export, max_mb, slot="main")
+        if announce:
+            print(f"[SHARE] Zugriffsprotokoll wird zusaetzlich nach {export} geschrieben", flush=True)
+    cs_path = _crowdsec_log_path(export)
+    if _crowdsec_installed() or not export:
+        accesslog.set_export(cs_path, max_mb, slot="crowdsec")
+        if announce and cs_path != export:
+            print(f"[SHARE] CrowdSec liest das Protokoll unter {cs_path} "
+                  f"(share_log_export_path zeigt auf einen Ordner, den CrowdSec nicht sieht)", flush=True)
+    return cs_path
+
+
 def _write_crowdsec_acquis(export):
     """Write the acquisition file pointing at `export`. Returns True on change."""
     dest = os.path.join(CROWDSEC_DIR, "acquis.d", "simplenas-share.yaml")
@@ -1759,14 +1805,18 @@ def api_sharing_crowdsec_status():
     present = os.path.isdir(CROWDSEC_DIR)
     installed = {rel: os.path.exists(os.path.join(CROWDSEC_DIR, rel)) for rel in CROWDSEC_FILES}
     export = _share_export_path()
+    cs_path = _crowdsec_log_path(export)
+    option = (_opt("share_log_export_path", "") or "").strip()
     return jsonify({
         "crowdsec_config_found": present,
         "config_dir": CROWDSEC_DIR,
         "installed": installed,
         "all_installed": present and all(installed.values()),
         "export_path": export,
+        "crowdsec_path": cs_path,
         "default_export_path": DEFAULT_EXPORT_PATH,
-        "export_active": accesslog.export_path() == export if export else False,
+        "export_active": accesslog.writes_to(cs_path),
+        "option_path_blind": bool(option) and not _crowdsec_can_read(option),
     })
 
 
@@ -1781,10 +1831,13 @@ def api_sharing_crowdsec_install():
     export = _share_export_path() or DEFAULT_EXPORT_PATH
     if not (_opt("share_log_export_path", "") or "").strip():
         save_json(CROWDSEC_SETUP_FILE, {"export_path": export})
-    if accesslog.export_path() != export:
-        if not accesslog.set_export(export, _opt("share_log_max_mb", 5)):
-            return jsonify({"error": f"Protokoll-Export nach {export} nicht moeglich (Ordner nicht beschreibbar?)."}), 500
-        print(f"[SHARE] Zugriffsprotokoll wird zusaetzlich nach {export} geschrieben (CrowdSec)", flush=True)
+    cs_path = _crowdsec_log_path(export)
+    max_mb = _opt("share_log_max_mb", 5)
+    if export and not accesslog.set_export(export, max_mb, slot="main"):
+        return jsonify({"error": f"Protokoll-Export nach {export} nicht moeglich (Ordner nicht beschreibbar?)."}), 500
+    if not accesslog.set_export(cs_path, max_mb, slot="crowdsec"):
+        return jsonify({"error": f"Protokoll-Export nach {cs_path} nicht moeglich (Ordner nicht beschreibbar?)."}), 500
+    export = cs_path
     written = []
     for rel, src in CROWDSEC_FILES.items():
         if src.endswith("acquis.yaml"):
@@ -1800,7 +1853,7 @@ def api_sharing_crowdsec_install():
         written.append(rel)
     print(f"[SHARE] CrowdSec-Dateien installiert: {', '.join(written)}", flush=True)
     return jsonify({"ok": True, "written": written, "restart_needed": "CrowdSec",
-                    "export_path": export, "export_active": accesslog.export_path() == export})
+                    "export_path": export, "export_active": accesslog.writes_to(export)})
 
 
 @app.route("/api/sharing/clamav/test", methods=["POST"])
@@ -2437,10 +2490,10 @@ def start_share_site():
     share_app = share_web.create_share_app(_opt, lambda: load_json(SHARES_FILE, []), share_roots, DATA_DIR)
     share_web.assert_public_surface(share_app)
     export = _share_export_path()
-    if export:
-        accesslog.init(os.path.join(DATA_DIR, "share_access.log"), _opt("share_log_max_mb", 5), export)
-        print(f"[SHARE] Zugriffsprotokoll wird zusaetzlich nach {export} geschrieben (CrowdSec)", flush=True)
-        _sync_crowdsec_acquis(export)
+    if export or _crowdsec_installed():
+        accesslog.init(os.path.join(DATA_DIR, "share_access.log"), _opt("share_log_max_mb", 5))
+        cs_path = _apply_export_paths(export, announce=True)
+        _sync_crowdsec_acquis(cs_path)
     share_web.SCAN_HOOK = clamav.make_hook(_opt)
     if share_web.SCAN_HOOK:
         print(f"[SHARE] Virenpruefung ueber clamd {_opt('share_clamav_host', '127.0.0.1')}:"

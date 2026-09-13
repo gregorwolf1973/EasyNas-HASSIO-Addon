@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.7.5
+- **CrowdSec bekommt sein Protokoll auch dann, wenn `share_log_export_path` woanders hinzeigt.** Steht in der Option ein Ordner, den das CrowdSec-Addon nicht sieht (alles ausserhalb von `/config`, insbesondere `/share`), schreibt Simple NAS die Datei weiterhin dorthin *und* zusaetzlich nach `/config/.simplenas/share_access.log`, worauf die Acquisition zeigt. Vorher lief CrowdSec mit "No matching files for pattern" ins Leere. Der Reiter Teilen nennt jetzt die Datei, aus der CrowdSec liest, und weist darauf hin, dass die Option leer bleiben kann.
+- Das Zugriffsprotokoll kann mehrere Ziele parallel bedienen (`accesslog.set_export(..., slot=...)`). Zwei Slots auf derselben Datei werden zusammengefasst, weil zwei rotierende Handler auf einem Pfad sich gegenseitig die Rotation zerlegen.
+- Das Logo aus der Kopfzeile dient jetzt auch als Favicon im Browser-Tab (Oberflaeche, Login und Einrichtungsseite). Die oeffentliche Freigabe-Seite bekommt bewusst keines: ein wiedererkennbares Symbol wuerde verraten, welche Software dort antwortet.
+- Die Auto-Sicherung nach `/config/.simplenas/auto` laeuft nur noch, wenn das Addon wirklich aus `/data` startet. Testlaeufe und Handstarts auf einem Arbeitsplatzrechner haben sonst in ein fremdes `/config` geschrieben.
+
 ## 3.7.4
 - **Fix: abgewiesene Streams verloren das Urteil von clamd.** Ueberschreitet eine Datei `StreamMaxLength`, antwortet clamd sofort mit "INSTREAM size limit exceeded" und legt auf, waehrend das Addon noch sendet. Der darauf folgende Schreibfehler ueberschrieb die bereits eingetroffene Antwort mit einem allgemeinen Fehler - und mit `share_clamav_on_error: reject` wurde der Upload dann kommentarlos abgelehnt, statt ueber den Pfad-Scan doch noch geprueft zu werden. Der Client achtet jetzt nach jedem Block auf eine wartende Antwort, bricht dann ab und wertet sie aus. Nebeneffekt: grosse Dateien werden nicht mehr vollstaendig in einen Socket geschoben, der laengst nicht mehr gelesen wird.
 

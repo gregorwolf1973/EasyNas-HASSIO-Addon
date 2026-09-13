@@ -15,7 +15,8 @@ import time
 
 _logger = None
 _path = None
-_export = None
+_handlers = {}          # slot -> (path, handler); "main" is the configured one,
+                        # "crowdsec" the copy the CrowdSec add-on can read
 _lock = threading.Lock()
 
 EVENTS = ("view", "auth_ok", "auth_fail", "download", "zip", "upload",
@@ -23,16 +24,17 @@ EVENTS = ("view", "auth_ok", "auth_fail", "download", "zip", "upload",
 
 
 def init(path, max_mb=5, export_path=None):
-    """export_path: an optional second copy in a place another add-on can read
-    (CrowdSec maps /share). Failure to open it must never break the site."""
-    global _logger, _path, _export
+    """export_path: an optional copy somewhere another add-on can read.
+    Failure to open it must never break the site."""
+    global _logger, _path
     _path = path
-    _export = None
     lg = logging.getLogger("nas.share.access")
     lg.setLevel(logging.INFO)
     lg.propagate = False
     for h in list(lg.handlers):
         lg.removeHandler(h)
+        h.close()
+    _handlers.clear()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     h = logging.handlers.RotatingFileHandler(
         path, maxBytes=int(max_mb) * 1024 * 1024, backupCount=1, encoding="utf-8")
@@ -43,27 +45,35 @@ def init(path, max_mb=5, export_path=None):
         set_export(export_path, max_mb)
 
 
-def set_export(export_path, max_mb=5):
-    """Start (or switch) the second copy at runtime, e.g. when the CrowdSec
-    setup button picks the default path. Returns True when the file is open."""
-    global _export, _logger
+def set_export(export_path, max_mb=5, slot="main"):
+    """Point one export slot at a file, at runtime. Empty path closes the slot.
+
+    Slots exist because the configured path and the path CrowdSec can read are
+    not always the same file. Returns True when the slot is served - including
+    the case where another slot already writes that exact file: two rotating
+    handlers on one path would interleave and shred each other's rotation.
+    """
+    global _logger
     lg = _logger or logging.getLogger("nas.share.access")
-    if _export == export_path:
-        return True
     with _lock:
-        for h in list(lg.handlers):
-            if getattr(h, "_nas_export", False):
-                lg.removeHandler(h)
-                h.close()
-        _export = None
+        current = _handlers.get(slot)
+        if current and current[0] == export_path:
+            return True
+        if current:
+            lg.removeHandler(current[1])
+            current[1].close()
+            _handlers.pop(slot, None)
+        if not export_path:
+            return True
+        if any(p == export_path for p, _h in _handlers.values()):
+            return True
         try:
             os.makedirs(os.path.dirname(export_path), exist_ok=True)
             eh = logging.handlers.RotatingFileHandler(
                 export_path, maxBytes=int(max_mb) * 1024 * 1024, backupCount=1, encoding="utf-8")
             eh.setFormatter(logging.Formatter("%(message)s"))
-            eh._nas_export = True
             lg.addHandler(eh)
-            _export = export_path
+            _handlers[slot] = (export_path, eh)
         except OSError as e:
             print(f"[SHARE] Protokoll-Export nach {export_path} nicht moeglich: {e}", flush=True)
             return False
@@ -74,8 +84,15 @@ def set_export(export_path, max_mb=5):
     return True
 
 
-def export_path():
-    return _export
+def export_path(slot="main"):
+    """The file this slot writes, or the file another slot writes for it."""
+    entry = _handlers.get(slot)
+    return entry[0] if entry else None
+
+
+def writes_to(path):
+    """Is this file being written by any slot?"""
+    return bool(path) and any(p == path for p, _h in _handlers.values())
 
 
 def log(event, **fields):
