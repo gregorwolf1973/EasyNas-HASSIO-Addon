@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.2.3
+- **Webserver:** Die Oberflaeche laeuft jetzt auf waitress, einem fuer den Dauerbetrieb gedachten WSGI-Server, statt auf Flasks Entwicklungsserver. Mehrere Anfragen gleichzeitig blockieren sich nicht mehr, der Server verraet seinen Namen nicht mehr im Antwortkopf. Sollte Ingress auf deinem Geraet Probleme machen: Umgebungsvariable `WEB_SERVER=werkzeug` schaltet fuer dieses Release auf den alten Server zurueck.
+- Hochgeladene Daten werden vor der Verarbeitung nach `/data/tmp` gepuffert statt nach `/tmp`, das auf Home Assistant OS im Arbeitsspeicher liegt.
+- Obergrenze pro Anfrage von 10 GB auf 4 GB gesenkt. Der Puffer liegt auf der Datenpartition, ein einzelner Upload darf sie nicht fuellen.
+
 ## 3.2.2
 - Fix: "Zugriff auf alle Dateien" liess sich einschalten, der Dateimanager kam aber nicht hinein. Bei "/" als freigegebener Wurzel zeigte die Wurzelansicht einen einzigen Eintrag "/", der wieder auf sich selbst zeigte. Jetzt wird bei vollem Zugriff das echte Wurzelverzeichnis gelistet, die Pfadleiste hat nur einen "/"-Eintrag und die Aufwaerts-Zeile verschwindet ganz oben.
 

@@ -17,7 +17,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import safepath
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024 * 1024  # 10 GB max upload
+MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024  # 4 GB per request; bodies are buffered to TMPDIR first
+app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_BYTES
 
 DATA_DIR    = "/data"
 CONFIG_BACKUP_DIR  = "/config/.simplenas"
@@ -2056,4 +2057,33 @@ if __name__ == "__main__":
             save_json(fpath, default)
     _setup_admin_auth()
     port = int(os.environ.get("WEB_PORT", 8100))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    serve(app, port)
+
+
+def serve(wsgi_app, port):
+    """Run the admin UI on waitress, a production WSGI server.
+
+    Flask's built-in server is single-purpose development tooling; it is what
+    ran here until 3.2.2. waitress is pure Python (no wheel needed on Alpine)
+    and threaded. WEB_SERVER=werkzeug is an escape hatch for one release in
+    case ingress misbehaves on a device I could not test on.
+    """
+    if os.environ.get("WEB_SERVER", "").lower() == "werkzeug":
+        print("[WEB] WEB_SERVER=werkzeug - Entwicklungsserver", flush=True)
+        wsgi_app.run(host="0.0.0.0", port=port, debug=False)
+        return
+    try:
+        from waitress import create_server
+    except ImportError:
+        print("[WEB] waitress fehlt - Rueckfall auf den Entwicklungsserver", flush=True)
+        wsgi_app.run(host="0.0.0.0", port=port, debug=False)
+        return
+    print(f"[WEB] waitress auf 0.0.0.0:{port}", flush=True)
+    create_server(
+        wsgi_app, host="0.0.0.0", port=port,
+        threads=8,
+        ident=None,                       # no "Server: waitress" header
+        channel_timeout=300,              # slow USB media, long listings
+        max_request_body_size=MAX_UPLOAD_BYTES + 8 * 1024 * 1024,
+        asyncore_use_poll=True,
+    ).run()

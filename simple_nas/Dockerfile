@@ -36,7 +36,7 @@ RUN apk add --no-cache hd-idle \
     || echo "WARNING: hd-idle unavailable in repos — HDD spindown will be disabled at runtime"
 
 # Install Python packages
-RUN pip3 install --break-system-packages flask psutil
+RUN pip3 install --break-system-packages flask psutil waitress
 
 # Install wsdd (WS-Discovery for Windows 10+) directly from GitHub
 RUN curl -sSL https://raw.githubusercontent.com/christgau/wsdd/master/src/wsdd.py \

@@ -325,6 +325,12 @@ bashio::log.info "LLMNR responder started (\\\\${NAS_NAME} name resolution for W
 ) &
 
 # ── Web GUI ────────────────────────────────────────────────────
+# Request bodies are buffered to a temp file before the app sees them. On
+# Home Assistant OS /tmp is RAM, so point TMPDIR at the data partition.
+mkdir -p /data/tmp
+export TMPDIR=/data/tmp
+rm -f /data/tmp/tmp* 2>/dev/null || true
+
 if [ "${WEB_GUI_ENABLED}" = "true" ]; then
     bashio::log.info "Starting Web GUI on port ${WEB_PORT}..."
     exec python3 /app/app.py
