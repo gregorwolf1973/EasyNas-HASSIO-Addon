@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.2.2
+- Fix: "Zugriff auf alle Dateien" liess sich einschalten, der Dateimanager kam aber nicht hinein. Bei "/" als freigegebener Wurzel zeigte die Wurzelansicht einen einzigen Eintrag "/", der wieder auf sich selbst zeigte. Jetzt wird bei vollem Zugriff das echte Wurzelverzeichnis gelistet, die Pfadleiste hat nur einen "/"-Eintrag und die Aufwaerts-Zeile verschwindet ganz oben.
+
 ## 3.2.1
 - **Neu: Dateizugriff in den Einstellungen.** Dort stehen jetzt die freigegebenen Ordner, lassen sich einzeln hinzufuegen und entfernen, und ein Schalter "Zugriff auf alle Dateien" gibt das gesamte Dateisystem frei. Damit kommst du wieder an alles heran, wenn dir die Standardordner aus 3.2.0 zu eng sind. Die Einstellung wird in `/data/file_access.json` gespeichert und ueberlebt Neustarts.
 - Auch bei vollem Zugriff bleiben `/data`, `/proc`, `/sys` und `/dev` gesperrt. In `/data` liegen die Passwort-Hashes des Addons selbst, die anderen drei sind keine echten Dateien.

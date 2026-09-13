@@ -1534,6 +1534,13 @@ def _protected_paths():
     return out
 
 
+def _slash_is_root():
+    """True when "/" itself is allowed (the "all files" switch). The synthetic
+    roots listing makes no sense then - it would contain one entry, "/",
+    pointing back at itself, and the file manager could never get in."""
+    return any(safepath.real(r) == safepath.real("/") for r in file_roots())
+
+
 def _roots_listing():
     """Synthetic listing shown instead of the container root."""
     entries = []
@@ -1564,7 +1571,7 @@ def api_roots():
 @app.route("/api/browse")
 def api_browse():
     path = request.args.get("path", "/").strip()
-    if path in ("", "/"):
+    if path in ("", "/") and not _slash_is_root():
         # The container root is not browsable - offer the allowed roots instead
         roots = _roots_listing()
         return jsonify({"path": "/", "parent": None, "is_root": True,
@@ -1659,18 +1666,21 @@ def _breadcrumb(path):
         if parent == cur:
             break
         cur = parent
-    parts.insert(0, {"name": "/", "path": "/"})
+    if not parts or parts[0]["path"] != "/":
+        parts.insert(0, {"name": "/", "path": "/"})
     return parts
 
 
 def _parent_of(path):
     """Parent directory, or '/' (the roots listing) when path is a root."""
     real_path = safepath.real(path)
+    if real_path == safepath.real("/"):
+        return None
     for r in file_roots():
         if real_path == safepath.real(r):
-            return "/"
+            return None if _slash_is_root() else "/"
     parent = os.path.dirname(real_path)
-    return parent if parent != real_path else "/"
+    return parent if parent != real_path else None
 
 
 def _recursive_dir_size(path, max_seconds=8):
@@ -1701,11 +1711,11 @@ def api_files():
     it can be slow on large trees / slow USB media."""
     path = request.args.get("path", "/").strip()
     want_dir_size = request.args.get("dir_size", "0") in ("1", "true", "yes")
-    if path in ("", "/"):
+    if path in ("", "/") and not _slash_is_root():
         return jsonify({"path": "/", "parent": None, "is_root": True,
                         "breadcrumb": [{"name": "/", "path": "/"}],
                         "entries": _roots_listing()})
-    path = _safe(_remap_path(os.path.abspath(path)))
+    path = _safe(_remap_path(os.path.abspath(path or "/")))
     entries = []
     try:
         for name in sorted(os.listdir(path)):
