@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Simple NAS with Samba shares and web GUI for drive management"
-version: "3.7.0"
+version: "3.7.1"
 url: "https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon"
 slug: "simple_nas"
 init: false
@@ -110,32 +110,32 @@ schema:
   web_gui_enabled: bool
   hdd_idle_seconds: int(0,)
   file_allowed_roots:
-    - "str"
+    - "str?"
   sharing_enabled: bool
-  share_port: port
-  share_bind: list(0.0.0.0|127.0.0.1)
+  share_port: port?
+  share_bind: list(0.0.0.0|127.0.0.1)?
   share_public_url: str?
   share_allowed_roots:
-    - "str"
+    - "str?"
   share_trusted_proxies:
-    - "str"
-  share_cookie_secure: bool
-  share_session_hours: int(1,720)
-  share_log_max_mb: int(1,100)
-  share_zip_max_gb: int(1,512)
-  share_zip_max_files: int(100,1000000)
-  share_zip_compress: bool
-  share_max_upload_mb: int(1,102400)
+    - "str?"
+  share_cookie_secure: bool?
+  share_session_hours: int(1,720)?
+  share_log_max_mb: int(1,100)?
+  share_zip_max_gb: int(1,512)?
+  share_zip_max_files: int(100,1000000)?
+  share_zip_compress: bool?
+  share_max_upload_mb: int(1,102400)?
   share_upload_blocked_ext:
-    - "str"
+    - "str?"
   share_upload_allowed_ext:
     - "str?"
-  share_clamav_enabled: bool
-  share_clamav_host: str
-  share_clamav_port: port
-  share_clamav_timeout: int(5,3600)
-  share_clamav_on_error: list(reject|accept)
-  share_clamav_large_file: list(reject|accept)
+  share_clamav_enabled: bool?
+  share_clamav_host: str?
+  share_clamav_port: port?
+  share_clamav_timeout: int(5,3600)?
+  share_clamav_on_error: list(reject|accept)?
+  share_clamav_large_file: list(reject|accept)?
   share_log_export_path: str?
 map:
   - share:rw

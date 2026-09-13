@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.7.1
+- Fix: "Speichern fehlgeschlagen: Missing option 'share_clamav_timeout'" beim Speichern der Addon-Konfiguration. Alle Freigabe- und Dateizugriffs-Optionen sind im Schema jetzt optional; das Addon hat fuer jede einen eingebauten Standardwert. Ein Konfigurationsformular, das noch vor einem Update geladen wurde, laesst sich damit speichern, ohne dass der Supervisor neue Optionen vermisst.
+
 ## 3.7.0
 - **CrowdSec-Anbindung.** Das Addon bringt Parser, drei Szenarien und eine Acquisition-Datei fuer CrowdSec mit und installiert sie per Knopf im Reiter Teilen in die Konfiguration des CrowdSec-Addons (beide sehen `/config`). Szenarien: `simplenas/share-bf` (5 Fehlpasswoerter in ~50 s), `simplenas/share-scan` (10 unbekannte Links in ~5 min), `simplenas/share-locked` (das Addon hat die Adresse selbst gesperrt). Bans erreichen damit den Firewall-Bouncer.
 - Neue Option `share_log_export_path`: zweite Kopie des Zugriffsprotokolls an einem Ort, den CrowdSec lesen kann, z. B. `/share/simplenas/share_access.log`.
