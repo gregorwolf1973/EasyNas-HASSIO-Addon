@@ -2049,17 +2049,6 @@ def _install_safe_getfqdn():
     socket.getfqdn = safe_getfqdn
 
 
-if __name__ == "__main__":
-    _install_safe_getfqdn()
-    os.makedirs(DATA_DIR, exist_ok=True)
-    for fpath, default in [(SHARES_FILE, []), (USERS_FILE, []), (MOUNTS_FILE, []), (GROUPS_FILE, []), (BACKUPS_FILE, [])]:
-        if not os.path.exists(fpath):
-            save_json(fpath, default)
-    _setup_admin_auth()
-    port = int(os.environ.get("WEB_PORT", 8100))
-    serve(app, port)
-
-
 def serve(wsgi_app, port):
     """Run the admin UI on waitress, a production WSGI server.
 
@@ -2087,3 +2076,14 @@ def serve(wsgi_app, port):
         max_request_body_size=MAX_UPLOAD_BYTES + 8 * 1024 * 1024,
         asyncore_use_poll=True,
     ).run()
+
+
+if __name__ == "__main__":
+    _install_safe_getfqdn()
+    os.makedirs(DATA_DIR, exist_ok=True)
+    for fpath, default in [(SHARES_FILE, []), (USERS_FILE, []), (MOUNTS_FILE, []), (GROUPS_FILE, []), (BACKUPS_FILE, [])]:
+        if not os.path.exists(fpath):
+            save_json(fpath, default)
+    _setup_admin_auth()
+    port = int(os.environ.get("WEB_PORT", 8100))
+    serve(app, port)
