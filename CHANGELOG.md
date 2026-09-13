@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.7.2
+- "CrowdSec einrichten" braucht keine Option mehr: Ist `share_log_export_path` leer, schreibt das Addon das Zugriffsprotokoll ab sofort zusaetzlich nach `/share/simplenas/share_access.log`, merkt sich das in `/data/crowdsec_setup.json` und traegt genau diesen Pfad in die CrowdSec-Acquisition ein. Kein Neustart von Simple NAS noetig, nur das CrowdSec-Addon muss einmal neu starten. Eine gesetzte Option hat weiterhin Vorrang.
+
 ## 3.7.1
 - Fix: "Speichern fehlgeschlagen: Missing option 'share_clamav_timeout'" beim Speichern der Addon-Konfiguration. Alle Freigabe- und Dateizugriffs-Optionen sind im Schema jetzt optional; das Addon hat fuer jede einen eingebauten Standardwert. Ein Konfigurationsformular, das noch vor einem Update geladen wurde, laesst sich damit speichern, ohne dass der Supervisor neue Optionen vermisst.
 

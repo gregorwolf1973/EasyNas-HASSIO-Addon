@@ -100,10 +100,39 @@ class InstallerTest(unittest.TestCase):
         st = self.c.get("/api/sharing/crowdsec/status").get_json()
         self.assertTrue(st["all_installed"])
 
-    def test_install_needs_export_path(self):
+    def test_install_without_option_uses_default_and_starts_export(self):
         os.makedirs(nas.CROWDSEC_DIR)
         nas._OPTIONS["share_log_export_path"] = ""
-        self.assertEqual(self.c.post("/api/sharing/crowdsec/install", headers=self.h).status_code, 400)
+        saved = (nas.CROWDSEC_SETUP_FILE, nas.DEFAULT_EXPORT_PATH, nas.accesslog._export)
+        nas.CROWDSEC_SETUP_FILE = os.path.join(self.tmp, "crowdsec_setup.json")
+        nas.DEFAULT_EXPORT_PATH = os.path.join(self.tmp, "export", "share_access.log")
+        try:
+            r = self.c.post("/api/sharing/crowdsec/install", headers=self.h)
+            self.assertEqual(r.status_code, 200, r.get_json())
+            self.assertEqual(r.get_json()["export_path"], nas.DEFAULT_EXPORT_PATH)
+            self.assertTrue(r.get_json()["export_active"])
+            acq = yaml.safe_load(open(os.path.join(nas.CROWDSEC_DIR, "acquis.d/simplenas-share.yaml"), encoding="utf-8"))
+            self.assertEqual(acq["filenames"], [nas.DEFAULT_EXPORT_PATH])
+            # the choice survives a restart: it is persisted in /data, not in options.json
+            self.assertEqual(json.load(open(nas.CROWDSEC_SETUP_FILE))["export_path"], nas.DEFAULT_EXPORT_PATH)
+            self.assertEqual(nas._share_export_path(), nas.DEFAULT_EXPORT_PATH)
+            st = self.c.get("/api/sharing/crowdsec/status").get_json()
+            self.assertTrue(st["all_installed"] and st["export_active"])
+            # and the log really lands there
+            nas.accesslog.log("view", link_id="abc")
+            for h in nas.accesslog._logger.handlers:
+                h.flush()
+            self.assertIn('"link_id": "abc"', open(nas.DEFAULT_EXPORT_PATH, encoding="utf-8").read())
+            # an explicit option still wins over the saved choice
+            nas._OPTIONS["share_log_export_path"] = "/share/x/y.log"
+            self.assertEqual(nas._share_export_path(), "/share/x/y.log")
+        finally:
+            nas.accesslog.set_export(saved[2]) if saved[2] else None
+            for h in list(nas.accesslog._logger.handlers if nas.accesslog._logger else []):
+                if getattr(h, "_nas_export", False):
+                    nas.accesslog._logger.removeHandler(h); h.close()
+            nas.accesslog._export = saved[2]
+            nas.CROWDSEC_SETUP_FILE, nas.DEFAULT_EXPORT_PATH = saved[0], saved[1]
 
 
 if __name__ == "__main__":

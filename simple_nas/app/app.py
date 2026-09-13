@@ -222,7 +222,8 @@ def _copy_data_to(dest_dir):
         json.dump({"timestamp": time.time()}, f)
     for fname in ("shares.json", "users.json", "groups.json",
                   "mounts.json", "backups.json", "admin_auth.json",
-                  "file_access.json", "share_links.json", "share_accounts.json", "share_auth.json"):
+                  "file_access.json", "share_links.json", "share_accounts.json", "share_auth.json",
+                  "crowdsec_setup.json"):
         src = os.path.join(DATA_DIR, fname)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(dest_dir, fname))
@@ -237,7 +238,8 @@ def _restore_from(src_dir):
     """Restore settings from src_dir to /data."""
     for fname in ("shares.json", "users.json", "groups.json",
                   "mounts.json", "backups.json", "admin_auth.json",
-                  "file_access.json", "share_links.json", "share_accounts.json", "share_auth.json"):
+                  "file_access.json", "share_links.json", "share_accounts.json", "share_auth.json",
+                  "crowdsec_setup.json"):
         src = os.path.join(src_dir, fname)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(DATA_DIR, fname))
@@ -1652,21 +1654,39 @@ CROWDSEC_FILES = {
 }
 
 
+CROWDSEC_SETUP_FILE = f"{DATA_DIR}/crowdsec_setup.json"
+DEFAULT_EXPORT_PATH = "/share/simplenas/share_access.log"
+
+
 def _crowdsec_src(name):
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "crowdsec", name)
+
+
+def _share_export_path():
+    """Where the second copy of the access log goes. The add-on option wins;
+    otherwise the path the CrowdSec setup button chose (the add-on cannot
+    write its own options.json, so that choice lives in /data)."""
+    export = (_opt("share_log_export_path", "") or "").strip()
+    if export:
+        return export
+    saved = load_json(CROWDSEC_SETUP_FILE, {})
+    if isinstance(saved, dict):
+        return str(saved.get("export_path") or "").strip()
+    return ""
 
 
 @app.route("/api/sharing/crowdsec/status")
 def api_sharing_crowdsec_status():
     present = os.path.isdir(CROWDSEC_DIR)
     installed = {rel: os.path.exists(os.path.join(CROWDSEC_DIR, rel)) for rel in CROWDSEC_FILES}
-    export = (_opt("share_log_export_path", "") or "").strip()
+    export = _share_export_path()
     return jsonify({
         "crowdsec_config_found": present,
         "config_dir": CROWDSEC_DIR,
         "installed": installed,
         "all_installed": present and all(installed.values()),
         "export_path": export,
+        "default_export_path": DEFAULT_EXPORT_PATH,
         "export_active": accesslog.export_path() == export if export else False,
     })
 
@@ -1675,12 +1695,17 @@ def api_sharing_crowdsec_status():
 def api_sharing_crowdsec_install():
     """Copy parser, scenarios and acquisition into the CrowdSec add-on's config.
     Both add-ons see /config, so this is a plain file copy. CrowdSec picks the
-    files up after a restart of its add-on."""
+    files up after a restart of its add-on. Without share_log_export_path the
+    export starts right here at the default path - no option, no restart."""
     if not os.path.isdir(CROWDSEC_DIR):
         return jsonify({"error": f"CrowdSec-Konfiguration nicht gefunden ({CROWDSEC_DIR}). Ist das CrowdSec-Addon installiert?"}), 404
-    export = (_opt("share_log_export_path", "") or "").strip()
-    if not export:
-        return jsonify({"error": "share_log_export_path ist leer. Bitte in der Addon-Konfiguration setzen, z. B. /share/simplenas/share_access.log, und das Addon neu starten."}), 400
+    export = _share_export_path() or DEFAULT_EXPORT_PATH
+    if not (_opt("share_log_export_path", "") or "").strip():
+        save_json(CROWDSEC_SETUP_FILE, {"export_path": export})
+    if accesslog.export_path() != export:
+        if not accesslog.set_export(export, _opt("share_log_max_mb", 5)):
+            return jsonify({"error": f"Protokoll-Export nach {export} nicht moeglich (Ordner nicht beschreibbar?)."}), 500
+        print(f"[SHARE] Zugriffsprotokoll wird zusaetzlich nach {export} geschrieben (CrowdSec)", flush=True)
     written = []
     for rel, src in CROWDSEC_FILES.items():
         dest = os.path.join(CROWDSEC_DIR, rel)
@@ -1693,7 +1718,8 @@ def api_sharing_crowdsec_install():
             f.write(content)
         written.append(rel)
     print(f"[SHARE] CrowdSec-Dateien installiert: {', '.join(written)}", flush=True)
-    return jsonify({"ok": True, "written": written, "restart_needed": "CrowdSec"})
+    return jsonify({"ok": True, "written": written, "restart_needed": "CrowdSec",
+                    "export_path": export, "export_active": accesslog.export_path() == export})
 
 
 @app.route("/api/sharing/clamav/test", methods=["POST"])
@@ -2318,7 +2344,7 @@ def start_share_site():
         return False
     share_app = share_web.create_share_app(_opt, lambda: load_json(SHARES_FILE, []), share_roots, DATA_DIR)
     share_web.assert_public_surface(share_app)
-    export = (_opt("share_log_export_path", "") or "").strip()
+    export = _share_export_path()
     if export:
         accesslog.init(os.path.join(DATA_DIR, "share_access.log"), _opt("share_log_max_mb", 5), export)
         print(f"[SHARE] Zugriffsprotokoll wird zusaetzlich nach {export} geschrieben (CrowdSec)", flush=True)

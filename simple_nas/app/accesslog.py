@@ -38,17 +38,40 @@ def init(path, max_mb=5, export_path=None):
         path, maxBytes=int(max_mb) * 1024 * 1024, backupCount=1, encoding="utf-8")
     h.setFormatter(logging.Formatter("%(message)s"))
     lg.addHandler(h)
+    _logger = lg
     if export_path:
+        set_export(export_path, max_mb)
+
+
+def set_export(export_path, max_mb=5):
+    """Start (or switch) the second copy at runtime, e.g. when the CrowdSec
+    setup button picks the default path. Returns True when the file is open."""
+    global _export, _logger
+    lg = _logger or logging.getLogger("nas.share.access")
+    if _export == export_path:
+        return True
+    with _lock:
+        for h in list(lg.handlers):
+            if getattr(h, "_nas_export", False):
+                lg.removeHandler(h)
+                h.close()
+        _export = None
         try:
             os.makedirs(os.path.dirname(export_path), exist_ok=True)
             eh = logging.handlers.RotatingFileHandler(
                 export_path, maxBytes=int(max_mb) * 1024 * 1024, backupCount=1, encoding="utf-8")
             eh.setFormatter(logging.Formatter("%(message)s"))
+            eh._nas_export = True
             lg.addHandler(eh)
             _export = export_path
         except OSError as e:
             print(f"[SHARE] Protokoll-Export nach {export_path} nicht moeglich: {e}", flush=True)
-    _logger = lg
+            return False
+    if _logger is None:
+        lg.setLevel(logging.INFO)
+        lg.propagate = False
+        _logger = lg
+    return True
 
 
 def export_path():

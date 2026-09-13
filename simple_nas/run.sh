@@ -51,7 +51,8 @@ if os.path.exists(meta) and (not os.path.exists(shares) or os.path.getsize(share
     print("[RESTORE] Fresh install detected – restoring settings from /config/.simplenas/auto ...")
     os.makedirs(DATA_DIR, exist_ok=True)
     for fname in ("shares.json", "users.json", "groups.json", "mounts.json", "backups.json", "admin_auth.json",
-                  "file_access.json", "share_links.json", "share_accounts.json", "share_auth.json"):
+                  "file_access.json", "share_links.json", "share_accounts.json", "share_auth.json",
+                  "crowdsec_setup.json"):
         src = os.path.join(AUTO_DIR, fname)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(DATA_DIR, fname))
