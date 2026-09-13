@@ -174,12 +174,13 @@ class UploadRouteTest(unittest.TestCase):
         self.assertEqual(r.get_json()["error"], "err_too_big")
         self.assertEqual(self.files(), [])
 
-    def test_lying_content_length_is_caught_while_writing(self):
+    def test_body_beyond_declared_length_is_never_read(self):
+        # WSGI servers hand the app at most Content-Length bytes; a client that
+        # declares 100 and sends more gets exactly 100 stored and no .part left.
         l = self.link()
-        big = b"x" * (1024 * 1024 + 5000)
-        r = self.up(l, "big.bin", big, length=100)      # says 100 bytes, sends > 1 MB
-        self.assertIn(r.status_code, (413, 400))
-        self.assertEqual(self.files(), [])
+        r = self.up(l, "small.bin", b"x" * (1024 * 1024 + 5000), length=100)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(os.path.getsize(os.path.join(self.drop, "small.bin")), 100)
         self.assertEqual([f for f in os.listdir(self.drop) if f.endswith(".part")], [])
 
     def test_missing_length_is_411(self):
