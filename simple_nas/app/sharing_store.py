@@ -319,7 +319,9 @@ def _normalise_link(body, existing=None, shares=(), allowed_roots=None):
     out["max_downloads"] = _int(body.get("max_downloads", e.get("max_downloads", 0)), "Download-Limit")
     out["upload_quota_mb"] = _int(body.get("upload_quota_mb", e.get("upload_quota_mb", 0)), "Upload-Kontingent")
     out["max_file_mb"] = _int(body.get("max_file_mb", e.get("max_file_mb", 0)), "Maximale Dateigröße")
-    sub = body.get("upload_subdir", e.get("upload_subdir", "by-date"))
+    # Default: a pure drop box sorts by date; a browse+upload link puts the
+    # file where the visitor is standing, anything else surprises people.
+    sub = body.get("upload_subdir", e.get("upload_subdir") or ("by-date" if mode == "upload" else "none"))
     if sub not in UPLOAD_SUBDIRS:
         raise ShareError("Ungültige Upload-Ablage")
     out["upload_subdir"] = sub

@@ -43,13 +43,15 @@
       xhr.open('POST', url+'?name='+encodeURIComponent(file.name)+'&dir='+encodeURIComponent(dir));
       xhr.setRequestHeader('X-CSRF-Token', csrf); xhr.setRequestHeader('Content-Type','application/octet-stream');
       xhr.upload.onprogress=function(e){ if(e.lengthComputable) st.textContent=Math.round(e.loaded/e.total*100)+' %'; };
-      xhr.onload=function(){ var d={}; try{ d=JSON.parse(xhr.responseText);}catch(e){}
-        if(xhr.status===200&&d.ok){ st.textContent='✓ '+L.done; st.style.color='var(--accent)'; if(d.name!==file.name){ r.firstChild.textContent=file.name+' → '+d.name; } }
+      xhr.onload=function(){ pending--; var d={}; try{ d=JSON.parse(xhr.responseText);}catch(e){}
+        if(xhr.status===200&&d.ok){ st.textContent='✓ '+L.done; st.style.color='var(--accent)'; r.firstChild.textContent=file.name+' → '+d.path; scheduleReload(); }
         else { st.textContent='✗ '+(ERR[d.error]||L.failed); st.style.color='var(--danger)'; } };
-      xhr.onerror=function(){ st.textContent='✗ '+L.failed; st.style.color='var(--danger)'; };
+      xhr.onerror=function(){ pending--; st.textContent='✗ '+L.failed; st.style.color='var(--danger)'; };
       xhr.send(file);
     }
-    function sendAll(files){ Array.prototype.forEach.call(files, send); }
+    var pending=0, timer=null;
+    function scheduleReload(){ if(!document.querySelector('table')) return; clearTimeout(timer); timer=setTimeout(function(){ if(pending===0) location.reload(); }, 1200); }
+    function sendAll(files){ Array.prototype.forEach.call(files, function(f){ pending++; send(f); }); }
     input.addEventListener('change', function(){ sendAll(input.files); input.value=''; });
     ['dragenter','dragover'].forEach(function(ev){ box.addEventListener(ev,function(e){ e.preventDefault(); box.style.borderColor='var(--accent)'; }); });
     ['dragleave','drop'].forEach(function(ev){ box.addEventListener(ev,function(e){ e.preventDefault(); box.style.borderColor=''; }); });

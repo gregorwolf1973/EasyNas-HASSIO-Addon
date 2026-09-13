@@ -236,3 +236,23 @@ class UploadRouteTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SubdirDefaultTest(UploadRouteTest):
+    def test_both_mode_defaults_to_current_folder(self):
+        l = ss.create_link({"name": "x", "root": self.drop, "mode": "both", "access": "public"}, allowed_roots=[self.media])
+        self.assertEqual(l["upload_subdir"], "none")
+        os.makedirs(os.path.join(self.drop, "Gregor"))
+        self.assertEqual(self.up(l, "p.txt", b"x", dir="Gregor").status_code, 200)
+        self.assertEqual(self.files(os.path.join(self.drop, "Gregor")), ["p.txt"])
+
+    def test_upload_only_defaults_to_by_date(self):
+        l = ss.create_link({"name": "x", "root": self.drop, "mode": "upload", "access": "public"}, allowed_roots=[self.media])
+        self.assertEqual(l["upload_subdir"], "by-date")
+
+    def test_response_tells_where_the_file_went(self):
+        l = self.link(mode="both", upload_subdir="by-date")
+        os.makedirs(os.path.join(self.drop, "Gregor"))
+        r = self.up(l, "p.txt", b"x", dir="Gregor")
+        import datetime
+        self.assertEqual(r.get_json()["path"], f"Gregor/{datetime.date.today().isoformat()}/p.txt")
