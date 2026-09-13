@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Simple NAS - Flask Web GUI v2.0"""
+import hashlib
+import hmac
 import json
 import os
+import secrets
 import subprocess
 import re
 import shutil
 import time
 import socket
+from datetime import timedelta
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -34,32 +38,60 @@ SMB_PORT    = os.environ.get("SMB_PORT", "445")
 
 _admin_auth = {"enabled": False}
 
+def _session_key():
+    """Persistent Flask secret, so logins survive an add-on restart."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    auth = load_json(ADMIN_AUTH_FILE, {})
+    if not auth.get("secret_key"):
+        auth["secret_key"] = secrets.token_hex(32)
+        save_json(ADMIN_AUTH_FILE, auth)
+    return auth["secret_key"], auth
+
+
+def _auth_epoch(password_hash):
+    """Fingerprint of the current password. Stored in the session so that
+    changing the password in the add-on options logs everyone out."""
+    return hashlib.sha256((password_hash or "").encode()).hexdigest()[:16]
+
+
 def _setup_admin_auth():
     """Read admin auth settings from env vars (set by HA from config.yaml) and store hashed password."""
     global _admin_auth
-    import secrets
+
+    # Cookie hardening. Note: SESSION_COOKIE_SECURE stays off on purpose - HA
+    # Ingress talks plain HTTP to the add-on, and a Secure cookie would never
+    # be sent back, locking the user out of the panel.
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+    )
 
     enabled = os.environ.get("ADMIN_PASSWORD_ENABLED", "false").lower() in ("true", "1", "yes")
     if not enabled:
+        # Still needs a key: the CSRF token lives in the session either way.
+        app.secret_key, _ = _session_key()
         _admin_auth = {"enabled": False}
         return
 
     username = os.environ.get("ADMIN_USERNAME", "admin").strip() or "admin"
     password = os.environ.get("ADMIN_PASSWORD", "").strip()
+    key, auth = _session_key()
+    app.secret_key = key
+
     if not password:
-        _admin_auth = {"enabled": False}
+        # Protection was switched on but no password was given. Previously the
+        # add-on silently disabled the protection here and served everything to
+        # the LAN. Now it locks itself down until a password is configured.
+        _admin_auth = {"enabled": True, "setup_required": True, "username": username}
+        print("[AUTH] Passwortschutz ist aktiv, aber kein Passwort gesetzt - "
+              "Oberflaeche gesperrt bis eines konfiguriert ist.", flush=True)
         return
 
-    os.makedirs(DATA_DIR, exist_ok=True)
-    auth = load_json(ADMIN_AUTH_FILE, {})
-    if not auth.get("secret_key"):
-        auth["secret_key"] = secrets.token_hex(32)
     auth["enabled"] = True
     auth["username"] = username
     auth["password_hash"] = generate_password_hash(password)
     save_json(ADMIN_AUTH_FILE, auth)
-
-    app.secret_key = auth["secret_key"]
     _admin_auth = auth
 
 
@@ -72,16 +104,69 @@ def _client_ip():
     return request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
 
 
+SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
+
+
+def csrf_token():
+    """Per-session token. Issued on the first request, then reused."""
+    tok = session.get("csrf")
+    if not tok:
+        tok = secrets.token_urlsafe(32)
+        session["csrf"] = tok
+    return tok
+
+
 @app.before_request
 def check_auth():
-    if not _admin_auth.get("enabled"):
+    # 1. Locked down: protection is on but no password is configured.
+    if _admin_auth.get("setup_required"):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "Kein Admin-Passwort gesetzt. Bitte in der "
+                                     "Addon-Konfiguration eines eintragen."}), 503
+        if request.endpoint != "setup_required_page":
+            return redirect(_base() + "/setup-required")
         return
+
+    if not _admin_auth.get("enabled"):
+        csrf_token()
+        return _csrf_check()
+
     if request.endpoint in ("login", "logout"):
         return
     if not session.get("authenticated"):
         if request.path.startswith("/api/"):
             return jsonify({"error": "Unauthorized"}), 401
         return redirect(_base() + "/login")
+
+    # 2. The password may have changed since this session was created.
+    if session.get("auth_epoch") != _auth_epoch(_admin_auth.get("password_hash", "")):
+        session.clear()
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "Sitzung abgelaufen"}), 401
+        return redirect(_base() + "/login")
+
+    csrf_token()
+    return _csrf_check()
+
+
+def _csrf_check():
+    """Reject state-changing API calls without a matching token.
+
+    SameSite=Lax already blocks cross-site form posts; this additionally covers
+    same-site sources such as another add-on on the same host.
+    """
+    if request.method in SAFE_METHODS or not request.path.startswith("/api/"):
+        return
+    sent = request.headers.get("X-CSRF-Token", "")
+    if not sent or not hmac.compare_digest(sent, session.get("csrf", "")):
+        print(f"[CSRF] abgewiesen: {request.method} {request.path} ip={_client_ip()}", flush=True)
+        return jsonify({"error": "Sitzung ungültig, bitte Seite neu laden"}), 403
+
+
+@app.route("/setup-required")
+def setup_required_page():
+    return render_template("setup_required.html",
+                           username=_admin_auth.get("username", "admin")), 503
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -92,7 +177,12 @@ def login():
         password = request.form.get("password", "").strip()
         if (username == _admin_auth.get("username") and
                 check_password_hash(_admin_auth.get("password_hash", ""), password)):
+            session.clear()                      # fresh session id after login
+            session.permanent = True
             session["authenticated"] = True
+            session["user"] = username
+            session["auth_epoch"] = _auth_epoch(_admin_auth.get("password_hash", ""))
+            csrf_token()
             print(f"[AUTH] Login successful: user='{username}' ip={_client_ip()}", flush=True)
             return redirect(_base() + "/")
         print(f"[AUTH FAIL] Login failed: user='{username}' ip={_client_ip()}", flush=True)
@@ -1189,6 +1279,9 @@ def api_status():
         "disk": {"total": disk.total, "used": disk.used, "free": disk.free,
                  "percent": round(disk.used / disk.total * 100, 1)},
         "protection_mode": _protection_mode_active(),
+        "csrf": csrf_token(),
+        "admin_password_enabled": bool(_admin_auth.get("enabled")),
+        "user": session.get("user", ""),
     })
 
 @app.route("/api/samba/restart", methods=["POST"])
@@ -1335,20 +1428,93 @@ def _opt(key, default=None):
 
 
 DEFAULT_FILE_ROOTS = ["/media", "/mnt", "/share", "/config", "/addon_configs"]
+FILE_ACCESS_FILE = f"{DATA_DIR}/file_access.json"
+
+
+def file_access():
+    """Current file-access settings.
+
+    Whatever the Settings tab last saved wins over the add-on option, because
+    the add-on cannot write its own options.json.
+    """
+    saved = load_json(FILE_ACCESS_FILE, {})
+    if isinstance(saved, dict) and saved.get("roots"):
+        roots = saved["roots"]
+        unlock = bool(saved.get("unlock_system"))
+    else:
+        roots = _opt("file_allowed_roots", None)
+        unlock = False
+        if not isinstance(roots, list) or not roots:
+            roots = DEFAULT_FILE_ROOTS
+    roots = [str(r).strip() for r in roots if str(r).strip()]
+    return {"roots": roots or list(DEFAULT_FILE_ROOTS), "unlock_system": unlock}
 
 
 def file_roots():
     """Directories the file API may touch. Everything else is refused."""
-    roots = _opt("file_allowed_roots", None)
-    if not isinstance(roots, list) or not roots:
-        roots = DEFAULT_FILE_ROOTS
-    return [str(r).strip() for r in roots if str(r).strip()]
+    return file_access()["roots"]
+
+
+def _deny_list():
+    """/data and the kernel pseudo-filesystems always stay shut. The rest is
+    only blocked until the admin unlocks it in the Settings tab."""
+    if file_access()["unlock_system"]:
+        return safepath.HARD_DENY
+    return safepath.DENY_ROOTS
 
 
 def _safe(path, roots=None):
     """Confine a client-supplied path. Raises safepath.PathError, which the
     error handler below turns into a generic 403."""
-    return safepath.resolve_in_roots(roots if roots is not None else file_roots(), path)
+    return safepath.resolve_in_roots(
+        roots if roots is not None else file_roots(), path, deny=_deny_list())
+
+
+@app.route("/api/settings/file-access", methods=["GET"])
+def api_get_file_access():
+    acc = file_access()
+    return jsonify({
+        "roots": acc["roots"],
+        "unlock_system": acc["unlock_system"],
+        "full_access": any(safepath.real(r) == safepath.real("/") for r in acc["roots"]),
+        "defaults": DEFAULT_FILE_ROOTS,
+        "always_blocked": list(safepath.HARD_DENY),
+        "unlockable": list(safepath.SOFT_DENY),
+    })
+
+
+@app.route("/api/settings/file-access", methods=["POST"])
+def api_set_file_access():
+    body = request.get_json(force=True) or {}
+
+    if body.get("full_access"):
+        roots, unlock = ["/"], True
+    elif body.get("reset"):
+        roots, unlock = list(DEFAULT_FILE_ROOTS), False
+    else:
+        raw = body.get("roots", None)
+        if raw is None:
+            acc = file_access()
+            roots = acc["roots"]
+        else:
+            if not isinstance(raw, list):
+                return jsonify({"error": "roots muss eine Liste sein"}), 400
+            roots = []
+            for r in raw:
+                r = str(r).strip().rstrip("/") or "/"
+                if not os.path.isabs(r):
+                    return jsonify({"error": f"„{r}“ ist kein absoluter Pfad"}), 400
+                if "\x00" in r:
+                    return jsonify({"error": "Ungültiger Pfad"}), 400
+                if r not in roots:
+                    roots.append(r)
+            if not roots:
+                return jsonify({"error": "Mindestens ein Ordner wird gebraucht"}), 400
+        unlock = bool(body.get("unlock_system", file_access()["unlock_system"]))
+
+    save_json(FILE_ACCESS_FILE, {"roots": roots, "unlock_system": unlock})
+    print(f"[FILE-ACCESS] geaendert: roots={roots} unlock_system={unlock} ip={_client_ip()}", flush=True)
+    return jsonify({"ok": True, "roots": roots, "unlock_system": unlock})
 
 
 @app.errorhandler(safepath.PathError)
@@ -1850,7 +2016,9 @@ def api_run_backup(job_id):
 
 @app.route("/")
 def index():
-    return render_template("index.html", admin_enabled=_admin_auth.get("enabled", False))
+    return render_template("index.html",
+                           admin_enabled=_admin_auth.get("enabled", False),
+                           csrf=csrf_token())
 
 def _install_safe_getfqdn():
     """Keep the reverse DNS lookup during bind from killing the addon.

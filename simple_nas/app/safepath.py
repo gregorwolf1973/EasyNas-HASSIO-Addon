@@ -18,6 +18,8 @@ import os
 __all__ = [
     "PathError",
     "DENY_ROOTS",
+    "HARD_DENY",
+    "SOFT_DENY",
     "real",
     "is_within",
     "resolve_within",
@@ -31,11 +33,14 @@ class PathError(Exception):
     """A path was rejected. The message is for the log, never for the client."""
 
 
-# Never reachable through the file API, whatever the configuration says.
-# /data holds the password hashes, /config the Home Assistant secrets.
-DENY_ROOTS = (
-    "/data", "/ssl", "/etc", "/proc", "/sys", "/dev", "/var", "/run", "/boot", "/root",
-)
+# Never reachable, whatever the configuration says: /data holds this add-on's
+# own password hashes, and the kernel pseudo-filesystems are not files anyway.
+HARD_DENY = ("/data", "/proc", "/sys", "/dev")
+
+# Blocked by default, but the admin can unlock them in the Settings tab.
+SOFT_DENY = ("/ssl", "/etc", "/var", "/run", "/boot", "/root")
+
+DENY_ROOTS = HARD_DENY + SOFT_DENY
 
 
 def real(path: str) -> str:
@@ -48,11 +53,11 @@ def is_within(root: str, candidate: str) -> bool:
     return candidate == root or candidate.startswith(root.rstrip(os.sep) + os.sep)
 
 
-def _reject_denied(real_path: str) -> None:
+def _reject_denied(real_path: str, deny=None) -> None:
     # Resolve the deny roots too: on some systems /var is a symlink, and a raw
     # string compare would then miss it.
-    for deny in DENY_ROOTS:
-        if is_within(real(deny), real_path):
+    for d in (DENY_ROOTS if deny is None else deny):
+        if is_within(real(d), real_path):
             raise PathError(f"denied root: {real_path}")
 
 
@@ -87,18 +92,19 @@ def resolve_within(root: str, rel: str) -> str:
     return resolved
 
 
-def resolve_in_roots(roots, abs_path: str) -> str:
+def resolve_in_roots(roots, abs_path: str, deny=None) -> str:
     """Resolve an absolute path supplied by the admin UI against the allowed roots.
 
     Used by the admin file API, where the client sends whole paths rather than
-    a path relative to one known root.
+    a path relative to one known root. `deny` overrides the default block list,
+    so the admin can unlock the soft-denied system folders.
     """
     if not abs_path or not str(abs_path).strip():
         raise PathError("empty path")
     if "\x00" in str(abs_path):
         raise PathError("NUL in path")
     resolved = real(str(abs_path).strip())
-    _reject_denied(resolved)
+    _reject_denied(resolved, deny)
     for root in roots or ():
         real_root = real(root)
         if is_within(real_root, resolved):

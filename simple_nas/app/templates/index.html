@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <base href="./">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="csrf" content="{{ csrf }}">
 <title>Simple NAS</title>
 <style>
   /* ── HA-style Theme Variables ── */
@@ -573,6 +574,45 @@
     <div class="card" style="margin-top:16px">
       <div class="card-header">
         <div>
+          <div class="card-title" data-i18n="fa_title">Dateizugriff</div>
+          <div class="card-sub" data-i18n="fa_sub">Welche Ordner der Dateimanager öffnen darf</div>
+        </div>
+      </div>
+
+      <div style="padding:12px 16px 4px">
+        <div id="fa-roots" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input type="text" id="fa-new-root" placeholder="/pfad/zum/ordner" data-i18n-ph="fa_add_ph"
+                 style="flex:1;min-width:200px;font-family:monospace;font-size:12px">
+          <button class="btn btn-ghost btn-sm" onclick="openBrowser('fa-new-root')" data-i18n="fa_browse">Durchsuchen…</button>
+          <button class="btn btn-primary btn-sm" onclick="faAddRoot()" data-i18n="fa_add">Hinzufügen</button>
+        </div>
+      </div>
+
+      <div style="padding:12px 16px 4px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px">
+          <div style="font-weight:500" data-i18n="fa_full_label">Zugriff auf alle Dateien</div>
+          <div style="color:var(--text-dim);font-size:13px;margin-top:2px" data-i18n="fa_full_sub">Gibt das gesamte Dateisystem frei und entsperrt auch die Systemordner. Nur einschalten, wenn du Dateien außerhalb der Standardordner brauchst.</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="fa-full-toggle" onchange="faSetFull(this.checked)">
+          <span class="switch-slider"></span>
+        </label>
+      </div>
+
+      <div id="fa-warn" class="warn-box" style="margin:4px 16px 12px;display:none">
+        <span data-i18n="fa_warn">Der Dateimanager erreicht gerade das gesamte Dateisystem. Die Oberfläche ist über das Heimnetz erreichbar — setze ein Admin-Passwort, wenn noch keines gesetzt ist.</span>
+      </div>
+
+      <div style="padding:0 16px 16px;font-size:12px;color:var(--text-dim);line-height:1.7">
+        <span data-i18n="fa_blocked">Immer gesperrt:</span> <code id="fa-blocked"></code>
+        <button class="btn btn-ghost btn-sm" style="margin-left:10px" onclick="faReset()" data-i18n="fa_reset">Auf Standard zurücksetzen</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-header">
+        <div>
           <div class="card-title" data-i18n="settings_files_title">Datei-Ansicht</div>
           <div class="card-sub" data-i18n="settings_files_sub">Optionen für den Dateien-Tab</div>
         </div>
@@ -852,7 +892,7 @@ const T={
     users_title:'Benutzer',users_sub:'Samba-Benutzer verwalten',btn_new_user:'+ Neuer Benutzer',
     groups_title:'Gruppen',btn_new_group:'+ Neue Gruppe',
     files_title:'Dateien',files_sub:'Dateien durchsuchen, hochladen, kopieren, verschieben und löschen',
-    btn_upload:'↑ Hochladen',btn_new_folder:'+ Ordner',go_to:'Gehe zu:',all_roots:'Alle erlaubten Ordner',path_placeholder:'Pfad eingeben…',
+    btn_upload:'↑ Hochladen',btn_new_folder:'+ Ordner',fa_title:'Dateizugriff',fa_sub:'Welche Ordner der Dateimanager öffnen darf',fa_add:'Hinzufügen',fa_add_ph:'/pfad/zum/ordner',fa_browse:'Durchsuchen…',fa_remove:'Entfernen',fa_none:'Kein Ordner freigegeben — der Dateimanager ist gesperrt.',fa_full_label:'Zugriff auf alle Dateien',fa_full_sub:'Gibt das gesamte Dateisystem frei und entsperrt auch die Systemordner. Nur einschalten, wenn du Dateien außerhalb der Standardordner brauchst.',fa_warn:'Der Dateimanager erreicht gerade das gesamte Dateisystem. Die Oberfläche ist über das Heimnetz erreichbar — setze ein Admin-Passwort, wenn noch keines gesetzt ist.',fa_blocked:'Immer gesperrt:',fa_reset:'Auf Standard zurücksetzen',fa_saved:'Gespeichert.',fa_full_on:'Voller Dateizugriff ist aktiv.',fa_reset_done:'Auf Standardordner zurückgesetzt.',fa_abs_only:'Bitte einen absoluten Pfad angeben, beginnend mit /',fa_need_one:'Mindestens ein Ordner muss freigegeben bleiben.',fa_confirm_full:'Damit darf der Dateimanager jede Datei des Systems lesen und schreiben, auch die Systemordner. Fortfahren?',fa_confirm_reset:'Zugriff wieder auf die Standardordner beschränken?',go_to:'Gehe zu:',all_roots:'Alle erlaubten Ordner',path_placeholder:'Pfad eingeben…',
     btn_restore:'Wiederherstellen',
     file_backup_title:'Datei-Backup-Jobs',file_backup_sub:'Backup-Jobs erstellen und verwalten',btn_new_backup:'+ Neuer Backup-Job',
     modal_cancel:'Abbrechen',modal_save:'Speichern',modal_ok:'OK',modal_select:'Auswählen',
@@ -964,7 +1004,7 @@ const T={
     users_title:'Users',users_sub:'Manage Samba users',btn_new_user:'+ New User',
     groups_title:'Groups',btn_new_group:'+ New Group',
     files_title:'Files',files_sub:'Browse, upload, copy, move and delete files',
-    btn_upload:'↑ Upload',btn_new_folder:'+ Folder',go_to:'Go to:',all_roots:'All allowed folders',path_placeholder:'Enter path…',
+    btn_upload:'↑ Upload',btn_new_folder:'+ Folder',fa_title:'File access',fa_sub:'Which folders the file manager may open',fa_add:'Add',fa_add_ph:'/path/to/folder',fa_browse:'Browse…',fa_remove:'Remove',fa_none:'No folder allowed — the file manager is locked.',fa_full_label:'Access to all files',fa_full_sub:'Opens the whole filesystem and unlocks the system folders too. Only turn this on if you need files outside the default folders.',fa_warn:'The file manager can currently reach the whole filesystem. The interface is reachable from your LAN — set an admin password if you have not already.',fa_blocked:'Always blocked:',fa_reset:'Reset to defaults',fa_saved:'Saved.',fa_full_on:'Full file access is on.',fa_reset_done:'Reset to the default folders.',fa_abs_only:'Please give an absolute path starting with /',fa_need_one:'At least one folder must stay allowed.',fa_confirm_full:'This lets the file manager read and write every file on the system, including the system folders. Continue?',fa_confirm_reset:'Limit access back to the default folders?',go_to:'Go to:',all_roots:'All allowed folders',path_placeholder:'Enter path…',
     btn_restore:'Restore',
     file_backup_title:'File Backup Jobs',file_backup_sub:'Create and manage backup jobs',btn_new_backup:'+ New Backup Job',
     modal_cancel:'Cancel',modal_save:'Save',modal_ok:'OK',modal_select:'Select',
@@ -1067,7 +1107,9 @@ const T={
   }
 };
 let _lang=localStorage.getItem('nas-lang')||'en';
-function t(k,vars){let s=T[_lang][k]||T.de[k]||k;if(vars)Object.keys(vars).forEach(v=>{s=s.replace('{'+v+'}',vars[v]);});return s;}
+function t(k,vars){let s=T[_lang][k]||T.de[k]||k;if(vars)Object.keys(vars).forEach(v=>{s=s.split('{'+v+'}').join(esc(vars[v]));});return s;}
+// Same, for the few places that want the raw value (input fields, confirm()).
+function tRaw(k,vars){let s=T[_lang][k]||T.de[k]||k;if(vars)Object.keys(vars).forEach(v=>{s=s.split('{'+v+'}').join(String(vars[v]==null?'':vars[v]));});return s;}
 function applyLang(){
   document.documentElement.lang=_lang;
   document.getElementById('lang-toggle').textContent=_lang==='de'?'EN':'DE';
@@ -1102,7 +1144,16 @@ function toggleLang(){
 // ── Utils ──
 function fmt(b){if(b==null)return'–';const g=b/1e9;if(g>=1)return g.toFixed(1)+' GB';return(b/1e6).toFixed(0)+' MB';}
 function toast(m,e=false){const el=document.createElement('div');el.className='toast'+(e?' error':'');el.textContent=m;document.getElementById('toast-container').appendChild(el);setTimeout(()=>el.remove(),3500);}
-async function api(method,path,body){const o={method,headers:{'Content-Type':'application/json'}};if(body)o.body=JSON.stringify(body);const base=window.location.pathname.replace(/\/+$/,'');const r=await fetch(base+'/api'+path,o);const d=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(d.error||'Fehler');e.data=d;throw e;}return d;}
+let CSRF = document.querySelector('meta[name="csrf"]')?.content || '';
+function apiBase(){return window.location.pathname.replace(/\/+$/,'');}
+async function api(method,path,body){
+  const o={method,headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF}};
+  if(body)o.body=JSON.stringify(body);
+  const r=await fetch(apiBase()+'/api'+path,o);
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok){const e=new Error(d.error||'Fehler');e.data=d;e.status=r.status;throw e;}
+  return d;
+}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function escJs(s){return String(s==null?'':s).split('\\').join('\\\\').split("'").join("\\'").split('<').join('\\x3c');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
@@ -1134,7 +1185,9 @@ function switchTab(n){
 }
 
 // ── Status ──
-async function loadStatus(){try{
+async function loadStatus(){
+  // also refreshes CSRF after a restart, and drives the no-password banner
+try{
   const s=await api('GET','/status');
   ['smbd','nmbd'].forEach(svc=>{const on=s[svc];['pill','status'].forEach(sfx=>{const el=document.getElementById(svc+'-'+sfx);if(!el)return;el.className='status-pill '+(on?'pill-ok':'pill-off');const sp=el.querySelector('span:last-child');if(sp)sp.textContent=on?t('svc_active'):t('svc_inactive');});});
   const cpu=s.cpu_percent;document.getElementById('stat-cpu').innerHTML=cpu+'<span class="stat-unit">%</span>';
@@ -1468,7 +1521,7 @@ async function refreshDiskManager(){
     _diskMgrData=data;
     renderDiskManager(data);
   }catch(e){
-    document.getElementById('disk-mgr-body').innerHTML='<div class="empty" style="color:var(--danger)">'+e.message+'</div>';
+    document.getElementById('disk-mgr-body').innerHTML='<div class="empty" style="color:var(--danger)">'+esc(e.message)+'</div>';
   }
 }
 
@@ -1673,7 +1726,7 @@ let _allUsers=[],_allGroups=[];
 async function loadShares(){
   const grid=document.getElementById('shares-grid');grid.innerHTML='<div class="empty" style="grid-column:1/-1"><span class="spinner"></span></div>';
   try{const shares=await api('GET','/shares');renderSharesGrid(shares,grid);renderOverviewShares(shares);}
-  catch(e){grid.innerHTML='<div class="empty" style="grid-column:1/-1;color:var(--danger)">'+e.message+'</div>';}
+  catch(e){grid.innerHTML='<div class="empty" style="grid-column:1/-1;color:var(--danger)">'+esc(e.message)+'</div>';}
 }
 let _sharesCache=[],_groupsCache=[];
 function renderSharesGrid(shares,c){
@@ -1728,7 +1781,7 @@ async function loadUsers(){
   try{const users=await api('GET','/users');_allUsers=users;
     if(!users.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><p>'+t('no_users')+'</p></div>';return;}
     grid.innerHTML=users.map(u=>'<div class="card"><div class="card-header"><div><div class="card-title">'+u.username+'</div><div class="card-sub">'+t('samba_user')+'</div></div><div class="card-actions"><button class="btn btn-ghost btn-sm btn-icon" title="'+t('modal_change_pw')+'" onclick="openUserModal(\''+u.username+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button><button class="btn btn-danger btn-sm btn-icon" title="'+t('title_delete')+'" onclick="deleteUser(\''+u.username+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></div></div>'+(u.groups&&u.groups.length?'<div style="display:flex;gap:4px;flex-wrap:wrap">'+u.groups.map(g=>'<span class="tag accent">👥 '+g+'</span>').join('')+'</div>':'')+'</div>').join('');
-  }catch(e){grid.innerHTML='<div class="empty" style="grid-column:1/-1;color:var(--danger)">'+e.message+'</div>';}
+  }catch(e){grid.innerHTML='<div class="empty" style="grid-column:1/-1;color:var(--danger)">'+esc(e.message)+'</div>';}
 }
 function openUserModal(u){document.getElementById('user-edit-name').value=u||'';document.getElementById('user-modal-title').textContent=u?t('modal_change_pw'):t('modal_new_user');document.getElementById('user-name').value=u||'';document.getElementById('user-password').value='';document.getElementById('user-name-group').style.display=u?'none':'block';openModal('modal-user');}
 async function saveUser(){const e=document.getElementById('user-edit-name').value;const u=e||document.getElementById('user-name').value.trim();const p=document.getElementById('user-password').value;if(!u||!p){toast(t('err_user_pw'),true);return;}try{if(e){await api('PUT','/users/'+e,{password:p});toast(t('pw_changed'));}else{await api('POST','/users',{username:u,password:p});toast(t('user_created'));}closeModal('modal-user');loadUsers();}catch(e2){toast(e2.message,true);}}
@@ -1741,7 +1794,7 @@ async function loadGroups(){
     if(!groups.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg><p>'+t('no_groups')+'</p></div>';return;}
     _groupsCache=groups;
     grid.innerHTML=groups.map((g,idx)=>'<div class="card"><div class="card-header"><div><div class="card-title">'+g.name+'</div><div class="card-sub">'+g.members.length+' '+t('members_label')+'</div></div><div class="card-actions"><button class="btn btn-ghost btn-sm btn-icon" title="'+t('title_edit')+'" onclick="openGroupModal(_groupsCache['+idx+'])"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button><button class="btn btn-danger btn-sm btn-icon" title="'+t('title_delete')+'" onclick="deleteGroup(\''+g.name+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></div></div><div style="display:flex;gap:4px;flex-wrap:wrap">'+g.members.map(m=>'<span class="tag">'+m+'</span>').join('')+'</div></div>').join('');
-  }catch(e){grid.innerHTML='<div class="empty" style="grid-column:1/-1;color:var(--danger)">'+e.message+'</div>';}
+  }catch(e){grid.innerHTML='<div class="empty" style="grid-column:1/-1;color:var(--danger)">'+esc(e.message)+'</div>';}
 }
 async function openGroupModal(g){
   try{_allUsers=await api('GET','/users');}catch(e){_allUsers=[];}
@@ -1799,11 +1852,11 @@ async function browseTo(path){
     sel.textContent=t('cur_path')+path;sel.style.display='block';
     document.getElementById('browser-breadcrumb').innerHTML=d.breadcrumb.map((p,i)=>{const last=i===d.breadcrumb.length-1;const sep=i>0?'<span class="bc-sep"> / </span>':'';const lb=p.name==='/'?'⌂':p.name;return last?sep+'<span class="bc-part current">'+lb+'</span>':sep+'<span class="bc-part" onclick="browseTo(\''+p.path+'\')">'+lb+'</span>';}).join('');
     const rows=[];
-    if(d.parent)rows.push('<div class="b-entry up" onclick="browseTo(\''+d.parent+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg><span style="color:var(--text-dim)">'+t('up')+'</span></div>');
+    if(d.parent)rows.push('<div class="b-entry up" onclick="browseTo(\''+escJs(d.parent)+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg><span style="color:var(--text-dim)">'+t('up')+'</span></div>');
     if(!d.entries.length)rows.push('<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px">'+t('no_subdirs')+'</div>');
-    for(const e of d.entries){const dim=e.readable?'':'opacity:.4;pointer-events:none;';rows.push('<div class="b-entry" style="'+dim+'" onclick="selectBrowserEntry(\''+e.path+'\')" ondblclick="browseTo(\''+e.path+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span style="flex:1">'+e.name+'</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;color:var(--text-dim);cursor:pointer" onclick="event.stopPropagation();browseTo(\''+e.path+'\')"><polyline points="9 18 15 12 9 6"/></svg></div>');}
+    for(const e of d.entries){const dim=e.readable?'':'opacity:.4;pointer-events:none;';rows.push('<div class="b-entry" style="'+dim+'" onclick="selectBrowserEntry(\''+escJs(e.path)+'\')" ondblclick="browseTo(\''+escJs(e.path)+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span style="flex:1">'+esc(e.name)+'</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;color:var(--text-dim);cursor:pointer" onclick="event.stopPropagation();browseTo(\''+escJs(e.path)+'\')"><polyline points="9 18 15 12 9 6"/></svg></div>');}
     list.innerHTML=rows.join('');if(_browserSelected)highlightEntry(_browserSelected);
-  }catch(e){list.innerHTML='<div style="padding:20px;text-align:center;color:var(--danger)">'+e.message+'</div>';}
+  }catch(e){list.innerHTML='<div style="padding:20px;text-align:center;color:var(--danger)">'+esc(e.message)+'</div>';}
 }
 function selectBrowserEntry(p){_browserSelected=p;highlightEntry(p);const sel=document.getElementById('browser-selected');sel.textContent='✓ '+p;sel.style.display='block';document.getElementById('browser-manual-path').value=p;}
 function highlightEntry(p){document.querySelectorAll('#browser-list .b-entry').forEach(el=>{const s=el.querySelector('span');el.classList.toggle('selected',s&&el.getAttribute('ondblclick')&&el.getAttribute('ondblclick').includes(p));});}
@@ -1857,9 +1910,59 @@ function onSettingsSizebarsToggle(checked){
   // If the Files panel is currently visible, re-render so the change shows immediately
   if(document.getElementById('panel-files').classList.contains('active'))loadFiles();
 }
+
+// ── Dateizugriff ──
+let _faState={roots:[],unlock_system:false,full_access:false};
+async function loadFileAccess(){
+  try{ _faState=await api('GET','/settings/file-access'); }catch(e){ return; }
+  const box=document.getElementById('fa-roots');
+  if(box){
+    box.innerHTML=_faState.roots.map((r,i)=>
+      '<span class="tag accent" style="display:inline-flex;align-items:center;gap:6px">'+esc(r)+
+      '<span style="cursor:pointer;font-weight:700" title="'+esc(t('fa_remove'))+'" onclick="faRemoveRoot('+i+')">×</span></span>'
+    ).join('') || '<span style="color:var(--danger);font-size:12px">'+esc(t('fa_none'))+'</span>';
+  }
+  const tg=document.getElementById('fa-full-toggle'); if(tg)tg.checked=!!_faState.full_access;
+  const w=document.getElementById('fa-warn'); if(w)w.style.display=_faState.full_access?'':'none';
+  const b=document.getElementById('fa-blocked');
+  if(b)b.textContent=(_faState.always_blocked||[]).join('  ');
+}
+async function faSave(payload,msg){
+  try{
+    await api('POST','/settings/file-access',payload);
+    _rootsCache=null;                 // the quick-jump buttons change with it
+    await loadFileAccess(); await renderRootButtons();
+    toast(msg||t('fa_saved'));
+  }catch(e){ toast(e.message,true); }
+}
+function faAddRoot(){
+  const el=document.getElementById('fa-new-root');
+  const v=(el.value||'').trim();
+  if(!v)return;
+  if(!v.startsWith('/')){ toast(t('fa_abs_only'),true); return; }
+  if(_faState.roots.includes(v)){ el.value=''; return; }
+  el.value='';
+  faSave({roots:_faState.roots.concat([v]),unlock_system:_faState.unlock_system});
+}
+function faRemoveRoot(i){
+  const left=_faState.roots.filter((_,j)=>j!==i);
+  if(!left.length){ toast(t('fa_need_one'),true); return; }
+  faSave({roots:left,unlock_system:_faState.unlock_system});
+}
+function faSetFull(on){
+  if(on){
+    if(!confirm(tRaw('fa_confirm_full'))){ document.getElementById('fa-full-toggle').checked=false; return; }
+    faSave({full_access:true},t('fa_full_on'));
+  }else{
+    faSave({reset:true},t('fa_reset_done'));
+  }
+}
+function faReset(){ if(confirm(tRaw('fa_confirm_reset'))) faSave({reset:true},t('fa_reset_done')); }
+
 function loadSettings(){
-  const t=document.getElementById('settings-sizebars-toggle');
-  if(t)t.checked=_showSizeBars;
+  const el=document.getElementById('settings-sizebars-toggle');
+  if(el)el.checked=_showSizeBars;
+  loadFileAccess();
 }
 
 // Color and bar rendering. Color thresholds are absolute (per spec),
@@ -1900,7 +2003,7 @@ async function loadFiles(path){
     }).join('');
     // File list
     let rows=[_filesHeaderHtml()];
-    if(d.parent)rows.push('<div class="file-row" onclick="loadFiles(\''+d.parent+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg><span class="fname" style="color:var(--text-dim)">'+t('up')+'</span>'+(_showSizeBars?'<span class="fbar"></span>':'')+'<span class="fsize"></span><span class="fdate"></span><span class="factions"></span></div>');
+    if(d.parent)rows.push('<div class="file-row" onclick="loadFiles(\''+escJs(d.parent)+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg><span class="fname" style="color:var(--text-dim)">'+t('up')+'</span>'+(_showSizeBars?'<span class="fbar"></span>':'')+'<span class="fsize"></span><span class="fdate"></span><span class="factions"></span></div>');
     const dirs=_sortEntries(d.entries.filter(e=>e.is_dir));
     const files=_sortEntries(d.entries.filter(e=>!e.is_dir));
     // Max log size across both folders and files for relative bar widths
@@ -1912,21 +2015,21 @@ async function loadFiles(path){
     for(const e of dirs){
       const sizeStr=(_showSizeBars&&typeof e.size==='number')?fmtSize(e.size)+(e.size_truncated?' <span class="fsize-trunc" title="'+t('size_truncated')+'">≈</span>':''):t('folder_label');
       const barHtml=_showSizeBars?_sizeBarHtml(e.size,maxLog):'';
-      rows.push('<div class="file-row"><svg viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span class="fname" onclick="loadFiles(\''+e.path+'\')"><strong>'+e.name+'</strong></span>'+barHtml+'<span class="fsize">'+sizeStr+'</span><span class="fdate">'+fmtTime(e.modified)+'</span><span class="factions">'+fileActionBtns(e)+'</span></div>');
+      rows.push('<div class="file-row"><svg viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span class="fname" onclick="loadFiles(\''+escJs(e.path)+'\')"><strong>'+esc(e.name)+'</strong></span>'+barHtml+'<span class="fsize">'+sizeStr+'</span><span class="fdate">'+fmtTime(e.modified)+'</span><span class="factions">'+fileActionBtns(e)+'</span></div>');
     }
     for(const e of files){
       const barHtml=_showSizeBars?_sizeBarHtml(e.size,maxLog):'';
-      const pEsc=e.path.replace(/'/g,"\\'");
-      const nEsc=e.name.replace(/'/g,"\\'");
+      const pEsc=escJs(e.path);
+      const nEsc=escJs(e.name);
       const viewable=_isViewable(e.name);
       const nameStyle=viewable?' style="cursor:pointer" title="'+t('dblclick_open')+'"':'';
       const dbl=viewable?' ondblclick="openFileViewer(\''+pEsc+'\',\''+nEsc+'\')"':'';
-      rows.push('<div class="file-row"'+dbl+'><svg viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="fname"'+nameStyle+'>'+e.name+'</span>'+barHtml+'<span class="fsize">'+fmtSize(e.size)+'</span><span class="fdate">'+fmtTime(e.modified)+'</span><span class="factions">'+fileActionBtns(e)+'</span></div>');
+      rows.push('<div class="file-row"'+dbl+'><svg viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="fname"'+nameStyle+'>'+esc(e.name)+'</span>'+barHtml+'<span class="fsize">'+fmtSize(e.size)+'</span><span class="fdate">'+fmtTime(e.modified)+'</span><span class="factions">'+fileActionBtns(e)+'</span></div>');
     }
     if(!dirs.length&&!files.length&&!d.parent)rows.push('<div style="padding:30px;text-align:center;color:var(--text-dim)">'+t('empty_folder')+'</div>');
     list.innerHTML=rows.join('');
     document.getElementById('files-status').textContent=t('files_status',{d:dirs.length,f:files.length});
-  }catch(e){list.innerHTML='<div style="padding:20px;text-align:center;color:var(--danger)">'+e.message+'</div>';}
+  }catch(e){list.innerHTML='<div style="padding:20px;text-align:center;color:var(--danger)">'+esc(e.message)+'</div>';}
 }
 
 const _TEXT_EXT=new Set(['txt','md','yaml','yml','json','sh','py','js','ts','html','css','conf','cfg','ini','log','xml','csv','env','toml','properties','gitignore','dockerfile','bashrc','profile','sql','php','rb','rs','go','java','c','cpp','h']);
@@ -1946,8 +2049,8 @@ function openFileViewer(path,name){
 }
 
 function fileActionBtns(e){
-  const p=e.path.replace(/'/g,"\\'");
-  const n=e.name.replace(/'/g,"\\'");
+  const p=escJs(e.path);
+  const n=escJs(e.name);
   let btns='';
   if(!e.is_dir)btns+='<button title="Download" onclick="event.stopPropagation();window.open(location.pathname.replace(/\/+$/,\'\')+\'/api/files/download?path='+encodeURIComponent(e.path)+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>';
   if(!e.is_dir&&_isTextFile(e.name))btns+='<button title="'+t('title_edit')+'" onclick="event.stopPropagation();openFileEdit(\''+p+'\',\''+n+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/><polyline points="15 3 21 9"/></svg></button>';
@@ -2010,7 +2113,7 @@ async function uploadFiles(fileList){
   for(const f of fileList){
     const fd=new FormData();fd.append('file',f);fd.append('path',_filesPath);
     try{
-      const base=window.location.pathname.replace(/\/+$/,'');const r=await fetch(base+'/api/files/upload',{method:'POST',body:fd});
+      const r=await fetch(apiBase()+'/api/files/upload',{method:'POST',headers:{'X-CSRF-Token':CSRF},body:fd});
       const d=await r.json();if(!r.ok)throw new Error(d.error||'Upload fehlgeschlagen');
       toast(t('upload_ok',{n:f.name}));
     }catch(e){toast(e.message,true);}
@@ -2068,7 +2171,7 @@ async function loadManualBackups(){
         +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>'
         +'</button></div></div>';
     }).join('');
-  }catch(e){el.innerHTML='<div class="empty" style="color:var(--danger)">'+e.message+'</div>';}
+  }catch(e){el.innerHTML='<div class="empty" style="color:var(--danger)">'+esc(e.message)+'</div>';}
 }
 async function createManualBackup(){
   try{
@@ -2123,7 +2226,7 @@ async function loadBackups(){
         +(lastRun||lastErr?'<div style="margin-top:6px">'+lastRun+(lastErr?' '+lastErr:'')+'</div>':'')
         +'</div>';
     }).join('');
-  }catch(e){grid.innerHTML='<div class="empty" style="grid-column:1/-1;color:var(--danger)">'+e.message+'</div>';}
+  }catch(e){grid.innerHTML='<div class="empty" style="grid-column:1/-1;color:var(--danger)">'+esc(e.message)+'</div>';}
 }
 function openBackupModal(j){
   document.getElementById('backup-edit-id').value=j?j.id:'';
