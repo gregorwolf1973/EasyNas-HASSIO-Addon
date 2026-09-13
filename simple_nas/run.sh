@@ -50,7 +50,8 @@ shares = os.path.join(DATA_DIR, "shares.json")
 if os.path.exists(meta) and (not os.path.exists(shares) or os.path.getsize(shares) <= 5):
     print("[RESTORE] Fresh install detected – restoring settings from /config/.simplenas/auto ...")
     os.makedirs(DATA_DIR, exist_ok=True)
-    for fname in ("shares.json", "users.json", "groups.json", "mounts.json", "backups.json", "admin_auth.json"):
+    for fname in ("shares.json", "users.json", "groups.json", "mounts.json", "backups.json", "admin_auth.json",
+                  "file_access.json", "share_links.json", "share_accounts.json", "share_auth.json"):
         src = os.path.join(AUTO_DIR, fname)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(DATA_DIR, fname))
@@ -65,11 +66,12 @@ if os.path.exists(meta) and (not os.path.exists(shares) or os.path.getsize(share
 PYEOF
 
 # Initialize persistent data files (only if still missing after restore)
-for f in shares users mounts groups backups; do
+for f in shares users mounts groups backups share_links share_accounts; do
     if [ ! -f "/data/${f}.json" ]; then
         echo '[]' > "/data/${f}.json"
     fi
 done
+chmod 600 /data/share_accounts.json 2>/dev/null || true
 
 # Generate smb.conf
 python3 /app/generate_smb_conf.py "$WORKGROUP" "$NAS_NAME" "$SMB_PORT"

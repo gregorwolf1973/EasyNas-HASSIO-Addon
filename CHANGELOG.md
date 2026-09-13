@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.3.0
+- **Neuer Reiter "Teilen":** Links und Freigabe-Konten anlegen, bearbeiten, loeschen. Jeder Link hat einen Modus (Herunterladen, Hochladen, beides), eine Zugriffsart (Link + Passwort, nur bestimmte Konten, jeder mit dem Link), optional Ablaufdatum, Download-Limit, Upload-Kontingent und maximale Dateigroesse. Ein Link kann auch eine einzelne Datei sein.
+- Im Dateien-Reiter gibt es je Zeile ein Teilen-Symbol, das den Link-Dialog vorbefuellt.
+- Links bekommen ein 22-stelliges Kennwort aus einem Alphabet ohne verwechselbare Zeichen. "Neuen Link erzeugen" macht den alten sofort ungueltig. Aendert sich Passwort, Zugriffsart oder Kontenliste, werden laufende Sitzungen des Links ungueltig.
+- Freigabe-Konten sind eigenstaendig und beruehren die Samba-Benutzer nicht. Die Datei mit den Passwort-Hashes ist nur fuer root lesbar.
+- Wird eine Samba-Freigabe geloescht, werden Links darauf deaktiviert statt still auf ein neues Ziel zu zeigen.
+- Neue Optionen: `sharing_enabled`, `share_port`, `share_bind`, `share_public_url`, `share_allowed_roots`. **Die oeffentliche Freigabe-Seite selbst kommt mit dem naechsten Release.** Links lassen sich schon anlegen, sind aber noch nicht von aussen erreichbar.
+- Freigabe-Links, -Konten und die Dateizugriff-Einstellung sind in die reinstall-sichere Sicherung aufgenommen.
+
 ## 3.2.4
 - Fix: 3.2.3 startete nicht (`NameError: name 'serve' is not defined`). Die neue Startfunktion stand unterhalb des Startblocks und war beim Aufruf noch nicht definiert. Verschoben, dazu ein Test, der die Reihenfolge im Quelltext prueft.
 

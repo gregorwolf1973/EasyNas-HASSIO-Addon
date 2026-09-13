@@ -32,3 +32,18 @@ configuration:
   file_allowed_roots:
     name: Allowed folders
     description: Directories the file manager may open. Anything outside is refused. Only change this if you need to manage files outside the default folders.
+  sharing_enabled:
+    name: Enable web sharing
+    description: Starts the public sharing site on its own port (arrives with the next release). Requires an admin password to be set.
+  share_port:
+    name: Sharing site port
+    description: Port the public sharing site listens on (default 8101). Publish this port through Nginx Proxy Manager with a domain and TLS.
+  share_bind:
+    name: Sharing site listens on
+    description: 0.0.0.0 = reachable across the network. 127.0.0.1 = only through a reverse proxy on the same host (recommended when Nginx Proxy Manager runs as an add-on).
+  share_public_url:
+    name: Public address
+    description: The address the sharing site is reachable at from outside, e.g. https://files.example.com. Used in the generated links.
+  share_allowed_roots:
+    name: Folders allowed for sharing
+    description: Only folders below these directories can be shared via link. /config and /data are always excluded.

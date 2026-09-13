@@ -411,6 +411,9 @@
   <button onclick="switchTab('files')" id="tab-files">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
     <span data-i18n="nav_files">Dateien</span></button>
+  <button onclick="switchTab('sharing')" id="tab-sharing">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+    <span data-i18n="nav_sharing">Teilen</span></button>
   <button onclick="switchTab('backup')" id="tab-backup">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
     <span data-i18n="nav_backup">Backup</span></button>
@@ -532,6 +535,40 @@
     <div id="files-status" style="font-size:11px;color:var(--text-dim);margin-top:6px;"></div>
   </div>
 
+  <!-- ══ TEILEN ══ -->
+  <div class="panel" id="panel-sharing">
+    <div class="page-title" data-i18n="sharing_title">Teilen</div>
+    <div class="page-sub" data-i18n="sharing_sub">Ordner und Dateien per Link ins Internet freigeben</div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-header">
+        <div>
+          <div class="card-title" data-i18n="sharing_status_title">Öffentliche Freigabe-Seite</div>
+          <div class="card-sub" id="sh-status-sub">…</div>
+        </div>
+        <div class="card-actions"><span class="status-pill pill-off" id="sh-status-pill"><span class="dot"></span><span data-i18n="sharing_inactive">Aus</span></span></div>
+      </div>
+      <div id="sh-status-warn" class="warn-box" style="margin:0 16px 12px;display:none"></div>
+      <div style="padding:0 16px 14px;font-size:12px;color:var(--text-dim);line-height:1.7">
+        <span data-i18n="sharing_base_url">Basis-Adresse der Links:</span> <code id="sh-base-url"></code>
+        <span id="sh-url-hint" style="display:none"> · <span data-i18n="sharing_no_url">share_public_url ist nicht gesetzt, die Links zeigen auf die LAN-Adresse.</span></span>
+      </div>
+    </div>
+
+    <div class="section-header" style="margin-top:22px">
+      <div class="section-title" data-i18n="links_title">Links</div>
+      <button class="btn btn-primary btn-sm" onclick="openShareLinkModal()" data-i18n="btn_new_link">+ Neuer Link</button>
+    </div>
+    <div class="grid" id="sh-links-grid"></div>
+
+    <div class="section-header" style="margin-top:26px">
+      <div class="section-title" data-i18n="accounts_title">Freigabe-Konten</div>
+      <button class="btn btn-primary btn-sm" onclick="openShareAccountModal()" data-i18n="btn_new_account">+ Neues Konto</button>
+    </div>
+    <div style="font-size:12px;color:var(--text-dim);margin:-6px 0 10px" data-i18n="accounts_note_samba">Unabhängig von den Samba-Benutzern. Diese Konten gelten nur für die Freigabe-Seite.</div>
+    <div class="grid" id="sh-accounts-grid"></div>
+  </div>
+
   <!-- ══ BACKUP ══ -->
   <div class="panel" id="panel-backup">
     <!-- Auto-Backup Status -->
@@ -639,6 +676,65 @@
   </div>
 
 </main>
+
+<!-- ══ MODAL: Freigabe-Link ══ -->
+<div class="modal-overlay" id="modal-sharelink"><div class="modal" style="max-width:620px;">
+  <div class="modal-title" id="sharelink-title" data-i18n="modal_new_link">Neuer Link</div>
+  <input type="hidden" id="sharelink-id">
+  <div class="form-group"><label data-i18n="lbl_link_name">Name</label><input type="text" id="sharelink-name" placeholder="z.B. Urlaubsfotos"></div>
+  <div class="form-group"><label data-i18n="lbl_link_path">Ordner</label>
+    <div style="display:flex;gap:6px;"><input type="text" id="sharelink-root" placeholder="/media/festplatte1/fotos" style="flex:1;font-family:monospace;font-size:12px">
+      <button class="btn btn-ghost" onclick="openBrowser('sharelink-root')" style="padding:9px 10px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="form-group"><label data-i18n="lbl_link_file">Einzelne Datei (optional)</label><input type="text" id="sharelink-file" placeholder="video.mp4" data-i18n-ph="ph_link_file"></div>
+  <div class="form-group"><label data-i18n="lbl_link_mode">Modus</label>
+    <div class="chip-select" id="sharelink-mode">
+      <span class="chip active" data-v="download" onclick="chipPick(this)" data-i18n="mode_download">Herunterladen</span>
+      <span class="chip" data-v="upload" onclick="chipPick(this)" data-i18n="mode_upload">Hochladen (Ablage)</span>
+      <span class="chip" data-v="both" onclick="chipPick(this)" data-i18n="mode_both">Beides</span>
+    </div>
+  </div>
+  <div class="form-group"><label data-i18n="lbl_link_access">Zugriff</label>
+    <div class="chip-select" id="sharelink-access">
+      <span class="chip active" data-v="password" onclick="chipPick(this);shAccessChanged()" data-i18n="access_password">Link + Passwort</span>
+      <span class="chip" data-v="users" onclick="chipPick(this);shAccessChanged()" data-i18n="access_users">Nur bestimmte Konten</span>
+      <span class="chip" data-v="public" onclick="chipPick(this);shAccessChanged()" data-i18n="access_public">Jeder mit dem Link</span>
+    </div>
+  </div>
+  <div class="form-group" id="sharelink-pw-row"><label data-i18n="lbl_link_password">Passwort</label><input type="password" id="sharelink-password" autocomplete="new-password"></div>
+  <div class="form-group" id="sharelink-users-row" style="display:none"><label data-i18n="lbl_link_users">Konten (leer = alle Konten)</label><div class="chip-select" id="sharelink-users"></div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="form-group"><label data-i18n="lbl_expiry">Ablauf</label><input type="date" id="sharelink-expires"></div>
+    <div class="form-group"><label data-i18n="lbl_max_downloads">Max. Downloads (0 = unbegrenzt)</label><input type="number" min="0" id="sharelink-maxdl" value="0"></div>
+    <div class="form-group"><label data-i18n="lbl_upload_quota">Upload-Kontingent MB (0 = unbegrenzt)</label><input type="number" min="0" id="sharelink-quota" value="0"></div>
+    <div class="form-group"><label data-i18n="lbl_max_filesize">Max. Dateigröße MB (0 = Vorgabe)</label><input type="number" min="0" id="sharelink-maxfile" value="0"></div>
+  </div>
+  <div class="toggle-row"><div><div class="toggle-label" data-i18n="lbl_allow_subdirs">Unterordner erlauben</div></div><label class="toggle"><input type="checkbox" id="sharelink-subdirs" checked onchange="updateToggle('sharelink-subdirs-t',this)"><span class="toggle-knob" id="sharelink-subdirs-t"></span></label></div>
+  <div class="toggle-row"><div><div class="toggle-label" data-i18n="lbl_allow_zip">Ordner als ZIP erlauben</div></div><label class="toggle"><input type="checkbox" id="sharelink-zip" checked onchange="updateToggle('sharelink-zip-t',this)"><span class="toggle-knob" id="sharelink-zip-t"></span></label></div>
+  <div class="toggle-row"><div><div class="toggle-label" data-i18n="lbl_enabled">Aktiv</div></div><label class="toggle"><input type="checkbox" id="sharelink-enabled" checked onchange="updateToggle('sharelink-enabled-t',this)"><span class="toggle-knob" id="sharelink-enabled-t"></span></label></div>
+  <div id="sharelink-result" style="display:none;margin-top:10px;padding:8px 12px;background:var(--tag-accent-bg);border:1px solid var(--tag-accent-border);border-radius:8px;font-family:monospace;font-size:12px;word-break:break-all"></div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" onclick="closeModal('modal-sharelink')" data-i18n="modal_cancel">Abbrechen</button>
+    <button class="btn btn-primary" onclick="saveShareLink()" data-i18n="modal_save">Speichern</button>
+  </div>
+</div></div>
+
+<!-- ══ MODAL: Freigabe-Konto ══ -->
+<div class="modal-overlay" id="modal-shareaccount"><div class="modal">
+  <div class="modal-title" id="shareaccount-title" data-i18n="modal_new_account">Neues Konto</div>
+  <input type="hidden" id="shareaccount-edit">
+  <div class="form-group"><label data-i18n="lbl_username">Benutzername</label><input type="text" id="shareaccount-user" autocomplete="off"></div>
+  <div class="form-group"><label data-i18n="lbl_display_name">Anzeigename</label><input type="text" id="shareaccount-display"></div>
+  <div class="form-group"><label data-i18n="lbl_password">Passwort</label><input type="password" id="shareaccount-password" autocomplete="new-password"></div>
+  <div class="toggle-row"><div><div class="toggle-label" data-i18n="lbl_enabled">Aktiv</div></div><label class="toggle"><input type="checkbox" id="shareaccount-enabled" checked onchange="updateToggle('shareaccount-enabled-t',this)"><span class="toggle-knob" id="shareaccount-enabled-t"></span></label></div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" onclick="closeModal('modal-shareaccount')" data-i18n="modal_cancel">Abbrechen</button>
+    <button class="btn btn-primary" onclick="saveShareAccount()" data-i18n="modal_save">Speichern</button>
+  </div>
+</div></div>
 
 <!-- ══ MODAL: Backup Job ══ -->
 <div class="modal-overlay" id="modal-backup"><div class="modal">
@@ -892,7 +988,7 @@ const T={
     users_title:'Benutzer',users_sub:'Samba-Benutzer verwalten',btn_new_user:'+ Neuer Benutzer',
     groups_title:'Gruppen',btn_new_group:'+ Neue Gruppe',
     files_title:'Dateien',files_sub:'Dateien durchsuchen, hochladen, kopieren, verschieben und löschen',
-    btn_upload:'↑ Hochladen',btn_new_folder:'+ Ordner',fa_title:'Dateizugriff',fa_sub:'Welche Ordner der Dateimanager öffnen darf',fa_add:'Hinzufügen',fa_add_ph:'/pfad/zum/ordner',fa_browse:'Durchsuchen…',fa_remove:'Entfernen',fa_none:'Kein Ordner freigegeben — der Dateimanager ist gesperrt.',fa_full_label:'Zugriff auf alle Dateien',fa_full_sub:'Gibt das gesamte Dateisystem frei und entsperrt auch die Systemordner. Nur einschalten, wenn du Dateien außerhalb der Standardordner brauchst.',fa_warn:'Der Dateimanager erreicht gerade das gesamte Dateisystem. Die Oberfläche ist über das Heimnetz erreichbar — setze ein Admin-Passwort, wenn noch keines gesetzt ist.',fa_blocked:'Immer gesperrt:',fa_reset:'Auf Standard zurücksetzen',fa_saved:'Gespeichert.',fa_full_on:'Voller Dateizugriff ist aktiv.',fa_reset_done:'Auf Standardordner zurückgesetzt.',fa_abs_only:'Bitte einen absoluten Pfad angeben, beginnend mit /',fa_need_one:'Mindestens ein Ordner muss freigegeben bleiben.',fa_confirm_full:'Damit darf der Dateimanager jede Datei des Systems lesen und schreiben, auch die Systemordner. Fortfahren?',fa_confirm_reset:'Zugriff wieder auf die Standardordner beschränken?',go_to:'Gehe zu:',all_roots:'Alle erlaubten Ordner',path_placeholder:'Pfad eingeben…',
+    btn_upload:'↑ Hochladen',btn_new_folder:'+ Ordner',nav_sharing:'Teilen',sharing_title:'Teilen',sharing_sub:'Ordner und Dateien per Link ins Internet freigeben',sharing_status_title:'Öffentliche Freigabe-Seite',sharing_active:'Läuft',sharing_inactive:'Aus',sharing_sub_enabled:'Aktiviert, Port {p}',sharing_sub_disabled:'In der Addon-Konfiguration ausgeschaltet (sharing_enabled)',sharing_not_running_yet:'Die öffentliche Seite kommt mit dem nächsten Release. Links und Konten kannst du schon anlegen, sie sind noch nicht von außen erreichbar.',sharing_base_url:'Basis-Adresse der Links:',sharing_no_url:'share_public_url ist nicht gesetzt, die Links zeigen auf die LAN-Adresse.',warn_no_admin_password:'Kein Admin-Passwort gesetzt. Die Freigabe-Seite startet erst, wenn eines konfiguriert ist.',links_title:'Links',btn_new_link:'+ Neuer Link',no_links:'Noch keine Links. Lege einen an oder nutze das Teilen-Symbol im Dateien-Reiter.',modal_new_link:'Neuer Link',modal_edit_link:'Link bearbeiten',lbl_link_name:'Name',lbl_link_path:'Ordner',lbl_link_file:'Einzelne Datei (optional)',ph_link_file:'Dateiname im Ordner, leer = ganzer Ordner',lbl_link_mode:'Modus',mode_download:'Herunterladen',mode_upload:'Hochladen (Ablage)',mode_both:'Beides',lbl_link_access:'Zugriff',access_password:'Link + Passwort',access_users:'Nur bestimmte Konten',access_public:'Jeder mit dem Link',lbl_link_password:'Passwort',ph_password_unchanged:'unverändert lassen',lbl_link_users:'Konten (leer = alle Konten)',lbl_expiry:'Ablauf',lbl_max_downloads:'Max. Downloads (0 = unbegrenzt)',lbl_upload_quota:'Upload-Kontingent MB (0 = unbegrenzt)',lbl_max_filesize:'Max. Dateigröße MB (0 = Vorgabe)',lbl_allow_subdirs:'Unterordner erlauben',lbl_allow_zip:'Ordner als ZIP erlauben',lbl_enabled:'Aktiv',tag_single_file:'Einzeldatei',tag_disabled:'Deaktiviert',tag_expired:'Abgelaufen',tag_limit_reached:'Limit erreicht',downloads:'Downloads',btn_copy_link:'Link kopieren',link_copied:'Link kopiert.',btn_rotate_token:'Neuen Link erzeugen (alter wird ungültig)',confirm_rotate_token:'Neuen Link für „{n}“ erzeugen? Der bisherige Link funktioniert danach nicht mehr.',confirm_del_link:'Link „{n}“ löschen?',link_created:'Link angelegt.',link_updated:'Link gespeichert.',accounts_title:'Freigabe-Konten',btn_new_account:'+ Neues Konto',no_accounts:'Noch keine Konten.',accounts_note_samba:'Unabhängig von den Samba-Benutzern. Diese Konten gelten nur für die Freigabe-Seite.',modal_new_account:'Neues Konto',modal_edit_account:'Konto bearbeiten',lbl_display_name:'Anzeigename',last_login:'Letzte Anmeldung',never:'nie',confirm_del_account:'Konto „{n}“ löschen?',account_created:'Konto angelegt.',account_updated:'Konto gespeichert.',title_share:'Teilen',fa_title:'Dateizugriff',fa_sub:'Welche Ordner der Dateimanager öffnen darf',fa_add:'Hinzufügen',fa_add_ph:'/pfad/zum/ordner',fa_browse:'Durchsuchen…',fa_remove:'Entfernen',fa_none:'Kein Ordner freigegeben — der Dateimanager ist gesperrt.',fa_full_label:'Zugriff auf alle Dateien',fa_full_sub:'Gibt das gesamte Dateisystem frei und entsperrt auch die Systemordner. Nur einschalten, wenn du Dateien außerhalb der Standardordner brauchst.',fa_warn:'Der Dateimanager erreicht gerade das gesamte Dateisystem. Die Oberfläche ist über das Heimnetz erreichbar — setze ein Admin-Passwort, wenn noch keines gesetzt ist.',fa_blocked:'Immer gesperrt:',fa_reset:'Auf Standard zurücksetzen',fa_saved:'Gespeichert.',fa_full_on:'Voller Dateizugriff ist aktiv.',fa_reset_done:'Auf Standardordner zurückgesetzt.',fa_abs_only:'Bitte einen absoluten Pfad angeben, beginnend mit /',fa_need_one:'Mindestens ein Ordner muss freigegeben bleiben.',fa_confirm_full:'Damit darf der Dateimanager jede Datei des Systems lesen und schreiben, auch die Systemordner. Fortfahren?',fa_confirm_reset:'Zugriff wieder auf die Standardordner beschränken?',go_to:'Gehe zu:',all_roots:'Alle erlaubten Ordner',path_placeholder:'Pfad eingeben…',
     btn_restore:'Wiederherstellen',
     file_backup_title:'Datei-Backup-Jobs',file_backup_sub:'Backup-Jobs erstellen und verwalten',btn_new_backup:'+ Neuer Backup-Job',
     modal_cancel:'Abbrechen',modal_save:'Speichern',modal_ok:'OK',modal_select:'Auswählen',
@@ -1004,7 +1100,7 @@ const T={
     users_title:'Users',users_sub:'Manage Samba users',btn_new_user:'+ New User',
     groups_title:'Groups',btn_new_group:'+ New Group',
     files_title:'Files',files_sub:'Browse, upload, copy, move and delete files',
-    btn_upload:'↑ Upload',btn_new_folder:'+ Folder',fa_title:'File access',fa_sub:'Which folders the file manager may open',fa_add:'Add',fa_add_ph:'/path/to/folder',fa_browse:'Browse…',fa_remove:'Remove',fa_none:'No folder allowed — the file manager is locked.',fa_full_label:'Access to all files',fa_full_sub:'Opens the whole filesystem and unlocks the system folders too. Only turn this on if you need files outside the default folders.',fa_warn:'The file manager can currently reach the whole filesystem. The interface is reachable from your LAN — set an admin password if you have not already.',fa_blocked:'Always blocked:',fa_reset:'Reset to defaults',fa_saved:'Saved.',fa_full_on:'Full file access is on.',fa_reset_done:'Reset to the default folders.',fa_abs_only:'Please give an absolute path starting with /',fa_need_one:'At least one folder must stay allowed.',fa_confirm_full:'This lets the file manager read and write every file on the system, including the system folders. Continue?',fa_confirm_reset:'Limit access back to the default folders?',go_to:'Go to:',all_roots:'All allowed folders',path_placeholder:'Enter path…',
+    btn_upload:'↑ Upload',btn_new_folder:'+ Folder',nav_sharing:'Sharing',sharing_title:'Sharing',sharing_sub:'Share folders and files on the internet via link',sharing_status_title:'Public sharing site',sharing_active:'Running',sharing_inactive:'Off',sharing_sub_enabled:'Enabled, port {p}',sharing_sub_disabled:'Switched off in the add-on configuration (sharing_enabled)',sharing_not_running_yet:'The public site arrives with the next release. You can already create links and accounts; they are not reachable from outside yet.',sharing_base_url:'Base address of the links:',sharing_no_url:'share_public_url is not set, links point at the LAN address.',warn_no_admin_password:'No admin password set. The sharing site only starts once one is configured.',links_title:'Links',btn_new_link:'+ New link',no_links:'No links yet. Create one or use the share icon in the Files tab.',modal_new_link:'New link',modal_edit_link:'Edit link',lbl_link_name:'Name',lbl_link_path:'Folder',lbl_link_file:'Single file (optional)',ph_link_file:'File name inside the folder, empty = whole folder',lbl_link_mode:'Mode',mode_download:'Download',mode_upload:'Upload (drop box)',mode_both:'Both',lbl_link_access:'Access',access_password:'Link + password',access_users:'Specific accounts only',access_public:'Anyone with the link',lbl_link_password:'Password',ph_password_unchanged:'leave unchanged',lbl_link_users:'Accounts (empty = all accounts)',lbl_expiry:'Expires',lbl_max_downloads:'Max. downloads (0 = unlimited)',lbl_upload_quota:'Upload quota MB (0 = unlimited)',lbl_max_filesize:'Max. file size MB (0 = default)',lbl_allow_subdirs:'Allow subfolders',lbl_allow_zip:'Allow folder as ZIP',lbl_enabled:'Enabled',tag_single_file:'Single file',tag_disabled:'Disabled',tag_expired:'Expired',tag_limit_reached:'Limit reached',downloads:'downloads',btn_copy_link:'Copy link',link_copied:'Link copied.',btn_rotate_token:'Generate new link (old one stops working)',confirm_rotate_token:'Generate a new link for "{n}"? The current link will stop working.',confirm_del_link:'Delete link "{n}"?',link_created:'Link created.',link_updated:'Link saved.',accounts_title:'Share accounts',btn_new_account:'+ New account',no_accounts:'No accounts yet.',accounts_note_samba:'Independent of the Samba users. These accounts only apply to the sharing site.',modal_new_account:'New account',modal_edit_account:'Edit account',lbl_display_name:'Display name',last_login:'Last login',never:'never',confirm_del_account:'Delete account "{n}"?',account_created:'Account created.',account_updated:'Account saved.',title_share:'Share',fa_title:'File access',fa_sub:'Which folders the file manager may open',fa_add:'Add',fa_add_ph:'/path/to/folder',fa_browse:'Browse…',fa_remove:'Remove',fa_none:'No folder allowed — the file manager is locked.',fa_full_label:'Access to all files',fa_full_sub:'Opens the whole filesystem and unlocks the system folders too. Only turn this on if you need files outside the default folders.',fa_warn:'The file manager can currently reach the whole filesystem. The interface is reachable from your LAN — set an admin password if you have not already.',fa_blocked:'Always blocked:',fa_reset:'Reset to defaults',fa_saved:'Saved.',fa_full_on:'Full file access is on.',fa_reset_done:'Reset to the default folders.',fa_abs_only:'Please give an absolute path starting with /',fa_need_one:'At least one folder must stay allowed.',fa_confirm_full:'This lets the file manager read and write every file on the system, including the system folders. Continue?',fa_confirm_reset:'Limit access back to the default folders?',go_to:'Go to:',all_roots:'All allowed folders',path_placeholder:'Enter path…',
     btn_restore:'Restore',
     file_backup_title:'File Backup Jobs',file_backup_sub:'Create and manage backup jobs',btn_new_backup:'+ New Backup Job',
     modal_cancel:'Cancel',modal_save:'Save',modal_ok:'OK',modal_select:'Select',
@@ -1136,6 +1232,7 @@ function toggleLang(){
   if(tab==='overview'){loadStatus();loadDrives();loadOverviewSmart();}
   else if(tab==='drives')loadDrives();
   else if(tab==='shares')loadShares();
+  else if(tab==='sharing')loadSharing();
   else if(tab==='users'){loadUsers();loadGroups();}
   else if(tab==='backup'){loadBackups();loadSettingsBackupStatus();loadManualBackups();}
   else if(tab==='settings')loadSettings();
@@ -1181,7 +1278,7 @@ function switchTab(n){
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
   document.getElementById('panel-'+n).classList.add('active');
   document.getElementById('tab-'+n).classList.add('active');
-  if(n==='drives')loadDrives();if(n==='shares')loadShares();if(n==='users'){loadUsers();loadGroups();}if(n==='files')loadFiles();if(n==='backup'){loadBackups();loadSettingsBackupStatus();loadManualBackups();}if(n==='settings')loadSettings();
+  if(n==='drives')loadDrives();if(n==='shares')loadShares();if(n==='users'){loadUsers();loadGroups();}if(n==='files')loadFiles();if(n==='sharing')loadSharing();if(n==='backup'){loadBackups();loadSettingsBackupStatus();loadManualBackups();}if(n==='settings')loadSettings();
 }
 
 // ── Status ──
@@ -1911,6 +2008,184 @@ function onSettingsSizebarsToggle(checked){
   if(document.getElementById('panel-files').classList.contains('active'))loadFiles();
 }
 
+// ── Teilen ──
+let _shLinks=[],_shAccounts=[];
+function chipPick(el){[...el.parentElement.querySelectorAll('.chip')].forEach(c=>c.classList.remove('active'));el.classList.add('active');}
+function chipVal(id){const a=document.querySelector('#'+id+' .chip.active');return a?a.dataset.v:'';}
+function chipSet(id,v){[...document.querySelectorAll('#'+id+' .chip')].forEach(c=>c.classList.toggle('active',c.dataset.v===v));}
+function fmtTs(ts){return ts?new Date(ts*1000).toLocaleString(t('date_locale')):'';}
+
+async function loadSharing(){
+  try{
+    const st=await api('GET','/sharing/status');
+    const pill=document.getElementById('sh-status-pill');
+    pill.className='status-pill '+(st.public_site_running?'pill-ok':'pill-off');
+    pill.querySelector('span:last-child').textContent=st.public_site_running?t('sharing_active'):t('sharing_inactive');
+    document.getElementById('sh-status-sub').textContent=st.sharing_enabled?t('sharing_sub_enabled',{p:st.share_port}):t('sharing_sub_disabled');
+    document.getElementById('sh-base-url').textContent=(st.public_url||('http://<LAN-IP>:'+st.share_port));
+    document.getElementById('sh-url-hint').style.display=st.url_is_fallback?'':'none';
+    const w=document.getElementById('sh-status-warn');
+    let warn='';
+    if(!st.admin_password_enabled)warn+='<div>'+t('warn_no_admin_password')+'</div>';
+    if(!st.public_site_running)warn+='<div>'+t('sharing_not_running_yet')+'</div>';
+    w.innerHTML=warn;w.style.display=warn?'':'none';
+  }catch(e){toast(e.message,true);}
+  await loadShareAccounts();
+  await loadShareLinks();
+}
+
+async function loadShareLinks(){
+  const g=document.getElementById('sh-links-grid');
+  g.innerHTML='<div class="empty" style="grid-column:1/-1"><span class="spinner"></span></div>';
+  try{_shLinks=await api('GET','/sharing/links');}catch(e){g.innerHTML='<div class="empty" style="grid-column:1/-1;color:var(--danger)">'+esc(e.message)+'</div>';return;}
+  if(!_shLinks.length){g.innerHTML='<div class="empty" style="grid-column:1/-1"><p>'+t('no_links')+'</p></div>';return;}
+  g.innerHTML=_shLinks.map((l,i)=>{
+    const tags=[];
+    tags.push('<span class="tag accent">'+t('mode_'+l.mode)+'</span>');
+    tags.push('<span class="tag">'+t('access_'+l.access)+'</span>');
+    if(l.file)tags.push('<span class="tag">'+t('tag_single_file')+'</span>');
+    if(!l.enabled)tags.push('<span class="tag warn">'+t('tag_disabled')+'</span>');
+    else if(!l.live)tags.push('<span class="tag warn">'+(l.expires&&Date.now()/1000>l.expires?t('tag_expired'):t('tag_limit_reached'))+'</span>');
+    if(l.expires)tags.push('<span class="tag">'+t('lbl_expiry')+' '+esc(new Date(l.expires*1000).toLocaleDateString(t('date_locale')))+'</span>');
+    if(l.max_downloads)tags.push('<span class="tag">'+l.download_count+'/'+l.max_downloads+' '+t('downloads')+'</span>');
+    else if(l.download_count)tags.push('<span class="tag">'+l.download_count+' '+t('downloads')+'</span>');
+    return '<div class="card"><div class="card-header"><div style="min-width:0">'+
+      '<div class="card-title">'+esc(l.name)+'</div>'+
+      '<div class="card-sub" title="'+esc(l.root+(l.file?'/'+l.file:''))+'" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(l.root)+(l.file?'/'+esc(l.file):'')+'</div></div>'+
+      '<div class="card-actions">'+
+      '<button class="btn-icon" title="'+t('btn_copy_link')+'" onclick="copyText(_shLinks['+i+'].url)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>'+
+      '<button class="btn-icon" title="'+t('title_edit')+'" onclick="openShareLinkModal(_shLinks['+i+'])"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'+
+      '<button class="btn-icon" title="'+t('btn_rotate_token')+'" onclick="rotateShareLink('+i+')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>'+
+      '<button class="btn-icon" title="'+t('title_delete')+'" style="color:var(--danger)" onclick="deleteShareLink('+i+')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>'+
+      '</div></div>'+
+      '<div style="padding:0 16px 8px;font-family:monospace;font-size:11px;color:var(--accent);word-break:break-all;cursor:pointer" title="'+t('btn_copy_link')+'" onclick="copyText(_shLinks['+i+'].url)">'+esc(l.url)+'</div>'+
+      '<div style="padding:0 16px 14px;display:flex;flex-wrap:wrap;gap:4px">'+tags.join('')+'</div></div>';
+  }).join('');
+}
+
+async function loadShareAccounts(){
+  const g=document.getElementById('sh-accounts-grid');
+  try{_shAccounts=await api('GET','/sharing/accounts');}catch(e){g.innerHTML='<div class="empty" style="grid-column:1/-1;color:var(--danger)">'+esc(e.message)+'</div>';return;}
+  if(!_shAccounts.length){g.innerHTML='<div class="empty" style="grid-column:1/-1"><p>'+t('no_accounts')+'</p></div>';return;}
+  g.innerHTML=_shAccounts.map((a,i)=>'<div class="card"><div class="card-header"><div>'+
+    '<div class="card-title">'+esc(a.display_name||a.username)+'</div>'+
+    '<div class="card-sub">'+esc(a.username)+' · '+t('last_login')+' '+(a.last_login?esc(fmtTs(a.last_login)):t('never'))+'</div></div>'+
+    '<div class="card-actions">'+
+    '<button class="btn-icon" title="'+t('title_edit')+'" onclick="openShareAccountModal(_shAccounts['+i+'])"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'+
+    '<button class="btn-icon" title="'+t('title_delete')+'" style="color:var(--danger)" onclick="deleteShareAccount('+i+')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>'+
+    '</div></div><div style="padding:0 16px 14px">'+(a.enabled?'<span class="tag accent">'+t('lbl_enabled')+'</span>':'<span class="tag warn">'+t('tag_disabled')+'</span>')+'</div></div>').join('');
+}
+
+function copyText(txt){
+  const done=()=>toast(t('link_copied'));
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(done,()=>fallbackCopy(txt,done));}
+  else fallbackCopy(txt,done);
+}
+function fallbackCopy(txt,done){const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');done();}catch(e){prompt(t('btn_copy_link'),txt);}document.body.removeChild(ta);}
+
+function shAccessChanged(){
+  const a=chipVal('sharelink-access');
+  document.getElementById('sharelink-pw-row').style.display=a==='password'?'':'none';
+  document.getElementById('sharelink-users-row').style.display=a==='users'?'':'none';
+}
+function shRenderUserChips(selected){
+  const box=document.getElementById('sharelink-users');
+  box.innerHTML=_shAccounts.length?_shAccounts.map(a=>'<span class="chip'+(selected.includes(a.username)?' active':'')+'" data-v="'+esc(a.username)+'" onclick="this.classList.toggle(\'active\')">'+esc(a.username)+'</span>').join('')
+    :'<span style="font-size:12px;color:var(--text-dim)">'+t('no_accounts')+'</span>';
+}
+function shSetToggle(id,on){const cb=document.getElementById(id);cb.checked=!!on;updateToggle(id+'-t',cb);}
+
+async function openShareLinkModal(l){
+  if(!_shAccounts.length){try{_shAccounts=await api('GET','/sharing/accounts');}catch(e){}}
+  const edit=!!(l&&l.id);
+  document.getElementById('sharelink-title').textContent=edit?t('modal_edit_link'):t('modal_new_link');
+  document.getElementById('sharelink-id').value=edit?l.id:'';
+  document.getElementById('sharelink-name').value=l?l.name||'':'';
+  document.getElementById('sharelink-root').value=l?l.root||'':'';
+  document.getElementById('sharelink-file').value=l?l.file||'':'';
+  chipSet('sharelink-mode',l?l.mode||'download':'download');
+  chipSet('sharelink-access',l?l.access||'password':'password');
+  const pw=document.getElementById('sharelink-password');pw.value='';
+  pw.placeholder=edit&&l.has_password?t('ph_password_unchanged'):'';
+  shRenderUserChips(l?l.users||[]:[]);
+  document.getElementById('sharelink-expires').value=l&&l.expires?new Date(l.expires*1000).toISOString().slice(0,10):'';
+  document.getElementById('sharelink-maxdl').value=l?l.max_downloads||0:0;
+  document.getElementById('sharelink-quota').value=l?l.upload_quota_mb||0:0;
+  document.getElementById('sharelink-maxfile').value=l?l.max_file_mb||0:0;
+  shSetToggle('sharelink-subdirs',l?l.allow_subdirs!==false:true);
+  shSetToggle('sharelink-zip',l?l.allow_zip!==false:true);
+  shSetToggle('sharelink-enabled',l?l.enabled!==false:true);
+  document.getElementById('sharelink-result').style.display='none';
+  shAccessChanged();
+  openModal('modal-sharelink');
+}
+function openShareLinkModalFor(path,isDir){
+  const parts=path.split('/');const base=parts.pop()||'';
+  openShareLinkModal({name:base,root:isDir?path:parts.join('/')||'/',file:isDir?'':base,mode:'download',access:'password'});
+}
+async function saveShareLink(){
+  const id=document.getElementById('sharelink-id').value;
+  const exp=document.getElementById('sharelink-expires').value;
+  let expires=0;
+  if(exp){const [y,m,d]=exp.split('-').map(Number);expires=Math.floor(Date.UTC(y,m-1,d,23,59,59)/1000);}
+  const body={
+    name:document.getElementById('sharelink-name').value.trim(),
+    root:document.getElementById('sharelink-root').value.trim(),
+    file:document.getElementById('sharelink-file').value.trim(),
+    mode:chipVal('sharelink-mode'),access:chipVal('sharelink-access'),
+    users:[...document.querySelectorAll('#sharelink-users .chip.active')].map(c=>c.dataset.v),
+    expires,max_downloads:+document.getElementById('sharelink-maxdl').value||0,
+    upload_quota_mb:+document.getElementById('sharelink-quota').value||0,
+    max_file_mb:+document.getElementById('sharelink-maxfile').value||0,
+    allow_subdirs:document.getElementById('sharelink-subdirs').checked,
+    allow_zip:document.getElementById('sharelink-zip').checked,
+    enabled:document.getElementById('sharelink-enabled').checked,
+  };
+  const pw=document.getElementById('sharelink-password').value;if(pw)body.password=pw;
+  try{
+    const r=id?await api('PUT','/sharing/links/'+id,body):await api('POST','/sharing/links',body);
+    const res=document.getElementById('sharelink-result');
+    res.innerHTML=esc(r.url)+' <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="copyText(\''+escJs(r.url)+'\')">'+t('btn_copy_link')+'</button>';
+    res.style.display='';
+    document.getElementById('sharelink-id').value=r.id;
+    toast(id?t('link_updated'):t('link_created'));
+    loadShareLinks();
+  }catch(e){toast(e.message,true);}
+}
+async function rotateShareLink(i){
+  const l=_shLinks[i];if(!confirm(tRaw('confirm_rotate_token',{n:l.name})))return;
+  try{await api('POST','/sharing/links/'+l.id+'/rotate');toast(t('link_updated'));loadShareLinks();}catch(e){toast(e.message,true);}
+}
+async function deleteShareLink(i){
+  const l=_shLinks[i];if(!confirm(tRaw('confirm_del_link',{n:l.name})))return;
+  try{await api('DELETE','/sharing/links/'+l.id);toast(t('deleted'));loadShareLinks();}catch(e){toast(e.message,true);}
+}
+
+function openShareAccountModal(a){
+  const edit=!!a;
+  document.getElementById('shareaccount-title').textContent=edit?t('modal_edit_account'):t('modal_new_account');
+  document.getElementById('shareaccount-edit').value=edit?a.username:'';
+  const u=document.getElementById('shareaccount-user');u.value=edit?a.username:'';u.readOnly=edit;
+  document.getElementById('shareaccount-display').value=edit?a.display_name||'':'';
+  const pw=document.getElementById('shareaccount-password');pw.value='';pw.placeholder=edit?t('ph_password_unchanged'):'';
+  shSetToggle('shareaccount-enabled',edit?a.enabled!==false:true);
+  openModal('modal-shareaccount');
+}
+async function saveShareAccount(){
+  const edit=document.getElementById('shareaccount-edit').value;
+  const body={display_name:document.getElementById('shareaccount-display').value.trim(),enabled:document.getElementById('shareaccount-enabled').checked};
+  const pw=document.getElementById('shareaccount-password').value;if(pw)body.password=pw;
+  try{
+    if(edit){await api('PUT','/sharing/accounts/'+encodeURIComponent(edit),body);}
+    else{body.username=document.getElementById('shareaccount-user').value.trim();await api('POST','/sharing/accounts',body);}
+    closeModal('modal-shareaccount');toast(edit?t('account_updated'):t('account_created'));loadShareAccounts();
+  }catch(e){toast(e.message,true);}
+}
+async function deleteShareAccount(i){
+  const a=_shAccounts[i];if(!confirm(tRaw('confirm_del_account',{n:a.username})))return;
+  try{await api('DELETE','/sharing/accounts/'+encodeURIComponent(a.username));toast(t('deleted'));loadShareAccounts();}catch(e){toast(e.message,true);}
+}
+
 // ── Dateizugriff ──
 let _faState={roots:[],unlock_system:false,full_access:false};
 async function loadFileAccess(){
@@ -2054,6 +2329,7 @@ function fileActionBtns(e){
   let btns='';
   if(!e.is_dir)btns+='<button title="Download" onclick="event.stopPropagation();window.open(location.pathname.replace(/\/+$/,\'\')+\'/api/files/download?path='+encodeURIComponent(e.path)+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>';
   if(!e.is_dir&&_isTextFile(e.name))btns+='<button title="'+t('title_edit')+'" onclick="event.stopPropagation();openFileEdit(\''+p+'\',\''+n+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/><polyline points="15 3 21 9"/></svg></button>';
+  btns+='<button title="'+t('title_share')+'" onclick="event.stopPropagation();openShareLinkModalFor(\''+p+'\','+(e.is_dir?'true':'false')+')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></button>';
   btns+='<button title="'+t('title_rename')+'" onclick="event.stopPropagation();renameFile(\''+p+'\',\''+n+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
   btns+='<button title="'+t('title_copy')+'" onclick="event.stopPropagation();openFileAction(\'copy\',\''+p+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>';
   btns+='<button title="'+t('title_move')+'" onclick="event.stopPropagation();openFileAction(\'move\',\''+p+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>';

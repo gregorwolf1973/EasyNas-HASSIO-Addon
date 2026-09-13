@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Simple NAS with Samba shares and web GUI for drive management"
-version: "3.2.4"
+version: "3.3.0"
 url: "https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon"
 slug: "simple_nas"
 init: false
@@ -38,6 +38,14 @@ options:
     - "/share"
     - "/config"
     - "/addon_configs"
+  sharing_enabled: false
+  share_port: 8101
+  share_bind: "0.0.0.0"
+  share_public_url: ""
+  share_allowed_roots:
+    - "/media"
+    - "/mnt"
+    - "/share"
 schema:
   workgroup: str
   nas_name: str
@@ -50,6 +58,12 @@ schema:
   web_gui_enabled: bool
   hdd_idle_seconds: int(0,)
   file_allowed_roots:
+    - "str"
+  sharing_enabled: bool
+  share_port: port
+  share_bind: list(0.0.0.0|127.0.0.1)
+  share_public_url: str?
+  share_allowed_roots:
     - "str"
 map:
   - share:rw

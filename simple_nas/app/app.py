@@ -15,6 +15,7 @@ from flask import Flask, jsonify, request, render_template, session, redirect, u
 from werkzeug.security import generate_password_hash, check_password_hash
 
 import safepath
+import sharing_store
 
 app = Flask(__name__)
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024  # 4 GB per request; bodies are buffered to TMPDIR first
@@ -215,7 +216,8 @@ def _copy_data_to(dest_dir):
     with open(os.path.join(dest_dir, "meta.json"), "w") as f:
         json.dump({"timestamp": time.time()}, f)
     for fname in ("shares.json", "users.json", "groups.json",
-                  "mounts.json", "backups.json", "admin_auth.json"):
+                  "mounts.json", "backups.json", "admin_auth.json",
+                  "file_access.json", "share_links.json", "share_accounts.json", "share_auth.json"):
         src = os.path.join(DATA_DIR, fname)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(dest_dir, fname))
@@ -229,7 +231,8 @@ def _copy_data_to(dest_dir):
 def _restore_from(src_dir):
     """Restore settings from src_dir to /data."""
     for fname in ("shares.json", "users.json", "groups.json",
-                  "mounts.json", "backups.json", "admin_auth.json"):
+                  "mounts.json", "backups.json", "admin_auth.json",
+                  "file_access.json", "share_links.json", "share_accounts.json", "share_auth.json"):
         src = os.path.join(src_dir, fname)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(DATA_DIR, fname))
@@ -253,12 +256,16 @@ def _auto_backup():
     finally:
         _backup_lock = False
 
-def save_json(path, data):
+def save_json(path, data, mirror=True):
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
-    # Auto-sync to reinstall-safe location after every settings change
-    if os.path.dirname(os.path.abspath(path)) == os.path.abspath(DATA_DIR):
+    # Auto-sync to reinstall-safe location after every settings change.
+    # mirror=False for things written per request (download counters).
+    if mirror and os.path.dirname(os.path.abspath(path)) == os.path.abspath(DATA_DIR):
         _auto_backup()
+
+
+sharing_store.init(DATA_DIR, load_json, save_json)
 
 # Run setup at import time (covers both __main__ and WSGI server invocations)
 _setup_admin_auth()
@@ -1130,7 +1137,10 @@ def api_delete_share(name):
     shares = [s for s in shares if s["name"] != name]
     save_json(SHARES_FILE, shares)
     reload_samba()
-    return jsonify({"ok": True})
+    n = sharing_store.disable_links_for_share(name)
+    if n:
+        print(f"[SHARE] {n} Link(s) deaktiviert, Freigabe {name} geloescht", flush=True)
+    return jsonify({"ok": True, "links_disabled": n})
 
 # ─────────────────────────── users API ──────────────────────────
 
@@ -1565,6 +1575,134 @@ def _roots_listing():
 def api_roots():
     """The allowed roots, so the UI can offer them instead of hard-coded paths."""
     return jsonify({"roots": [e["path"] for e in _roots_listing()]})
+
+
+
+# ─────────────────────────── sharing (admin side) ───────────────
+
+DEFAULT_SHARE_ROOTS = ["/media", "/mnt", "/share"]
+
+
+def share_roots():
+    roots = _opt("share_allowed_roots", None)
+    if not isinstance(roots, list) or not roots:
+        roots = DEFAULT_SHARE_ROOTS
+    return [str(r).strip() for r in roots if str(r).strip()]
+
+
+def public_link_url(token):
+    """Absolute URL for a link. The add-on cannot know its public hostname,
+    so share_public_url must be configured; otherwise fall back to the
+    address the browser used for this request plus the share port."""
+    base = (_opt("share_public_url", "") or "").strip().rstrip("/")
+    fallback = not base
+    if fallback:
+        host = request.host.split(":")[0] if request else "localhost"
+        base = f"http://{host}:{int(_opt('share_port', 8101))}"
+    return f"{base}/s/{token}", fallback
+
+
+def _link_out(link):
+    out = dict(link)
+    out["url"], out["url_is_fallback"] = public_link_url(link["token"])
+    out["live"] = sharing_store.link_is_live(link)
+    out.pop("password_hash", None)
+    out["has_password"] = bool(link.get("password_hash"))
+    return out
+
+
+@app.errorhandler(sharing_store.ShareError)
+def _handle_share_error(e):
+    return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/sharing/status")
+def api_sharing_status():
+    links = sharing_store.list_links()
+    _, fallback = public_link_url("x")
+    return jsonify({
+        "sharing_enabled": bool(_opt("sharing_enabled", False)),
+        "public_site_running": False,        # the public listener arrives in the next release
+        "share_port": int(_opt("share_port", 8101)),
+        "share_bind": _opt("share_bind", "0.0.0.0"),
+        "public_url": (_opt("share_public_url", "") or "").strip(),
+        "url_is_fallback": fallback,
+        "admin_password_enabled": bool(_admin_auth.get("enabled")),
+        "links": len(links),
+        "links_live": sum(1 for l in links if sharing_store.link_is_live(l)),
+        "accounts": len(sharing_store.list_accounts()),
+        "allowed_roots": share_roots(),
+    })
+
+
+@app.route("/api/sharing/links", methods=["GET"])
+def api_sharing_links():
+    return jsonify([_link_out(l) for l in sharing_store.list_links()])
+
+
+@app.route("/api/sharing/links", methods=["POST"])
+def api_sharing_create_link():
+    body = request.get_json(force=True) or {}
+    link = sharing_store.create_link(body, created_by=session.get("user", "admin"),
+                                     shares=load_json(SHARES_FILE, []), allowed_roots=share_roots())
+    print(f"[SHARE] Link angelegt: {link['name']} ({link['id']}) root={link['root']} by={session.get('user','admin')}", flush=True)
+    return jsonify(_link_out(link)), 201
+
+
+@app.route("/api/sharing/links/<link_id>", methods=["PUT"])
+def api_sharing_update_link(link_id):
+    body = request.get_json(force=True) or {}
+    link = sharing_store.update_link(link_id, body, shares=load_json(SHARES_FILE, []), allowed_roots=share_roots())
+    return jsonify(_link_out(link))
+
+
+@app.route("/api/sharing/links/<link_id>", methods=["DELETE"])
+def api_sharing_delete_link(link_id):
+    sharing_store.delete_link(link_id)
+    print(f"[SHARE] Link geloescht: {link_id}", flush=True)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/sharing/links/<link_id>/rotate", methods=["POST"])
+def api_sharing_rotate(link_id):
+    link = sharing_store.rotate_token(link_id)
+    print(f"[SHARE] Token erneuert: {link_id}", flush=True)
+    return jsonify(_link_out(link))
+
+
+@app.route("/api/sharing/links/<link_id>/reset-counters", methods=["POST"])
+def api_sharing_reset_counters(link_id):
+    if not sharing_store.get_link(link_id):
+        return jsonify({"error": "Link nicht gefunden"}), 404
+    sharing_store.reset_counters(link_id)
+    return jsonify(_link_out(sharing_store.get_link(link_id)))
+
+
+@app.route("/api/sharing/accounts", methods=["GET"])
+def api_sharing_accounts():
+    return jsonify(sharing_store.list_accounts())
+
+
+@app.route("/api/sharing/accounts", methods=["POST"])
+def api_sharing_create_account():
+    body = request.get_json(force=True) or {}
+    acc = sharing_store.create_account(body.get("username", ""), body.get("password", ""),
+                                       body.get("display_name", ""), created_by=session.get("user", "admin"))
+    print(f"[SHARE] Konto angelegt: {acc['username']}", flush=True)
+    return jsonify(acc), 201
+
+
+@app.route("/api/sharing/accounts/<username>", methods=["PUT"])
+def api_sharing_update_account(username):
+    body = request.get_json(force=True) or {}
+    return jsonify(sharing_store.update_account(username, body))
+
+
+@app.route("/api/sharing/accounts/<username>", methods=["DELETE"])
+def api_sharing_delete_account(username):
+    sharing_store.delete_account(username)
+    print(f"[SHARE] Konto geloescht: {username}", flush=True)
+    return jsonify({"ok": True})
 
 
 # ─────────────────────────── browse API ─────────────────────────
