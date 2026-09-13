@@ -296,6 +296,8 @@ def _normalise_link(body, existing=None, shares=(), allowed_roots=None):
     pw = body.get("password")
     if access == "password":
         if pw:
+            if len(str(pw)) < 8:
+                raise ShareError("Link-Passwort: mindestens 8 Zeichen")
             out["password_hash"] = generate_password_hash(str(pw))
         elif not e.get("password_hash"):
             raise ShareError("Passwort fehlt")

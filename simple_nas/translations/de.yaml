@@ -77,3 +77,21 @@ configuration:
   share_upload_allowed_ext:
     name: "Upload: erlaubte Dateiendungen (optional)"
     description: "Wenn gesetzt, sind nur diese Endungen erlaubt, z. B. jpg, png, pdf. Leer = alles ausser den gesperrten."
+  share_clamav_enabled:
+    name: "Virenpruefung beim Upload"
+    description: "Hochgeladene Dateien werden an das ClamAV-Addon (clamd) uebergeben und bei Fund abgewiesen. Im Reiter Teilen gibt es einen Test-Knopf."
+  share_clamav_host:
+    name: "clamd-Adresse"
+    description: "Adresse des clamd. Das ClamAV-Addon im Host-Netz ist unter 127.0.0.1 erreichbar."
+  share_clamav_port:
+    name: "clamd-Port"
+    description: "TCP-Port des clamd (Standard 3310). Im ClamAV-Addon muss der TCP-Socket eingeschaltet sein."
+  share_clamav_timeout:
+    name: "Virenpruefung: Zeitlimit (Sekunden)"
+    description: "Laengste Wartezeit auf ein Ergebnis je Datei."
+  share_clamav_on_error:
+    name: "Virenpruefung nicht erreichbar"
+    description: "reject = Upload ablehnen, wenn clamd nicht antwortet (empfohlen). accept = trotzdem annehmen und im Protokoll vermerken."
+  share_clamav_large_file:
+    name: "Datei zu gross fuer die Pruefung"
+    description: "clamd prueft Datenstroeme nur bis zu seinem StreamMaxLength (Standard 25 MB); danach wird der Pfad-Modus versucht. Schlaegt auch der fehl: accept = annehmen, reject = ablehnen."

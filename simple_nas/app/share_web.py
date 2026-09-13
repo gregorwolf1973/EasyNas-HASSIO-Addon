@@ -27,7 +27,8 @@ import accesslog
 import safepath
 import sharing_store
 import zipstream
-from ratelimit import (AUTHFAIL_IP, AUTHFAIL_LINK, AUTHFAIL_USER, LIMITER, REQ_PER_IP, UPLOAD_PER_IP)
+from ratelimit import (AUTHFAIL_IP, AUTHFAIL_LINK, AUTHFAIL_USER, LIMITER, REQ_PER_IP, UPLOAD_PER_IP,
+                       SCAN_PER_IP, LOCK_BASE, LOCK_CAP)
 
 RUNNING = False
 
@@ -262,6 +263,10 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
     @app.before_request
     def gate():
         g.ip = ext_ip()
+        if LIMITER.banned(f"ban:{g.ip}"):
+            resp = render("error.html", 429, msg_key="too_many")
+            resp.headers["Retry-After"] = str(LIMITER.ban_remaining(f"ban:{g.ip}"))
+            return resp
         ok, retry = LIMITER.hit(f"ip:{g.ip}", *REQ_PER_IP)
         if not ok:
             accesslog.log("rate_limited", ip=g.ip, path=request.path[:80])
@@ -277,6 +282,11 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
         link = resolve_link(token)
         if link is None:
             accesslog.log("link_404", ip=g.ip, ua=request.headers.get("User-Agent"))
+            # Someone probing many unknown links is scanning; ban the address.
+            LIMITER.record(f"scan:{g.ip}")
+            if LIMITER.count(f"scan:{g.ip}", SCAN_PER_IP[1]) >= SCAN_PER_IP[0]:
+                dur = LIMITER.lock(f"ban:{g.ip}", LOCK_BASE, LOCK_CAP)
+                accesslog.log("rate_limited", ip=g.ip, detail=f"scanner ban {dur // 60} min")
             return not_found()
         g.link = link
         if request.endpoint in ("share_landing", "share_auth", "share_logout"):
@@ -328,6 +338,15 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
     def healthz():
         return "ok", 200, {"Content-Type": "text/plain"}
 
+    def fail(key, limit_window):
+        """Record an auth failure; when the window is full, lock the key with
+        escalating duration so repeat offenders wait longer each time."""
+        LIMITER.record(key)
+        limit, window = limit_window
+        if LIMITER.count(key, window) >= limit:
+            dur = LIMITER.lock(key, LOCK_BASE, LOCK_CAP)
+            accesslog.log("rate_limited", ip=g.ip, detail=f"lock {key.split(':')[0]}:{key.split(':')[1]} {dur // 60} min")
+
     def account_session():
         """The logged-in share account, or None. Same session keys the
         per-link login uses, so a portal login also opens users-only links."""
@@ -363,9 +382,9 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
         acc = sharing_store.check_account_password(user, request.form.get("password", ""))
         if not acc:
             time.sleep(random.uniform(0.15, 0.35))
-            LIMITER.record(f"authfail:ip:{g.ip}")
+            fail(f"authfail:ip:{g.ip}", AUTHFAIL_IP)
             if user:
-                LIMITER.record(user_key)
+                fail(user_key, AUTHFAIL_USER)
             accesslog.log("auth_fail", ip=g.ip, user=user, detail="portal", ua=request.headers.get("User-Agent"))
             return render("home_login.html", locked=False, error="wrong")
         session.permanent = True
@@ -629,14 +648,14 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
             allowed = link.get("users") or []
             ok = bool(acc) and ((not allowed) or any(u.lower() == user.lower() for u in allowed))
             if not ok and user:
-                LIMITER.record(user_key)
+                fail(user_key, AUTHFAIL_USER)
         else:
             ok = True
 
         if not ok:
             time.sleep(random.uniform(0.15, 0.35))
-            LIMITER.record(ip_key)
-            LIMITER.record(link_key)
+            fail(ip_key, AUTHFAIL_IP)
+            fail(link_key, AUTHFAIL_LINK)
             accesslog.log("auth_fail", ip=g.ip, link_id=link["id"], link_name=link["name"], user=user,
                           ua=request.headers.get("User-Agent"))
             return render("unlock.html", link=link, token=token, locked=False, error="wrong")

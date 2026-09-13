@@ -77,3 +77,21 @@ configuration:
   share_upload_allowed_ext:
     name: "Upload: allowed file extensions (optional)"
     description: "If set, only these extensions are accepted, e.g. jpg, png, pdf. Empty = everything except the blocked ones."
+  share_clamav_enabled:
+    name: "Virus scan on upload"
+    description: "Uploaded files are handed to the ClamAV add-on (clamd) and rejected on a hit. The Sharing tab has a test button."
+  share_clamav_host:
+    name: "clamd address"
+    description: "Address of clamd. The ClamAV add-on on the host network is reachable at 127.0.0.1."
+  share_clamav_port:
+    name: "clamd port"
+    description: "TCP port of clamd (default 3310). The TCP socket must be enabled in the ClamAV add-on."
+  share_clamav_timeout:
+    name: "Virus scan: time limit (seconds)"
+    description: "Longest wait for a result per file."
+  share_clamav_on_error:
+    name: "Virus scanner unreachable"
+    description: "reject = refuse the upload when clamd does not answer (recommended). accept = accept anyway and note it in the log."
+  share_clamav_large_file:
+    name: "File too large to scan"
+    description: "clamd scans streams only up to its StreamMaxLength (25 MB by default); path mode is tried next. If that fails too: accept or reject."

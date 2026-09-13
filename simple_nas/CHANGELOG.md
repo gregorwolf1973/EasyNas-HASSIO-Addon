@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.6.0
+- **Virenpruefung beim Upload ueber das ClamAV-Addon.** `share_clamav_enabled: true`, clamd unter `share_clamav_host:share_clamav_port` (Vorgabe 127.0.0.1:3310, TCP-Socket im ClamAV-Addon einschalten). Uploads werden vor dem Ablegen gestreamt geprueft; Funde werden abgewiesen und protokolliert. Ist clamd nicht erreichbar, wird abgelehnt (`share_clamav_on_error`, umstellbar). Dateien ueber clamds Stromgrenze (25 MB) werden per Pfad-Modus geprueft; scheitert auch das, entscheidet `share_clamav_large_file`. Im Reiter Teilen gibt es einen Test-Knopf: PING plus EICAR-Testdatei.
+- **Schutz gegen Passwortraten verschaerft.** Sperren eskalieren: 15 Minuten beim ersten Mal, dann 30, 60, 120 ... bis 24 Stunden; nach einem Tag Ruhe beginnt die Reihe von vorn. Gilt je Adresse, je Link und je Konto, auch fuer das Portal.
+- **Link-Scanner werden ausgesperrt:** Wer in zehn Minuten zwanzig unbekannte Links probiert, wird fuer 15 Minuten (eskalierend) komplett blockiert.
+- **Link-Passwoerter brauchen mindestens 8 Zeichen.** Bisher war jede nicht-leere Eingabe erlaubt; ein vierstelliger Code waere trotz Sperren in Tagen zu erraten gewesen.
+
 ## 3.5.1
 - **Hochladen aus dem Internet.** Links mit Modus "Hochladen" oder "Beides" zeigen auf der Freigabe-Seite einen Ablagebereich: Dateien hineinziehen oder auswaehlen, Fortschritt je Datei, Ergebnis mit endgueltigem Dateinamen. Ohne Javascript gibt es ein einfaches Formular.
 - Dateinamen werden entschaerft, ohne Umlaute zu zerstoeren: `Grüße.pdf` bleibt `Grüße.pdf`. Verzeichnisanteile, fuehrende Punkte, Steuerzeichen und Windows-Geraetenamen werden entfernt.

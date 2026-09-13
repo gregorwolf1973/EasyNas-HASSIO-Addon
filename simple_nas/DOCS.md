@@ -218,6 +218,19 @@ Without `client_max_body_size` every upload fails at nginx's 1 MB default; witho
 - Share accounts are separate from the Samba users. Their password hashes live in `/data/share_accounts.json` (mode 600) and, like all settings, in the reinstall-safe copy under `/config/.simplenas/auto` - which means they are part of your Home Assistant backups.
 - HTML and SVG files are never shown inline on the share site, only offered as downloads. A visitor-uploaded page served from your own domain would otherwise run scripts against every later visitor.
 
+### Brute-force protection (with or without Cloudflare)
+
+- Tokens are 22 characters from a 57-symbol alphabet (about 127 bits). Guessing one is not a realistic attack; scanning for them gets the address banned after 20 unknown links in 10 minutes.
+- Failed passwords count per address (10 per 15 min), per link (20, regardless of how many addresses take part) and per account (10). Every lockout doubles on repetition: 15 min, 30, 60 ... up to 24 h.
+- Each failure also sleeps 0.15-0.35 s, so even the allowed attempts are slow.
+- Link passwords and account passwords need at least 8 characters; use longer ones for anything that matters.
+- The real visitor address is taken from `X-Forwarded-For` (Nginx Proxy Manager) or `CF-Connecting-IP` (Cloudflare), but only when the request comes from an address in `share_trusted_proxies`. Without a proxy the socket address is used. Either way the limits apply to the visitor, not to the proxy.
+- Lockouts live in memory; a restart of the add-on clears them. Persistent bans belong in a firewall: if you run CrowdSec, its bouncer can act on the access log (`/data/share_access.log`, one JSON object per line, events `auth_fail` and `rate_limited`).
+
+### Virus scanning
+
+Enable `share_clamav_enabled` and make sure the ClamAV add-on exposes clamd on TCP 3310 (`TCPSocket`/`TCPAddr` in its clamd configuration). The Sharing tab's **Test** button sends `PING` and then the EICAR test string through the scanner and reports both. With `share_clamav_on_error: reject` (default) uploads are refused while the scanner is down - silently accepting would defeat the point of enabling it.
+
 ### Access log
 
 Every view, login, failed login, download and lock-out is written to `/data/share_access.log` (JSON lines, rotated at `share_log_max_mb`). The Sharing tab shows the last entries with filters. The log records link ids and paths relative to the link, never tokens or absolute paths.

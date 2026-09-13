@@ -15,6 +15,7 @@ class Limiter:
     def __init__(self, clock=None):
         self._clock = clock or time.monotonic
         self._buckets = {}
+        self._locks = {}          # key -> (until, escalation count, last lock time)
         self._lock = threading.Lock()
         self._ops = 0
 
@@ -64,7 +65,37 @@ class Limiter:
             self._buckets.setdefault(key, deque()).append(self._clock())
 
     def locked(self, key, limit, window):
-        return self.count(key, window) >= limit
+        return self.banned(key) or self.count(key, window) >= limit
+
+    # ── escalating lockouts ──────────────────────────────────────────────
+    def lock(self, key, base, cap, decay=24 * 3600):
+        """Lock key for base * 2^(n-1) seconds, n = lockouts within `decay`.
+        First lockout 15 min, second 30, then 1 h, 2 h ... up to cap."""
+        now = self._clock()
+        with self._lock:
+            until, n, last = self._locks.get(key, (0, 0, 0))
+            if last and now - last > decay:
+                n = 0
+            n += 1
+            dur = min(cap, base * (2 ** (n - 1)))
+            self._locks[key] = (now + dur, n, now)
+            return dur
+
+    def banned(self, key):
+        now = self._clock()
+        with self._lock:
+            entry = self._locks.get(key)
+            if not entry:
+                return False
+            if entry[0] > now:
+                return True
+            return False
+
+    def ban_remaining(self, key):
+        now = self._clock()
+        with self._lock:
+            entry = self._locks.get(key)
+            return max(0, int(entry[0] - now)) if entry else 0
 
     def retry_after(self, key, window):
         now = self._clock()
@@ -76,10 +107,14 @@ class Limiter:
         with self._lock:
             if key is not None:
                 self._buckets.pop(key, None)
+                self._locks.pop(key, None)
             if prefix is not None:
                 for k in list(self._buckets):
                     if k.startswith(prefix):
                         self._buckets.pop(k, None)
+                for k in list(self._locks):
+                    if k.startswith(prefix):
+                        self._locks.pop(k, None)
 
 
 # Limits for the public share site. (limit, window seconds)
@@ -88,5 +123,8 @@ AUTHFAIL_IP = (10, 15 * 60)
 AUTHFAIL_LINK = (20, 15 * 60)
 AUTHFAIL_USER = (10, 15 * 60)
 UPLOAD_PER_IP = (30, 60 * 60)
+SCAN_PER_IP = (20, 10 * 60)         # requests for unknown links -> token scanner
+LOCK_BASE = 15 * 60                 # first lockout
+LOCK_CAP = 24 * 3600                # repeat offenders end up here
 
 LIMITER = Limiter()

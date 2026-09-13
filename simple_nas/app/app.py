@@ -19,6 +19,7 @@ import sharing_store
 import share_web
 import accesslog
 import zipstream
+import clamav
 from ratelimit import LIMITER, AUTHFAIL_LINK
 
 app = Flask(__name__)
@@ -1637,7 +1638,20 @@ def api_sharing_status():
         "links_live": sum(1 for l in links if sharing_store.link_is_live(l)),
         "accounts": len(sharing_store.list_accounts()),
         "allowed_roots": share_roots(),
+        "clamav_enabled": bool(_opt("share_clamav_enabled", False)),
+        "clamav_target": f"{_opt('share_clamav_host', '127.0.0.1')}:{_opt('share_clamav_port', 3310)}",
+        "clamav_on_error": _opt("share_clamav_on_error", "reject"),
     })
+
+
+@app.route("/api/sharing/clamav/test", methods=["POST"])
+def api_sharing_clamav_test():
+    """PING, then an EICAR round trip - the difference between configured and working."""
+    host = str(_opt("share_clamav_host", "127.0.0.1") or "127.0.0.1")
+    port = int(_opt("share_clamav_port", 3310) or 3310)
+    ok, msg = clamav.self_test(host, port)
+    print(f"[SHARE] ClamAV-Test {host}:{port}: {'OK' if ok else 'FEHLER'} - {msg}", flush=True)
+    return jsonify({"ok": ok, "message": msg, "enabled": bool(_opt("share_clamav_enabled", False))})
 
 
 @app.route("/api/sharing/links", methods=["GET"])
@@ -2252,6 +2266,10 @@ def start_share_site():
         return False
     share_app = share_web.create_share_app(_opt, lambda: load_json(SHARES_FILE, []), share_roots, DATA_DIR)
     share_web.assert_public_surface(share_app)
+    share_web.SCAN_HOOK = clamav.make_hook(_opt)
+    if share_web.SCAN_HOOK:
+        print(f"[SHARE] Virenpruefung ueber clamd {_opt('share_clamav_host', '127.0.0.1')}:"
+              f"{_opt('share_clamav_port', 3310)} (bei Fehler: {_opt('share_clamav_on_error', 'reject')})", flush=True)
     host = str(_opt("share_bind", "0.0.0.0") or "0.0.0.0")
     port = int(_opt("share_port", 8101) or 8101)
     import socket as _s

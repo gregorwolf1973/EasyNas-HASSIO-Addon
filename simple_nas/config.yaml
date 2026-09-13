@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Simple NAS with Samba shares and web GUI for drive management"
-version: "3.5.1"
+version: "3.6.0"
 url: "https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon"
 slug: "simple_nas"
 init: false
@@ -91,6 +91,12 @@ options:
     - shtml
     - svg
   share_upload_allowed_ext: []
+  share_clamav_enabled: false
+  share_clamav_host: "127.0.0.1"
+  share_clamav_port: 3310
+  share_clamav_timeout: 120
+  share_clamav_on_error: "reject"
+  share_clamav_large_file: "accept"
 schema:
   workgroup: str
   nas_name: str
@@ -123,6 +129,12 @@ schema:
     - "str"
   share_upload_allowed_ext:
     - "str?"
+  share_clamav_enabled: bool
+  share_clamav_host: str
+  share_clamav_port: port
+  share_clamav_timeout: int(5,3600)
+  share_clamav_on_error: list(reject|accept)
+  share_clamav_large_file: list(reject|accept)
 map:
   - share:rw
   - media:rw
