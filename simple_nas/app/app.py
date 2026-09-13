@@ -10,6 +10,8 @@ import socket
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 
+import safepath
+
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024 * 1024  # 10 GB max upload
 
@@ -597,6 +599,10 @@ def api_mount():
         safe_name  = re.sub(r"[^a-zA-Z0-9_\-]", "_", mountpoint)
         mountpoint = f"/media/{safe_name}"
 
+    # A mount point may only ever be under /media or /mnt - this runs as root
+    # and an arbitrary target would shadow any directory on the host.
+    mountpoint = _safe(mountpoint, roots=["/media", "/mnt"])
+
     _helper_call("MKDIR", mountpoint)
     os.makedirs(mountpoint, exist_ok=True)
 
@@ -986,6 +992,7 @@ def api_create_share():
     if not name or not path:
         return jsonify({"error": "name and path required"}), 400
     name = re.sub(r"[^a-zA-Z0-9_\-]", "_", name)
+    path = _safe(path)
 
     # Create directory with Samba-friendly permissions (tolerates exFAT/FAT)
     ensure_share_dir(path)
@@ -1011,7 +1018,7 @@ def api_update_share(name):
     body   = request.get_json(force=True)
     # Strip trailing slashes from path
     if "path" in body:
-        body["path"] = body["path"].strip().rstrip("/")
+        body["path"] = _safe(body["path"].strip().rstrip("/"))
     shares = load_json(SHARES_FILE, [])
     for s in shares:
         if s["name"] == name:
@@ -1302,18 +1309,103 @@ def api_settings_restore():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+# ─────────────────────────── options + path confinement ─────────
+
+_OPTIONS = None
+
+
+def _opt(key, default=None):
+    """Read an add-on option from /data/options.json.
+
+    The Supervisor writes the resolved options there; that is the same file
+    bashio reads. Going straight to it avoids exporting list options through
+    shell variables in run.sh, which is the kind of plumbing that only breaks
+    on the device.
+    """
+    global _OPTIONS
+    if _OPTIONS is None:
+        try:
+            with open(f"{DATA_DIR}/options.json") as f:
+                _OPTIONS = json.load(f)
+        except (OSError, ValueError):
+            _OPTIONS = {}
+    val = _OPTIONS.get(key, default)
+    return default if val is None else val
+
+
+DEFAULT_FILE_ROOTS = ["/media", "/mnt", "/share", "/config", "/addon_configs"]
+
+
+def file_roots():
+    """Directories the file API may touch. Everything else is refused."""
+    roots = _opt("file_allowed_roots", None)
+    if not isinstance(roots, list) or not roots:
+        roots = DEFAULT_FILE_ROOTS
+    return [str(r).strip() for r in roots if str(r).strip()]
+
+
+def _safe(path, roots=None):
+    """Confine a client-supplied path. Raises safepath.PathError, which the
+    error handler below turns into a generic 403."""
+    return safepath.resolve_in_roots(roots if roots is not None else file_roots(), path)
+
+
+@app.errorhandler(safepath.PathError)
+def _handle_path_error(e):
+    # The reason goes to the add-on log only - the client gets one flat answer
+    # so the API cannot be used to probe which paths exist.
+    print(f"[SAFEPATH] abgewiesen: {e}", flush=True)
+    return jsonify({"error": "Pfad nicht erlaubt"}), 403
+
+
+def _protected_paths():
+    """Paths that must never be deleted: the roots themselves, every mount
+    point and every configured share directory."""
+    out = {safepath.real(r) for r in file_roots()}
+    out.update(safepath.real(m.get("mountpoint", "")) for m in load_json(MOUNTS_FILE, []) if m.get("mountpoint"))
+    out.update(safepath.real(s.get("path", "")) for s in load_json(SHARES_FILE, []) if s.get("path"))
+    return out
+
+
+def _roots_listing():
+    """Synthetic listing shown instead of the container root."""
+    entries = []
+    for r in file_roots():
+        try:
+            real_r = safepath.real(r)
+        except Exception:
+            continue
+        if not os.path.isdir(real_r):
+            continue
+        entries.append({
+            "name": r.strip("/") or r, "path": real_r, "is_dir": True,
+            "size": None, "size_truncated": False,
+            "modified": os.path.getmtime(real_r) if os.path.exists(real_r) else 0,
+            "readable": os.access(real_r, os.R_OK), "is_symlink": False,
+        })
+    return entries
+
+
+@app.route("/api/roots")
+def api_roots():
+    """The allowed roots, so the UI can offer them instead of hard-coded paths."""
+    return jsonify({"roots": [e["path"] for e in _roots_listing()]})
+
+
 # ─────────────────────────── browse API ─────────────────────────
 
 @app.route("/api/browse")
 def api_browse():
     path = request.args.get("path", "/").strip()
-    path = os.path.abspath(path)
-    if not path.startswith("/"): path = "/"
-    for _pre in ("/homeassistant/addons_config/", "/config/addons_config/"):
-        if path.startswith(_pre):
-            path = "/addon_configs/" + path[len(_pre):]; break
-        if path == _pre.rstrip("/"):
-            path = "/addon_configs"; break
+    if path in ("", "/"):
+        # The container root is not browsable - offer the allowed roots instead
+        roots = _roots_listing()
+        return jsonify({"path": "/", "parent": None, "is_root": True,
+                        "breadcrumb": [{"name": "/", "path": "/"}],
+                        "entries": [{"name": e["name"], "path": e["path"],
+                                     "readable": e["readable"], "is_symlink": False} for e in roots]})
+    path = _safe(_remap_path(os.path.abspath(path)))
     entries = []
     try:
         for name in sorted(os.listdir(path)):
@@ -1349,15 +1441,8 @@ def api_browse():
             return jsonify({"error": "Kein Zugriff auf " + path}), 403
     except FileNotFoundError:
         return jsonify({"error": "Pfad nicht gefunden"}), 404
-    parts = []
-    cur = path
-    while True:
-        parent = os.path.dirname(cur)
-        parts.insert(0, {"name": os.path.basename(cur) or "/", "path": cur})
-        if parent == cur: break
-        cur = parent
-    return jsonify({"path": path, "parent": os.path.dirname(path) if path != "/" else None,
-                     "breadcrumb": parts, "entries": entries})
+    return jsonify({"path": path, "parent": _parent_of(path),
+                     "breadcrumb": _breadcrumb(path), "entries": entries})
 
 
 @app.route("/api/mkdir", methods=["POST"])
@@ -1366,6 +1451,7 @@ def api_mkdir():
     path = body.get("path", "").strip()
     if not path:
         return jsonify({"error": "path required"}), 400
+    path = _safe(path)
     try:
         os.makedirs(path, exist_ok=True)
         return jsonify({"ok": True, "path": path})
@@ -1387,6 +1473,39 @@ def _remap_path(path):
             print(f"[REMAP] {path} -> /addon_configs (exists={os.path.isdir('/addon_configs')})", flush=True)
             return "/addon_configs"
     return path
+
+def _breadcrumb(path):
+    """Crumbs from the allowed root down to path - never above it, so the UI
+    cannot offer a click into the container root."""
+    real_path = safepath.real(path)
+    base = None
+    for r in file_roots():
+        real_r = safepath.real(r)
+        if safepath.is_within(real_r, real_path):
+            base = real_r
+            break
+    parts, cur = [], real_path
+    while True:
+        parts.insert(0, {"name": os.path.basename(cur) or cur, "path": cur})
+        if base is not None and cur == base:
+            break
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    parts.insert(0, {"name": "/", "path": "/"})
+    return parts
+
+
+def _parent_of(path):
+    """Parent directory, or '/' (the roots listing) when path is a root."""
+    real_path = safepath.real(path)
+    for r in file_roots():
+        if real_path == safepath.real(r):
+            return "/"
+    parent = os.path.dirname(real_path)
+    return parent if parent != real_path else "/"
+
 
 def _recursive_dir_size(path, max_seconds=8):
     """Sum file sizes recursively under `path`. Returns (bytes, truncated).
@@ -1416,9 +1535,11 @@ def api_files():
     it can be slow on large trees / slow USB media."""
     path = request.args.get("path", "/").strip()
     want_dir_size = request.args.get("dir_size", "0") in ("1", "true", "yes")
-    path = os.path.abspath(path)
-    if not path.startswith("/"): path = "/"
-    path = _remap_path(path)
+    if path in ("", "/"):
+        return jsonify({"path": "/", "parent": None, "is_root": True,
+                        "breadcrumb": [{"name": "/", "path": "/"}],
+                        "entries": _roots_listing()})
+    path = _safe(_remap_path(os.path.abspath(path)))
     entries = []
     try:
         for name in sorted(os.listdir(path)):
@@ -1465,23 +1586,15 @@ def api_files():
         return jsonify({"error": "Kein Zugriff"}), 403
     except FileNotFoundError:
         return jsonify({"error": "Pfad nicht gefunden"}), 404
-    # Breadcrumb
-    parts = []
-    cur = path
-    while True:
-        parent = os.path.dirname(cur)
-        parts.insert(0, {"name": os.path.basename(cur) or "/", "path": cur})
-        if parent == cur: break
-        cur = parent
-    return jsonify({"path": path, "parent": os.path.dirname(path) if path != "/" else None,
-                     "breadcrumb": parts, "entries": entries})
+    return jsonify({"path": path, "parent": _parent_of(path),
+                     "breadcrumb": _breadcrumb(path), "entries": entries})
 
 
 @app.route("/api/files/delete", methods=["POST"])
 def api_files_delete():
     body = request.get_json(force=True)
-    path = body.get("path", "").strip()
-    if not path or path in ("/", "/mnt", "/media", "/data"):
+    path = _safe(body.get("path", "").strip())
+    if path in _protected_paths():
         return jsonify({"error": "Dieser Pfad kann nicht gelöscht werden"}), 400
     try:
         if os.path.isdir(path):
@@ -1499,7 +1612,12 @@ def api_files_rename():
     new_name = body.get("new_name", "").strip()
     if not path or not new_name:
         return jsonify({"error": "path and new_name required"}), 400
-    new_path = os.path.join(os.path.dirname(path), new_name)
+    path = _safe(path)
+    if path in _protected_paths():
+        return jsonify({"error": "Dieser Pfad kann nicht umbenannt werden"}), 400
+    if new_name in (".", "..") or "/" in new_name or "\\" in new_name or "\x00" in new_name:
+        return jsonify({"error": "Ungültiger Name"}), 400
+    new_path = _safe(os.path.join(os.path.dirname(path), new_name))
     try:
         os.rename(path, new_path)
         return jsonify({"ok": True, "new_path": new_path})
@@ -1513,6 +1631,7 @@ def api_files_copy():
     dst = body.get("dst", "").strip()
     if not src or not dst:
         return jsonify({"error": "src and dst required"}), 400
+    src, dst = _safe(src), _safe(dst)
     try:
         if os.path.isdir(src):
             shutil.copytree(src, dst)
@@ -1530,6 +1649,9 @@ def api_files_move():
     dst = body.get("dst", "").strip()
     if not src or not dst:
         return jsonify({"error": "src and dst required"}), 400
+    src, dst = _safe(src), _safe(dst)
+    if src in _protected_paths():
+        return jsonify({"error": "Dieser Pfad kann nicht verschoben werden"}), 400
     try:
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         shutil.move(src, dst)
@@ -1539,22 +1661,28 @@ def api_files_move():
 
 @app.route("/api/files/upload", methods=["POST"])
 def api_files_upload():
-    target_dir = request.form.get("path", "/media")
+    target_dir = _safe(request.form.get("path", "/media"))
     if "file" not in request.files:
         return jsonify({"error": "no file"}), 400
     f = request.files["file"]
     if not f.filename:
         return jsonify({"error": "no filename"}), 400
+    # The browser controls this name; strip any directory part before use.
+    leaf = os.path.basename(f.filename.replace("\\", "/")).strip()
+    if not leaf or leaf in (".", "..") or "\x00" in leaf:
+        return jsonify({"error": "Ungültiger Dateiname"}), 400
     os.makedirs(target_dir, exist_ok=True)
-    dest = os.path.join(target_dir, f.filename)
+    dest = safepath.resolve_new(target_dir, "", leaf)
+    if os.path.exists(dest):
+        return jsonify({"error": f"„{leaf}“ existiert bereits"}), 409
     f.save(dest)
     return jsonify({"ok": True, "path": dest})
 
 @app.route("/api/files/download")
 def api_files_download():
     from flask import send_file
-    path = request.args.get("path", "").strip()
-    if not path or not os.path.isfile(path):
+    path = _safe(request.args.get("path", "").strip())
+    if not os.path.isfile(path):
         return jsonify({"error": "Datei nicht gefunden"}), 404
     return send_file(path, as_attachment=True)
 
@@ -1564,8 +1692,8 @@ def api_files_view():
     videos, audio, text). Falls back to download for unknown MIME types."""
     from flask import send_file
     import mimetypes
-    path = request.args.get("path", "").strip()
-    if not path or not os.path.isfile(path):
+    path = _safe(request.args.get("path", "").strip())
+    if not os.path.isfile(path):
         return jsonify({"error": "Datei nicht gefunden"}), 404
     mime, _ = mimetypes.guess_type(path)
     # send_file in modern Flask supports Range requests via conditional=True
@@ -1574,8 +1702,8 @@ def api_files_view():
 
 @app.route("/api/files/content")
 def api_files_content():
-    path = request.args.get("path", "").strip()
-    if not path or not os.path.isfile(path):
+    path = _safe(request.args.get("path", "").strip())
+    if not os.path.isfile(path):
         return jsonify({"error": "Datei nicht gefunden"}), 404
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -1587,10 +1715,8 @@ def api_files_content():
 @app.route("/api/files/write", methods=["POST"])
 def api_files_write():
     body = request.get_json(force=True)
-    path = body.get("path", "").strip()
+    path = _safe(body.get("path", "").strip())
     content = body.get("content", "")
-    if not path:
-        return jsonify({"error": "path required"}), 400
     try:
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
@@ -1622,6 +1748,7 @@ def api_create_backup():
     dst = body.get("dst", "").strip()
     if not name or not src or not dst:
         return jsonify({"error": "name, src and dst required"}), 400
+    src, dst = _safe(src), _safe(dst)
     import uuid
     job = {
         "id": str(uuid.uuid4())[:8],
@@ -1641,6 +1768,8 @@ def api_update_backup(job_id):
     jobs = load_json(BACKUPS_FILE, [])
     for j in jobs:
         if j["id"] == job_id:
+            for k in ("src", "dst"):
+                if k in body: body[k] = _safe(str(body[k]).strip())
             for k in ("name", "src", "dst", "schedule", "keep"):
                 if k in body: j[k] = body[k]
             save_json(BACKUPS_FILE, jobs)
@@ -1669,9 +1798,12 @@ def api_run_backup(job_id):
         jid = j["id"]
         _backup_status[jid] = {"running": True, "progress": "Starte...", "last_error": ""}
         try:
-            src = j["src"].rstrip("/")
+            # Re-check at run time: the job file could have been edited by hand,
+            # and this starts rsync as root.
+            src = _safe(j["src"].rstrip("/"))
+            dst_base = _safe(j["dst"].rstrip("/"))
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            dst_dir = os.path.join(j["dst"].rstrip("/"), f"{j['name']}_{ts}")
+            dst_dir = os.path.join(dst_base, f"{j['name']}_{ts}")
 
             _backup_status[jid]["progress"] = f"Kopiere {src} → {dst_dir}"
             # Use rsync for better performance and progress

@@ -29,3 +29,6 @@ configuration:
   hdd_idle_seconds:
     name: Festplatten-Spindown (Sekunden)
     description: Gemountete Laufwerke nach so vielen Sekunden Inaktivität herunterfahren, um Strom zu sparen und Geräusche/Verschleiß zu reduzieren (0 = deaktiviert). Nutzt I/O-basiertes hd-idle, geeignet für USB-Platten. Betrifft nur in Simple NAS gemountete Laufwerke, niemals die HA-System-Platte. Hinweis - jeder Zugriff auf die Freigabe (Samba-Client, SMART-Abfrage, Backup-Jobs) setzt den Timer zurück.
+  file_allowed_roots:
+    name: Erlaubte Ordner
+    description: Verzeichnisse, die der Dateimanager oeffnen darf. Alles ausserhalb wird abgewiesen. Aendere das nur, wenn du Dateien ausserhalb der Standardordner verwalten musst.

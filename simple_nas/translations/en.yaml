@@ -29,3 +29,6 @@ configuration:
   hdd_idle_seconds:
     name: HDD Spindown (seconds)
     description: Spin down mounted drives after this many seconds of inactivity to save power and reduce noise/wear (0 = disabled). Uses I/O-based hd-idle, suitable for USB drives. Only affects drives you mounted in Simple NAS, never the HA system disk. Note - any process touching the share (Samba client, SMART polling, backup jobs) resets the timer.
+  file_allowed_roots:
+    name: Allowed folders
+    description: Directories the file manager may open. Anything outside is refused. Only change this if you need to manage files outside the default folders.

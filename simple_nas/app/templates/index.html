@@ -519,9 +519,7 @@
     </div>
     <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;">
       <span style="font-size:11px;color:var(--text-dim);" data-i18n="go_to">Gehe zu:</span>
-      <button class="btn btn-ghost btn-sm" onclick="loadFiles('/media')">/media</button>
-      <button class="btn btn-ghost btn-sm" onclick="loadFiles('/mnt')">/mnt</button>
-      <button class="btn btn-ghost btn-sm" onclick="loadFiles('/')">/</button>
+      <span id="files-roots" style="display:flex;gap:6px;"></span>
       <div style="flex:1"></div>
       <input type="text" id="files-path-input" placeholder="Pfad eingeben…" data-i18n-ph="path_placeholder" style="width:260px;font-family:monospace;font-size:12px;" onkeydown="if(event.key==='Enter')loadFiles(this.value)">
       <button class="btn btn-ghost btn-sm" onclick="loadFiles(document.getElementById('files-path-input').value)">↵</button>
@@ -831,9 +829,7 @@
   </div>
   <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;">
     <span style="font-size:11px;color:var(--text-dim);" data-i18n="go_to">Gehe zu:</span>
-    <button class="btn btn-ghost btn-sm" onclick="browseTo('/media')">/media</button>
-    <button class="btn btn-ghost btn-sm" onclick="browseTo('/mnt')">/mnt</button>
-    <button class="btn btn-ghost btn-sm" onclick="browseTo('/')">/</button>
+    <span id="browser-roots" style="display:flex;gap:6px;"></span>
   </div>
   <div id="browser-list" style="height:280px;overflow-y:auto;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;"></div>
   <div id="browser-selected" style="margin-top:8px;padding:7px 12px;background:var(--tag-accent-bg);border:1px solid var(--tag-accent-border);border-radius:8px;font-family:monospace;font-size:12px;color:var(--accent);display:none;"></div>
@@ -856,7 +852,7 @@ const T={
     users_title:'Benutzer',users_sub:'Samba-Benutzer verwalten',btn_new_user:'+ Neuer Benutzer',
     groups_title:'Gruppen',btn_new_group:'+ Neue Gruppe',
     files_title:'Dateien',files_sub:'Dateien durchsuchen, hochladen, kopieren, verschieben und löschen',
-    btn_upload:'↑ Hochladen',btn_new_folder:'+ Ordner',go_to:'Gehe zu:',path_placeholder:'Pfad eingeben…',
+    btn_upload:'↑ Hochladen',btn_new_folder:'+ Ordner',go_to:'Gehe zu:',all_roots:'Alle erlaubten Ordner',path_placeholder:'Pfad eingeben…',
     btn_restore:'Wiederherstellen',
     file_backup_title:'Datei-Backup-Jobs',file_backup_sub:'Backup-Jobs erstellen und verwalten',btn_new_backup:'+ Neuer Backup-Job',
     modal_cancel:'Abbrechen',modal_save:'Speichern',modal_ok:'OK',modal_select:'Auswählen',
@@ -968,7 +964,7 @@ const T={
     users_title:'Users',users_sub:'Manage Samba users',btn_new_user:'+ New User',
     groups_title:'Groups',btn_new_group:'+ New Group',
     files_title:'Files',files_sub:'Browse, upload, copy, move and delete files',
-    btn_upload:'↑ Upload',btn_new_folder:'+ Folder',go_to:'Go to:',path_placeholder:'Enter path…',
+    btn_upload:'↑ Upload',btn_new_folder:'+ Folder',go_to:'Go to:',all_roots:'All allowed folders',path_placeholder:'Enter path…',
     btn_restore:'Restore',
     file_backup_title:'File Backup Jobs',file_backup_sub:'Create and manage backup jobs',btn_new_backup:'+ New Backup Job',
     modal_cancel:'Cancel',modal_save:'Save',modal_ok:'OK',modal_select:'Select',
@@ -1107,6 +1103,8 @@ function toggleLang(){
 function fmt(b){if(b==null)return'–';const g=b/1e9;if(g>=1)return g.toFixed(1)+' GB';return(b/1e6).toFixed(0)+' MB';}
 function toast(m,e=false){const el=document.createElement('div');el.className='toast'+(e?' error':'');el.textContent=m;document.getElementById('toast-container').appendChild(el);setTimeout(()=>el.remove(),3500);}
 async function api(method,path,body){const o={method,headers:{'Content-Type':'application/json'}};if(body)o.body=JSON.stringify(body);const base=window.location.pathname.replace(/\/+$/,'');const r=await fetch(base+'/api'+path,o);const d=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(d.error||'Fehler');e.data=d;throw e;}return d;}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function escJs(s){return String(s==null?'':s).split('\\').join('\\\\').split("'").join("\\'").split('<').join('\\x3c');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 function openModal(id){document.getElementById(id).classList.add('open');}
 function updateToggle(id,cb){document.getElementById(id).classList.toggle('on',cb.checked);}
@@ -1766,7 +1764,26 @@ async function deleteGroup(n){if(!confirm(t('confirm_del_group',{n})))return;try
 
 // ── Folder Browser ──
 let _browserTarget=null,_browserSelected=null;
+// The allowed roots come from the server now - the old hard-coded /media, /mnt
+// and / buttons could point outside what the file API will serve.
+let _rootsCache=null;
+async function loadRoots(){
+  if(_rootsCache)return _rootsCache;
+  try{const d=await api('GET','/roots');_rootsCache=d.roots||[];}catch(e){_rootsCache=[];}
+  return _rootsCache;
+}
+async function renderRootButtons(){
+  const roots=await loadRoots();
+  const mk = fn => roots.map(r =>
+        '<button class="btn btn-ghost btn-sm" onclick="' + fn + "('" + escJs(r) + "')" + '">' + esc(r) + '</button>'
+      ).join('') +
+      '<button class="btn btn-ghost btn-sm" onclick="' + fn + "('/')" + '" title="' + esc(t('all_roots')) + '">…</button>';
+  const f=document.getElementById('files-roots'); if(f)f.innerHTML=mk('loadFiles');
+  const b=document.getElementById('browser-roots'); if(b)b.innerHTML=mk('browseTo');
+}
+
 async function openBrowser(targetId,startPath){
+  await renderRootButtons();
   _browserTarget=targetId;_browserSelected=null;
   document.getElementById('browser-selected').style.display='none';
   const cur=startPath||document.getElementById(targetId)?.value||'/media';
@@ -1865,6 +1882,7 @@ function _sizeBarHtml(bytes,maxLog){
 }
 
 async function loadFiles(path){
+  renderRootButtons();
   if(path)_filesPath=path;
   document.getElementById('files-path-input').value=_filesPath;
   const list=document.getElementById('files-list');
