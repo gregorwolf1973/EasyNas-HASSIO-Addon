@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.5.1
+- **Hochladen aus dem Internet.** Links mit Modus "Hochladen" oder "Beides" zeigen auf der Freigabe-Seite einen Ablagebereich: Dateien hineinziehen oder auswaehlen, Fortschritt je Datei, Ergebnis mit endgueltigem Dateinamen. Ohne Javascript gibt es ein einfaches Formular.
+- Dateinamen werden entschaerft, ohne Umlaute zu zerstoeren: `Grüße.pdf` bleibt `Grüße.pdf`. Verzeichnisanteile, fuehrende Punkte, Steuerzeichen und Windows-Geraetenamen werden entfernt.
+- Nichts wird ueberschrieben: aus `a.txt` wird `a (2).txt`, angelegt mit exklusivem Erzeugen, damit dazwischen kein Symlink untergeschoben werden kann.
+- Gesperrte Endungen (`share_upload_blocked_ext`, Vorgabe: ausfuehrbare Dateien sowie HTML und SVG), optional eine Positivliste (`share_upload_allowed_ext`). Jede Endung der Kette zaehlt, `x.html.txt` ist gesperrt.
+- Groessenpruefung vor dem ersten gelesenen Byte gegen `share_max_upload_mb` (Vorgabe 1024) und die Grenzen des Links. Upload-Kontingent je Link, 30 Uploads je Stunde und Adresse.
+- Ablage nach Datum (`upload_subdir: by-date`, Vorgabe) haelt den Ordner uebersichtlich; hochgeladene Dateien gehoeren dem Ordner-Eigentuemer, damit Samba-Benutzer sie verwalten koennen.
+- Vorbereitet: ein Pruef-Haken fuer die Virenpruefung; die ClamAV-Anbindung folgt im naechsten Release.
+- (3.5.0 wurde ohne Versionssprung veroeffentlicht; dieses Release traegt die Aenderungen nach.)
+
 ## 3.4.3
 - **Portal auf der Startseite der Freigabe-Seite.** Unter `/` steht jetzt eine Anmeldung mit dem Freigabe-Konto. Danach erscheint "Meine Freigaben": alle aktiven Links der Art "Nur bestimmte Konten", die dieses Konto oeffnen darf. Ohne Anmeldung verraet die Seite weiterhin nichts, weder Namen noch Adressen. Die Portal-Anmeldung gilt zugleich fuer die einzelnen Links.
 - Fehlversuche am Portal zaehlen gegen dieselben Sperren wie an den Links (je Adresse und je Konto).
