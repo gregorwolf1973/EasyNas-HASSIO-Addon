@@ -6,6 +6,7 @@ import subprocess
 import re
 import shutil
 import time
+import socket
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -1719,7 +1720,26 @@ def api_run_backup(job_id):
 def index():
     return render_template("index.html", admin_enabled=_admin_auth.get("enabled", False))
 
+def _install_safe_getfqdn():
+    """Keep the reverse DNS lookup during bind from killing the addon.
+
+    http.server calls socket.getfqdn() while binding. With host_network the
+    addon uses the router's DNS; a PTR record that is not valid UTF-8 then
+    raises UnicodeDecodeError and the addon never starts.
+    """
+    real_getfqdn = socket.getfqdn
+
+    def safe_getfqdn(name=""):
+        try:
+            return real_getfqdn(name)
+        except (UnicodeDecodeError, UnicodeError, OSError):
+            return name or "localhost"
+
+    socket.getfqdn = safe_getfqdn
+
+
 if __name__ == "__main__":
+    _install_safe_getfqdn()
     os.makedirs(DATA_DIR, exist_ok=True)
     for fpath, default in [(SHARES_FILE, []), (USERS_FILE, []), (MOUNTS_FILE, []), (GROUPS_FILE, []), (BACKUPS_FILE, [])]:
         if not os.path.exists(fpath):
