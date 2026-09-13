@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.7.3
+- **Fix: CrowdSec sah das Zugriffsprotokoll nie.** Der Standardpfad lag unter `/share`, das in das CrowdSec-Addon gar nicht eingebunden ist - CrowdSec meldete beim Start "No matching files for pattern" und keines der Szenarien konnte je ausloesen. Neuer Standard ist `/config/.simplenas/share_access.log`; die Konfigurationsordner von Home Assistant sehen beide Addons. Bestehende Installationen ziehen beim Start automatisch um, die Acquisition-Datei wird dabei mitgeschrieben. Danach das CrowdSec-Addon einmal neu starten.
+- **Sperren sind jetzt sichtbar.** Die Karte "Oeffentliche Freigabe-Seite" zeigt laufende Sperren mit Restzeit und die aktuellen Fehlversuche je Adresse im Verhaeltnis zur Schwelle (10 in 15 Minuten). Wer sich fuenfmal falsch anmeldet, sieht jetzt "ip 1.2.3.4: 5/10" statt gar nichts. Ein Klick auf eine Sperre hebt sie auf.
+- **Warnung, wenn die Virenpruefung eingeschaltet, clamd aber nicht erreichbar ist.** Mit `share_clamav_on_error: reject` wird in dieser Lage jeder Upload abgelehnt, bisher ohne sichtbaren Hinweis. Der Status prueft clamd jetzt selbst (gecacht) und die Karte warnt in rot.
+
 ## 3.7.2
 - "CrowdSec einrichten" braucht keine Option mehr: Ist `share_log_export_path` leer, schreibt das Addon das Zugriffsprotokoll ab sofort zusaetzlich nach `/share/simplenas/share_access.log`, merkt sich das in `/data/crowdsec_setup.json` und traegt genau diesen Pfad in die CrowdSec-Acquisition ein. Kein Neustart von Simple NAS noetig, nur das CrowdSec-Addon muss einmal neu starten. Eine gesetzte Option hat weiterhin Vorrang.
 

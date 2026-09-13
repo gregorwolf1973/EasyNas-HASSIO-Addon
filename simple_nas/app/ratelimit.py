@@ -11,6 +11,14 @@ import time
 from collections import deque
 
 
+def _split_key(key):
+    """authfail:ip:1.2.3.4 -> ("ip", "1.2.3.4"); ban:1.2.3.4 -> ("ban", "1.2.3.4")"""
+    parts = key.split(":", 2)
+    if parts[0] == "authfail" and len(parts) == 3:
+        return parts[1], parts[2]
+    return parts[0], parts[-1] if len(parts) > 1 else ""
+
+
 class Limiter:
     def __init__(self, clock=None):
         self._clock = clock or time.monotonic
@@ -102,6 +110,32 @@ class Limiter:
         with self._lock:
             q = self._prune(key, window, now)
             return max(1, int(q[0] + window - now) + 1) if q else 0
+
+    def snapshot(self, window=15 * 60):
+        """Active lockouts and current failure counters, for the admin UI.
+
+        Without this the protection is invisible: a user who types a wrong
+        password five times sees nothing happen and cannot tell whether the
+        lockout is broken or simply not reached yet.
+        """
+        now = self._clock()
+        locks, counters = [], []
+        with self._lock:
+            for key, (until, n, _last) in list(self._locks.items()):
+                if until > now:
+                    kind, target = _split_key(key)
+                    locks.append({"key": key, "kind": kind, "target": target,
+                                  "remaining": int(until - now), "strikes": n})
+            for key in list(self._buckets):
+                if not key.startswith("authfail:"):
+                    continue
+                q = self._prune(key, window, now)
+                if q:
+                    kind, target = _split_key(key)
+                    counters.append({"key": key, "kind": kind, "target": target, "count": len(q)})
+        locks.sort(key=lambda x: -x["remaining"])
+        counters.sort(key=lambda x: -x["count"])
+        return {"locks": locks, "counters": counters}
 
     def clear(self, key=None, prefix=None):
         with self._lock:

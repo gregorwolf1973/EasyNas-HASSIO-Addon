@@ -231,7 +231,7 @@ Without `client_max_body_size` every upload fails at nginx's 1 MB default; witho
 
 The add-on ships a parser, three scenarios and an acquisition file for CrowdSec and can install them into the CrowdSec add-on's configuration with one click (both add-ons see `/config`).
 
-1. Set `share_log_export_path` to `/share/simplenas/share_access.log` and restart Simple NAS. The access log is now also written there, where the CrowdSec add-on can read it.
+1. Nothing to configure. The **Set up CrowdSec** button in the Sharing tab starts a second copy of the access log at `/config/.simplenas/share_access.log` and points CrowdSec at it. That path matters: both add-ons map the Home Assistant config directory, while `/share` is *not* mapped into the CrowdSec add-on - a log file there is invisible to it and CrowdSec starts with `No matching files for pattern`. Set `share_log_export_path` only if you want a different location, and make sure the CrowdSec add-on can actually see it.
 2. In the Sharing tab click **Set up CrowdSec**. This copies `parsers/s01-parse/simplenas-share.yaml`, `scenarios/simplenas-share.yaml` and `acquis.d/simplenas-share.yaml` into `/config/.storage/crowdsec/config/`.
 3. Restart the CrowdSec add-on. `cscli metrics` then shows the `simplenas-share` source and `cscli scenarios list` the three scenarios: `simplenas/share-bf` (5 failed passwords in ~50 s), `simplenas/share-scan` (10 unknown links in ~5 min) and `simplenas/share-locked` (the add-on locked the address itself).
 

@@ -135,5 +135,56 @@ class InstallerTest(unittest.TestCase):
             nas.CROWDSEC_SETUP_FILE, nas.DEFAULT_EXPORT_PATH = saved[0], saved[1]
 
 
+class ExportPathMigrationTest(unittest.TestCase):
+    """The first default lived under /share, which is not mapped into the
+    CrowdSec add-on - CrowdSec logged "No matching files for pattern" and no
+    scenario could ever fire. Existing installs have to move by themselves."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self._saved = (nas.CROWDSEC_DIR, nas._OPTIONS, nas.CROWDSEC_SETUP_FILE, nas.DATA_DIR)
+        nas.CROWDSEC_DIR = os.path.join(self.tmp, "crowdsec", "config")
+        nas.DATA_DIR = self.tmp
+        nas.CROWDSEC_SETUP_FILE = os.path.join(self.tmp, "crowdsec_setup.json")
+        nas._OPTIONS = {}
+        os.makedirs(nas.CROWDSEC_DIR)
+
+    def tearDown(self):
+        (nas.CROWDSEC_DIR, nas._OPTIONS, nas.CROWDSEC_SETUP_FILE, nas.DATA_DIR) = self._saved
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_default_lives_under_config(self):
+        # /config is mapped into both add-ons; /share only into this one
+        self.assertTrue(nas.DEFAULT_EXPORT_PATH.startswith("/config/"))
+        acq = yaml.safe_load(open(os.path.join(HERE, "..", "app", "crowdsec",
+                                               "simplenas-share-acquis.yaml"), encoding="utf-8"))
+        self.assertEqual(acq["filenames"], [nas.DEFAULT_EXPORT_PATH])
+
+    def test_saved_legacy_path_is_migrated(self):
+        nas.save_json(nas.CROWDSEC_SETUP_FILE, {"export_path": "/share/simplenas/share_access.log"})
+        self.assertEqual(nas._share_export_path(), nas.DEFAULT_EXPORT_PATH)
+
+    def test_explicit_option_still_wins(self):
+        nas.save_json(nas.CROWDSEC_SETUP_FILE, {"export_path": "/share/simplenas/share_access.log"})
+        nas._OPTIONS["share_log_export_path"] = "/share/eigener/pfad.log"
+        self.assertEqual(nas._share_export_path(), "/share/eigener/pfad.log")
+
+    def test_sync_rewrites_an_outdated_acquisition(self):
+        dest = os.path.join(nas.CROWDSEC_DIR, "acquis.d", "simplenas-share.yaml")
+        os.makedirs(os.path.dirname(dest))
+        with open(dest, "w", encoding="utf-8") as f:
+            f.write("filenames:\n  - /share/simplenas/share_access.log\nlabels:\n  type: simplenas-share\n")
+        self.assertTrue(nas._sync_crowdsec_acquis(nas.DEFAULT_EXPORT_PATH))
+        acq = yaml.safe_load(open(dest, encoding="utf-8"))
+        self.assertEqual(acq["filenames"], [nas.DEFAULT_EXPORT_PATH])
+        self.assertEqual(acq["labels"]["type"], "simplenas-share")
+        # second call changes nothing
+        self.assertFalse(nas._sync_crowdsec_acquis(nas.DEFAULT_EXPORT_PATH))
+
+    def test_sync_does_nothing_without_an_installed_file(self):
+        self.assertFalse(nas._sync_crowdsec_acquis(nas.DEFAULT_EXPORT_PATH))
+        self.assertFalse(nas._sync_crowdsec_acquis(""))
+
+
 if __name__ == "__main__":
     unittest.main()

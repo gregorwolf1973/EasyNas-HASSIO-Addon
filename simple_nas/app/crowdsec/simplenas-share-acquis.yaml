@@ -1,8 +1,10 @@
 # CrowdSec acquisition for the exported Simple NAS share access log.
 # Install into <crowdsec config>/acquis.d/ - or use the button in the Sharing tab.
 # The path must match share_log_export_path in the Simple NAS options and be
-# visible inside the CrowdSec add-on (it maps /share).
+# visible inside the CrowdSec add-on. Both add-ons map the Home Assistant
+# config directory, so /config is the one place each of them can reach;
+# /share is NOT mapped into the CrowdSec add-on.
 filenames:
-  - /share/simplenas/share_access.log
+  - /config/.simplenas/share_access.log
 labels:
   type: simplenas-share

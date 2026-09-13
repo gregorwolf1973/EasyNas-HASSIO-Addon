@@ -97,4 +97,4 @@ configuration:
     description: "clamd scans streams only up to its StreamMaxLength (25 MB by default); path mode is tried next. If that fails too: accept or reject."
   share_log_export_path:
     name: "Also export the access log to"
-    description: "Second copy of the access log somewhere the CrowdSec add-on can read, e.g. /share/simplenas/share_access.log. Empty = no export. Then click 'Set up CrowdSec' in the Sharing tab."
+    description: "Second copy of the access log somewhere the CrowdSec add-on can read, e.g. /config/.simplenas/share_access.log. Empty = the default path the 'Set up CrowdSec' button uses. Note: /share is not mapped into the CrowdSec add-on, so a log kept there stays invisible to it. Then click 'Set up CrowdSec' in the Sharing tab."

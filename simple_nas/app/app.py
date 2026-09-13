@@ -20,7 +20,7 @@ import share_web
 import accesslog
 import zipstream
 import clamav
-from ratelimit import LIMITER, AUTHFAIL_LINK
+from ratelimit import LIMITER, AUTHFAIL_IP, AUTHFAIL_LINK
 
 app = Flask(__name__)
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024  # 4 GB per request; bodies are buffered to TMPDIR first
@@ -1628,6 +1628,8 @@ def _handle_share_error(e):
 def api_sharing_status():
     links = sharing_store.list_links()
     _, fallback = public_link_url("x")
+    clam = _clamd_state()
+    snap = LIMITER.snapshot(AUTHFAIL_IP[1])
     return jsonify({
         "sharing_enabled": bool(_opt("sharing_enabled", False)),
         "public_site_running": share_web.RUNNING,
@@ -1643,6 +1645,12 @@ def api_sharing_status():
         "clamav_enabled": bool(_opt("share_clamav_enabled", False)),
         "clamav_target": f"{_opt('share_clamav_host', '127.0.0.1')}:{_opt('share_clamav_port', 3310)}",
         "clamav_on_error": _opt("share_clamav_on_error", "reject"),
+        "clamav_reachable": clam["ok"],
+        "clamav_message": clam["message"],
+        "authfail_limit": AUTHFAIL_IP[0],
+        "authfail_window_min": AUTHFAIL_IP[1] // 60,
+        "locks": snap["locks"],
+        "authfail": snap["counters"],
     })
 
 
@@ -1655,7 +1663,12 @@ CROWDSEC_FILES = {
 
 
 CROWDSEC_SETUP_FILE = f"{DATA_DIR}/crowdsec_setup.json"
-DEFAULT_EXPORT_PATH = "/share/simplenas/share_access.log"
+# Both add-ons map the Home Assistant config directory, so a file under
+# /config is the one both can reach. /share is mapped here but NOT into the
+# CrowdSec add-on, which is why the first default left CrowdSec tailing a
+# file it could never see ("No matching files for pattern").
+DEFAULT_EXPORT_PATH = "/config/.simplenas/share_access.log"
+LEGACY_EXPORT_PATHS = ("/share/simplenas/share_access.log",)
 
 
 def _crowdsec_src(name):
@@ -1670,9 +1683,75 @@ def _share_export_path():
     if export:
         return export
     saved = load_json(CROWDSEC_SETUP_FILE, {})
-    if isinstance(saved, dict):
-        return str(saved.get("export_path") or "").strip()
-    return ""
+    path = str(saved.get("export_path") or "").strip() if isinstance(saved, dict) else ""
+    return DEFAULT_EXPORT_PATH if path in LEGACY_EXPORT_PATHS else path
+
+
+def _write_crowdsec_acquis(export):
+    """Write the acquisition file pointing at `export`. Returns True on change."""
+    dest = os.path.join(CROWDSEC_DIR, "acquis.d", "simplenas-share.yaml")
+    with open(_crowdsec_src("simplenas-share-acquis.yaml"), encoding="utf-8") as f:
+        # Replace the path the template lists, whatever it is - keying on
+        # DEFAULT_EXPORT_PATH would silently write the template's own path
+        # through unchanged the moment the two drift apart.
+        content = re.sub(r"(?m)^(\s*-\s+)\S+$", lambda m: m.group(1) + export,
+                         f.read(), count=1)
+    if os.path.exists(dest):
+        with open(dest, encoding="utf-8") as f:
+            if f.read() == content:
+                return False
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    with open(dest, "w", encoding="utf-8") as f:
+        f.write(content)
+    return True
+
+
+def _sync_crowdsec_acquis(export):
+    """Keep an already installed acquisition file on the current export path.
+
+    Only touches a file this add-on wrote itself, and only when the path it
+    names is out of date - otherwise CrowdSec keeps tailing a file nobody
+    writes any more, and the scenarios never fire.
+    """
+    dest = os.path.join(CROWDSEC_DIR, "acquis.d", "simplenas-share.yaml")
+    if not export or not os.path.exists(dest):
+        return False
+    try:
+        with open(dest, encoding="utf-8") as f:
+            if export in f.read():
+                return False
+        _write_crowdsec_acquis(export)
+    except OSError as e:
+        print(f"[SHARE] CrowdSec-Acquisition nicht aktualisierbar: {e}", flush=True)
+        return False
+    print(f"[SHARE] CrowdSec-Acquisition auf {export} umgestellt - CrowdSec-Addon neu starten", flush=True)
+    return True
+
+
+_CLAMD_PROBE = {"ts": 0.0, "ok": None, "message": ""}
+
+
+def _clamd_state(max_age=60):
+    """Is clamd actually answering? Cached, because the status card polls.
+
+    With share_clamav_on_error=reject an unreachable clamd silently turns
+    every upload into a rejection, so this belongs in the status, not only
+    behind the Test button.
+    """
+    if not _opt("share_clamav_enabled", False):
+        return {"ok": None, "message": ""}
+    now = time.time()
+    if now - _CLAMD_PROBE["ts"] > max_age or _CLAMD_PROBE["ok"] is None:
+        host = str(_opt("share_clamav_host", "127.0.0.1") or "127.0.0.1")
+        port = int(_opt("share_clamav_port", 3310) or 3310)
+        ok = False
+        try:
+            ok = bool(clamav.ping(host, port, timeout=3))
+        except Exception:
+            ok = False
+        _CLAMD_PROBE.update(ts=now, ok=ok,
+                            message="" if ok else f"clamd auf {host}:{port} antwortet nicht auf PING")
+    return {"ok": _CLAMD_PROBE["ok"], "message": _CLAMD_PROBE["message"]}
 
 
 @app.route("/api/sharing/crowdsec/status")
@@ -1708,12 +1787,14 @@ def api_sharing_crowdsec_install():
         print(f"[SHARE] Zugriffsprotokoll wird zusaetzlich nach {export} geschrieben (CrowdSec)", flush=True)
     written = []
     for rel, src in CROWDSEC_FILES.items():
+        if src.endswith("acquis.yaml"):
+            _write_crowdsec_acquis(export)
+            written.append(rel)
+            continue
         dest = os.path.join(CROWDSEC_DIR, rel)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         with open(_crowdsec_src(src), encoding="utf-8") as f:
             content = f.read()
-        if src.endswith("acquis.yaml"):
-            content = content.replace("/share/simplenas/share_access.log", export)
         with open(dest, "w", encoding="utf-8") as f:
             f.write(content)
         written.append(rel)
@@ -1781,6 +1862,17 @@ def api_sharing_unlock(link_id):
         return jsonify({"error": "Link nicht gefunden"}), 404
     LIMITER.clear(key=f"authfail:link:{link_id}")
     return jsonify(_link_out(sharing_store.get_link(link_id)))
+
+
+@app.route("/api/sharing/locks/unlock", methods=["POST"])
+def api_sharing_locks_unlock():
+    """Lift one lockout shown in the Sharing card (own IP after testing, say)."""
+    key = str((request.get_json(silent=True) or {}).get("key", "")).strip()
+    if not key or not key.startswith(("authfail:", "ban:", "scan:")):
+        return jsonify({"error": "Unbekannte Sperre"}), 400
+    LIMITER.clear(key=key)
+    print(f"[SHARE] Sperre aufgehoben: {key}", flush=True)
+    return jsonify({"ok": True, "key": key})
 
 
 @app.route("/api/sharing/log", methods=["GET"])
@@ -2348,6 +2440,7 @@ def start_share_site():
     if export:
         accesslog.init(os.path.join(DATA_DIR, "share_access.log"), _opt("share_log_max_mb", 5), export)
         print(f"[SHARE] Zugriffsprotokoll wird zusaetzlich nach {export} geschrieben (CrowdSec)", flush=True)
+        _sync_crowdsec_acquis(export)
     share_web.SCAN_HOOK = clamav.make_hook(_opt)
     if share_web.SCAN_HOOK:
         print(f"[SHARE] Virenpruefung ueber clamd {_opt('share_clamav_host', '127.0.0.1')}:"
