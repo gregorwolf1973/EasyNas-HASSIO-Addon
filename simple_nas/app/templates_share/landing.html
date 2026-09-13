@@ -14,11 +14,52 @@
   {% endif %}
 </header>
 
-{% if upload_only %}
-  <div class="card center">
-    <p class="big">📥</p>
-    <p>{{ L.upload_soon }}</p>
+{% if can_upload %}
+  <div class="card" id="up" style="margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div><strong>{{ L.upload_title }}</strong><div class="sub">{{ L.upload_hint }} · {{ L.upload_max.replace('{mb}', max_mb|string) }}</div></div>
+      <form id="upform" method="post" enctype="multipart/form-data" action="{{ url_for('share_upload_form', token=token) }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="dir" value="{{ crumbs[-1].rel if crumbs else '' }}">
+        <label class="btn primary" style="cursor:pointer">{{ L.upload_choose }}<input type="file" name="file" id="upfile" multiple style="display:none"></label>
+        <noscript><button class="btn" type="submit">OK</button></noscript>
+      </form>
+    </div>
+    <div id="uplist" style="margin-top:8px;font-size:.85rem"></div>
   </div>
+  <script>
+  (function(){
+    var csrf = {{ csrf|tojson }}, url = {{ url_for('share_upload', token=token)|tojson }};
+    var dir = {{ (crumbs[-1].rel if crumbs else '')|tojson }};
+    var box = document.getElementById('up'), list = document.getElementById('uplist'), input = document.getElementById('upfile');
+    var L = {{ {'done': L.upload_done, 'failed': L.upload_failed, 'ok': L.upload_ok}|tojson }};
+    var ERR = {{ {'err_too_big': L.err_too_big, 'err_quota': L.err_quota, 'err_ext': L.err_ext, 'err_length': L.err_length,
+                 'err_upload': L.err_upload, 'err_scan': L.err_scan, 'err_scan_unavailable': L.err_scan_unavailable, 'err_rate': L.err_rate}|tojson }};
+    function row(name){ var d=document.createElement('div'); d.style.cssText='display:flex;gap:8px;align-items:center;padding:4px 0';
+      d.innerHTML='<span style="flex:1;overflow-wrap:anywhere"></span><span class="sub" style="min-width:70px;text-align:right"></span>';
+      d.firstChild.textContent=name; list.appendChild(d); return d; }
+    function send(file){
+      var r=row(file.name), st=r.lastChild, xhr=new XMLHttpRequest();
+      xhr.open('POST', url+'?name='+encodeURIComponent(file.name)+'&dir='+encodeURIComponent(dir));
+      xhr.setRequestHeader('X-CSRF-Token', csrf); xhr.setRequestHeader('Content-Type','application/octet-stream');
+      xhr.upload.onprogress=function(e){ if(e.lengthComputable) st.textContent=Math.round(e.loaded/e.total*100)+' %'; };
+      xhr.onload=function(){ var d={}; try{ d=JSON.parse(xhr.responseText);}catch(e){}
+        if(xhr.status===200&&d.ok){ st.textContent='✓ '+L.done; st.style.color='var(--accent)'; if(d.name!==file.name){ r.firstChild.textContent=file.name+' → '+d.name; } }
+        else { st.textContent='✗ '+(ERR[d.error]||L.failed); st.style.color='var(--danger)'; } };
+      xhr.onerror=function(){ st.textContent='✗ '+L.failed; st.style.color='var(--danger)'; };
+      xhr.send(file);
+    }
+    function sendAll(files){ Array.prototype.forEach.call(files, send); }
+    input.addEventListener('change', function(){ sendAll(input.files); input.value=''; });
+    ['dragenter','dragover'].forEach(function(ev){ box.addEventListener(ev,function(e){ e.preventDefault(); box.style.borderColor='var(--accent)'; }); });
+    ['dragleave','drop'].forEach(function(ev){ box.addEventListener(ev,function(e){ e.preventDefault(); box.style.borderColor=''; }); });
+    box.addEventListener('drop', function(e){ if(e.dataTransfer&&e.dataTransfer.files.length) sendAll(e.dataTransfer.files); });
+  })();
+  </script>
+{% endif %}
+
+{% if upload_only %}
+  {# drop box only: nothing to list #}
 
 {% elif single %}
   <div class="card center">

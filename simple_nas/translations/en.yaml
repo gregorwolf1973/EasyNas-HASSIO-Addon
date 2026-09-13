@@ -68,3 +68,12 @@ configuration:
   share_zip_compress:
     name: "Compress ZIPs"
     description: "Off = store only (fast; photos and videos do not shrink anyway). On = deflate, noticeably CPU-heavy on small boards."
+  share_max_upload_mb:
+    name: "Upload: maximum file size (MB)"
+    description: "Largest single file that may be uploaded through a link. Uploads are buffered on the data partition before processing - keep enough free space."
+  share_upload_blocked_ext:
+    name: "Upload: blocked file extensions"
+    description: "These extensions are rejected, also in the middle of a name (x.html.txt). Executables, and HTML/SVG that would be served from your own server."
+  share_upload_allowed_ext:
+    name: "Upload: allowed file extensions (optional)"
+    description: "If set, only these extensions are accepted, e.g. jpg, png, pdf. Empty = everything except the blocked ones."

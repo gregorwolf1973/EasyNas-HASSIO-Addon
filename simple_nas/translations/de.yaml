@@ -68,3 +68,12 @@ configuration:
   share_zip_compress:
     name: "ZIP komprimieren"
     description: "Aus = nur packen (schnell, Fotos und Videos lassen sich ohnehin nicht weiter verkleinern). An = Deflate, kostet auf kleinen Rechnern spuerbar CPU."
+  share_max_upload_mb:
+    name: "Upload: maximale Dateigroesse (MB)"
+    description: "Groesste einzelne Datei, die ueber einen Link hochgeladen werden darf. Der Upload wird vor der Verarbeitung auf der Datenpartition gepuffert - genug freien Platz einplanen."
+  share_upload_blocked_ext:
+    name: "Upload: gesperrte Dateiendungen"
+    description: "Diese Endungen werden abgelehnt, auch mitten im Namen (x.html.txt). Ausfuehrbare Dateien und HTML/SVG, die vom eigenen Server ausgeliefert wuerden."
+  share_upload_allowed_ext:
+    name: "Upload: erlaubte Dateiendungen (optional)"
+    description: "Wenn gesetzt, sind nur diese Endungen erlaubt, z. B. jpg, png, pdf. Leer = alles ausser den gesperrten."

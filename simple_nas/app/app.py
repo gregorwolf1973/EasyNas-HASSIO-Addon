@@ -2269,8 +2269,9 @@ def start_share_site():
         print("[SHARE] Hinweis: share_bind=127.0.0.1 - nur ein Reverse Proxy, der selbst im Host-Netz "
               "laeuft, erreicht die Seite. Der Nginx Proxy Manager als Addon kann das NICHT; "
               "dann share_bind=0.0.0.0 und im Proxy die IP des Hosts eintragen.", flush=True)
+    body_limit = int(_opt("share_max_upload_mb", 1024) or 1024) * 1024 * 1024 + 8 * 1024 * 1024
     srv = create_server(share_app, host=host, port=port, threads=8, ident=None,
-                        channel_timeout=300, max_request_body_size=64 * 1024, asyncore_use_poll=True)
+                        channel_timeout=600, max_request_body_size=body_limit, asyncore_use_poll=True)
     threading.Thread(target=srv.run, daemon=True, name="share-http").start()
     share_web.RUNNING = True
     print(f"[SHARE] oeffentliche Freigabe-Seite auf {host}:{port}", flush=True)

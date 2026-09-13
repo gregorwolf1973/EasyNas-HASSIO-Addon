@@ -60,6 +60,37 @@ options:
   share_zip_max_gb: 5
   share_zip_max_files: 10000
   share_zip_compress: false
+  share_max_upload_mb: 1024
+  share_upload_blocked_ext:
+    - exe
+    - com
+    - bat
+    - cmd
+    - scr
+    - pif
+    - msi
+    - vbs
+    - vbe
+    - js
+    - jse
+    - jar
+    - ps1
+    - sh
+    - lnk
+    - hta
+    - cpl
+    - reg
+    - dll
+    - so
+    - php
+    - phtml
+    - phar
+    - html
+    - htm
+    - xhtml
+    - shtml
+    - svg
+  share_upload_allowed_ext: []
 schema:
   workgroup: str
   nas_name: str
@@ -87,6 +118,11 @@ schema:
   share_zip_max_gb: int(1,512)
   share_zip_max_files: int(100,1000000)
   share_zip_compress: bool
+  share_max_upload_mb: int(1,102400)
+  share_upload_blocked_ext:
+    - "str"
+  share_upload_allowed_ext:
+    - "str?"
 map:
   - share:rw
   - media:rw

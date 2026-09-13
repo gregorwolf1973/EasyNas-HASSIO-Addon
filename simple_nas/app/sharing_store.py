@@ -16,6 +16,7 @@ import os
 import re
 import secrets
 import time
+import unicodedata
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -57,6 +58,83 @@ def _path(name):
 LINKS = "share_links.json"
 ACCOUNTS = "share_accounts.json"
 COUNTERS = "share_counters.json"
+
+
+# ── upload names ─────────────────────────────────────────────────────────────
+
+# Extensions that would either run on the visitor's machine or be served from
+# this very origin. Checked against EVERY extension in the chain (x.html.txt).
+DEFAULT_BLOCKED_EXT = ("exe", "com", "bat", "cmd", "scr", "pif", "msi", "vbs", "vbe", "js", "jse",
+                       "jar", "ps1", "sh", "lnk", "hta", "cpl", "reg", "dll", "so", "php", "phtml",
+                       "phar", "html", "htm", "xhtml", "shtml", "svg")
+_WIN_RESERVED = {"con", "prn", "aux", "nul"} | {f"com{i}" for i in range(1, 10)} | {f"lpt{i}" for i in range(1, 10)}
+_CTRL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def safe_upload_name(raw, fallback_prefix="upload"):
+    """A file name that is safe to create inside the target folder.
+
+    Deliberately NOT werkzeug.secure_filename: that normalises to ASCII and
+    turns 'Grüße.pdf' into 'Gre.pdf'. Here umlauts stay; only what could
+    escape the folder, hide the file or confuse Windows is removed.
+    """
+    name = unicodedata.normalize("NFC", str(raw or ""))
+    name = name.replace("\\", "/").split("/")[-1]           # strip any directory part
+    name = _CTRL.sub("", name)
+    name = " ".join(name.split()).strip(" .")                # collapse whitespace, no leading/trailing dots
+    if not name or name in (".", ".."):
+        name = f"{fallback_prefix}-{int(time.time())}.bin"
+    stem, dot, ext = name.rpartition(".")
+    if not dot:
+        stem, ext = name, ""
+    if stem.lower() in _WIN_RESERVED:
+        stem = stem + "_"
+    if len(stem) > 100:
+        stem = stem[:100].rstrip(" .")
+    name = f"{stem}.{ext}" if ext else stem
+    assert os.path.basename(name) == name and name not in (".", "..")
+    return name
+
+
+def extension_chain(name):
+    parts = name.lower().split(".")
+    return [p for p in parts[1:] if p]
+
+
+def extension_allowed(name, blocked=None, allowed=None):
+    """False if any extension in the chain is blocked, or (when an allow list
+    is set) the final extension is not in it."""
+    chain = extension_chain(name)
+    blocked = {b.lower().lstrip(".") for b in (blocked if blocked is not None else DEFAULT_BLOCKED_EXT)}
+    if any(e in blocked for e in chain):
+        return False
+    if allowed:
+        allow = {a.lower().lstrip(".") for a in allowed if a}
+        if allow and (not chain or chain[-1] not in allow):
+            return False
+    return True
+
+
+def reserve_free_name(folder, name):
+    """Create the destination file exclusively and return (fd, final_path).
+
+    'name.ext' -> 'name (2).ext' ... up to 999, then a random suffix. The file is
+    created with O_EXCL|O_NOFOLLOW so nothing can be overwritten and no symlink
+    swapped in between the check and the write.
+    """
+    stem, dot, ext = name.rpartition(".")
+    if not dot:
+        stem, ext = name, ""
+    candidates = [name] + [f"{stem} ({i}).{ext}" if ext else f"{stem} ({i})" for i in range(2, 1000)]
+    candidates.append(f"{stem}-{secrets.token_hex(4)}.{ext}" if ext else f"{stem}-{secrets.token_hex(4)}")
+    for cand in candidates:
+        dest = os.path.join(folder, cand)
+        try:
+            fd = safepath.open_new_file(dest, 0o664)
+            return fd, dest
+        except FileExistsError:
+            continue
+    raise ShareError("Kein freier Dateiname")
 
 
 # ── tokens ───────────────────────────────────────────────────────────────────

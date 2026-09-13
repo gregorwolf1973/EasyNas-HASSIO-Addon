@@ -8,10 +8,13 @@ anything else ever gets registered here.
 
 import hmac
 import ipaddress
+import datetime
 import mimetypes
 import os
 import random
 import secrets
+import shutil
+import tempfile
 import time
 from datetime import timedelta
 from urllib.parse import quote
@@ -24,7 +27,7 @@ import accesslog
 import safepath
 import sharing_store
 import zipstream
-from ratelimit import (AUTHFAIL_IP, AUTHFAIL_LINK, AUTHFAIL_USER, LIMITER, REQ_PER_IP)
+from ratelimit import (AUTHFAIL_IP, AUTHFAIL_LINK, AUTHFAIL_USER, LIMITER, REQ_PER_IP, UPLOAD_PER_IP)
 
 RUNNING = False
 
@@ -32,8 +35,11 @@ RUNNING = False
 PUBLIC_ENDPOINTS = frozenset({
     "healthz", "share_root", "share_landing", "share_auth", "share_logout",
     "share_browse", "share_download", "share_view", "share_lang", "share_zip",
-    "share_root_login", "share_home", "share_home_logout",
+    "share_root_login", "share_home", "share_home_logout", "share_upload", "share_upload_form",
 })
+
+SCAN_HOOK = None   # set by the ClamAV integration: scan(path) -> (verdict, detail)
+
 
 # Only these are shown inline. Everything else is an attachment: a user-uploaded
 # HTML or SVG served from this origin would be stored XSS with the cookie attached.
@@ -61,6 +67,12 @@ LANG = {
         "my_shares": "Meine Freigaben", "no_shares": "Für dieses Konto sind keine Freigaben eingerichtet.",
         "mode": "Modus", "expires": "Gültig bis", "open": "Öffnen",
         "mode_download": "Herunterladen", "mode_upload": "Ablage", "mode_both": "Herunterladen + Ablage",
+        "upload_title": "Dateien hochladen", "upload_hint": "Dateien hierher ziehen oder auswählen.",
+        "upload_choose": "Dateien auswählen", "upload_done": "fertig", "upload_failed": "fehlgeschlagen",
+        "upload_max": "Maximal {mb} MB je Datei", "upload_ok": "Hochgeladen als",
+        "err_too_big": "Datei zu groß", "err_quota": "Kontingent dieses Links erschöpft", "err_ext": "Dateityp nicht erlaubt",
+        "err_length": "Größe der Datei fehlt", "err_upload": "Upload fehlgeschlagen", "err_scan": "Datei abgelehnt (Virenprüfung)",
+        "err_scan_unavailable": "Virenprüfung nicht erreichbar, Upload abgelehnt", "err_rate": "Zu viele Uploads, bitte später erneut",
     },
     "en": {
         "title": "Share", "not_found": "Link not found or no longer valid.",
@@ -79,6 +91,12 @@ LANG = {
         "my_shares": "My shares", "no_shares": "No shares are set up for this account.",
         "mode": "Mode", "expires": "Valid until", "open": "Open",
         "mode_download": "Download", "mode_upload": "Drop box", "mode_both": "Download + drop box",
+        "upload_title": "Upload files", "upload_hint": "Drop files here or choose them.",
+        "upload_choose": "Choose files", "upload_done": "done", "upload_failed": "failed",
+        "upload_max": "Up to {mb} MB per file", "upload_ok": "Uploaded as",
+        "err_too_big": "File too large", "err_quota": "This link's quota is used up", "err_ext": "File type not allowed",
+        "err_length": "File size missing", "err_upload": "Upload failed", "err_scan": "File rejected (virus scan)",
+        "err_scan_unavailable": "Virus scanner unreachable, upload rejected", "err_rate": "Too many uploads, please try again later",
     },
 }
 
@@ -133,7 +151,7 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
         SESSION_COOKIE_SECURE=bool(opt("share_cookie_secure", True)),
         PERMANENT_SESSION_LIFETIME=timedelta(hours=int(opt("share_session_hours", 8) or 8)),
         PROPAGATE_EXCEPTIONS=False,
-        MAX_CONTENT_LENGTH=64 * 1024,      # no uploads in this release
+        MAX_CONTENT_LENGTH=int(opt("share_max_upload_mb", 1024) or 1024) * 1024 * 1024 + 8 * 1024 * 1024,
     )
 
     accesslog.init(os.path.join(data_dir, "share_access.log"), opt("share_log_max_mb", 5))
@@ -434,8 +452,8 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
                       or LIMITER.locked(f"authfail:ip:{g.ip}", *AUTHFAIL_IP))
             return render("unlock.html", link=link, token=token, locked=locked, error=None)
         if link["mode"] == "upload":
-            return render("landing.html", link=link, token=token, upload_only=True,
-                          dirs=[], files=[], crumbs=[], parent=None, single=None)
+            return render("landing.html", link=link, token=token, upload_only=True, can_upload=True,
+                          max_mb=upload_limit_mb(link), dirs=[], files=[], crumbs=[], parent=None, single=None)
         if link.get("file"):
             fp = os.path.join(link["_real_root"], link["file"])
             try:
@@ -447,7 +465,144 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
                           dirs=[], files=[], crumbs=[], parent=None, upload_only=False)
         dirs, files, crumbs, parent = listing(link, "")
         return render("landing.html", link=link, token=token, single=None, upload_only=False,
+                      can_upload=link["mode"] == "both", max_mb=upload_limit_mb(link),
                       dirs=dirs, files=files, crumbs=crumbs, parent=parent)
+
+    def upload_limit_mb(link):
+        site = int(opt("share_max_upload_mb", 1024) or 1024)
+        per = int(link.get("max_file_mb") or 0)
+        return min(per, site) if per else site
+
+    def upload_folder(link, sub):
+        """Destination folder for an upload, created if needed."""
+        root = link["_real_root"]
+        if not link.get("allow_subdirs", True):
+            sub = ""
+        base = safepath.resolve_within(root, sub)
+        mode = link.get("upload_subdir", "by-date")
+        if mode == "by-date":
+            base = os.path.join(base, datetime.date.today().isoformat())
+        elif mode == "by-user" and session.get("su"):
+            base = os.path.join(base, sharing_store.safe_upload_name(session["su"]))
+        os.makedirs(base, exist_ok=True)
+        return safepath.resolve_within(root, os.path.relpath(base, root))
+
+    def store_upload(link, folder, name, stream, declared_len):
+        """Stream to a .part file in the target folder, then rename into place.
+        Returns (final_path, size) or raises ShareError with an L-key."""
+        cap = upload_limit_mb(link) * 1024 * 1024
+        quota = int(link.get("upload_quota_mb") or 0) * 1024 * 1024
+        used = int(link.get("uploaded_bytes") or 0)
+        if declared_len > cap:
+            raise sharing_store.ShareError("err_too_big")
+        if quota and used + declared_len > quota:
+            raise sharing_store.ShareError("err_quota")
+        fd, tmp = tempfile.mkstemp(prefix=".upload-", suffix=".part", dir=folder)
+        written = 0
+        try:
+            with os.fdopen(fd, "wb") as out:
+                while True:
+                    chunk = stream.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > cap or (quota and used + written > quota):
+                        raise sharing_store.ShareError("err_too_big" if written > cap else "err_quota")
+                    out.write(chunk)
+                out.flush()
+                os.fsync(out.fileno())
+            if SCAN_HOOK is not None:
+                verdict, detail = SCAN_HOOK(tmp)
+                if verdict == "infected":
+                    accesslog.log("upload_reject", ip=g.ip, link_id=link["id"], link_name=link["name"],
+                                  user=session.get("su"), path=name, detail=detail)
+                    raise sharing_store.ShareError("err_scan")
+                if verdict == "error":
+                    accesslog.log("upload_reject", ip=g.ip, link_id=link["id"], link_name=link["name"],
+                                  user=session.get("su"), path=name, detail=f"scan error: {detail}")
+                    raise sharing_store.ShareError("err_scan_unavailable")
+            ffd, final = sharing_store.reserve_free_name(folder, name)
+            os.close(ffd)
+            os.replace(tmp, final)
+            tmp = None
+            try:                                   # let Samba users manage the file
+                st = os.stat(folder)
+                os.chown(final, st.st_uid, st.st_gid)
+                os.chmod(final, 0o664)
+            except (OSError, AttributeError):
+                pass
+            return final, written
+        finally:
+            if tmp and os.path.exists(tmp):
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+
+    def upload_common(link, name_raw, sub, stream, declared_len):
+        ok, _ = LIMITER.hit(f"upload:ip:{g.ip}", *UPLOAD_PER_IP)
+        if not ok:
+            accesslog.log("rate_limited", ip=g.ip, link_id=link["id"], detail="upload")
+            raise sharing_store.ShareError("err_rate")
+        name = sharing_store.safe_upload_name(name_raw)
+        if not sharing_store.extension_allowed(name, opt("share_upload_blocked_ext", None),
+                                               opt("share_upload_allowed_ext", None)):
+            accesslog.log("upload_reject", ip=g.ip, link_id=link["id"], link_name=link["name"],
+                          user=session.get("su"), path=name, detail="extension")
+            raise sharing_store.ShareError("err_ext")
+        try:
+            folder = upload_folder(link, sub)
+        except safepath.PathError:
+            abort(404)
+        final, size = store_upload(link, folder, name, stream, declared_len)
+        sharing_store.record_upload(link["id"], size, g.ip)
+        rel = os.path.relpath(final, link["_real_root"]).replace(os.sep, "/")
+        accesslog.log("upload", ip=g.ip, link_id=link["id"], link_name=link["name"],
+                      user=session.get("su"), path=rel, bytes=size)
+        return rel, size
+
+    def upload_allowed(link):
+        if link["mode"] not in ("upload", "both") or link.get("file"):
+            abort(403)
+
+    @app.route("/s/<token>/upload", methods=["POST"])
+    def share_upload(token):
+        """Raw body upload: fetch(url, {method:'POST', body: file}). One temp
+        copy instead of the two a multipart parser would make."""
+        link = g.link
+        upload_allowed(link)
+        if not csrf_ok():
+            return jsonify({"ok": False, "error": "wrong"}), 403
+        length = request.headers.get("Content-Length")
+        if not length or not length.isdigit():
+            return jsonify({"ok": False, "error": "err_length"}), 411
+        try:
+            rel, size = upload_common(link, request.args.get("name", ""), request.args.get("dir", ""),
+                                      request.stream, int(length))
+        except sharing_store.ShareError as e:
+            code = {"err_too_big": 413, "err_quota": 413, "err_ext": 415, "err_rate": 429,
+                    "err_scan": 422, "err_scan_unavailable": 503}.get(str(e), 400)
+            return jsonify({"ok": False, "error": str(e)}), code
+        return jsonify({"ok": True, "name": os.path.basename(rel), "path": rel, "size": size})
+
+    @app.route("/s/<token>/upload-form", methods=["POST"])
+    def share_upload_form(token):
+        """No-JavaScript fallback: multipart form."""
+        link = g.link
+        upload_allowed(link)
+        if not csrf_ok():
+            abort(403)
+        f = request.files.get("file")
+        if not f or not f.filename:
+            return redirect(url_for("share_landing", token=token))
+        f.stream.seek(0, os.SEEK_END)
+        size = f.stream.tell()
+        f.stream.seek(0)
+        try:
+            upload_common(link, f.filename, request.form.get("dir", ""), f.stream, size)
+        except sharing_store.ShareError as e:
+            return render("error.html", 400, msg_key=str(e))
+        return redirect(url_for("share_landing", token=token))
 
     @app.route("/s/<token>/auth", methods=["POST"])
     def share_auth(token):
@@ -515,6 +670,7 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
         except safepath.PathError:
             abort(404)
         return render("landing.html", link=link, token=token, single=None, upload_only=False,
+                      can_upload=link["mode"] == "both", max_mb=upload_limit_mb(link),
                       dirs=dirs, files=files, crumbs=crumbs, parent=parent)
 
     def _file_for(link, sub):
