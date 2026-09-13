@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.7.0
+- **CrowdSec-Anbindung.** Das Addon bringt Parser, drei Szenarien und eine Acquisition-Datei fuer CrowdSec mit und installiert sie per Knopf im Reiter Teilen in die Konfiguration des CrowdSec-Addons (beide sehen `/config`). Szenarien: `simplenas/share-bf` (5 Fehlpasswoerter in ~50 s), `simplenas/share-scan` (10 unbekannte Links in ~5 min), `simplenas/share-locked` (das Addon hat die Adresse selbst gesperrt). Bans erreichen damit den Firewall-Bouncer.
+- Neue Option `share_log_export_path`: zweite Kopie des Zugriffsprotokolls an einem Ort, den CrowdSec lesen kann, z. B. `/share/simplenas/share_access.log`.
+- Jede Protokollzeile traegt zusaetzlich `time` als RFC3339-Zeitstempel, damit CrowdSec sie ohne eigene Zeitlogik verarbeiten kann.
+- DOCS: Abschnitt zur CrowdSec-Einrichtung, inklusive des Hinweises, dass Bans fuer den Cloudflare-Tunnel ueber den Cloudflare-Bouncer laufen muessen.
+
 ## 3.6.1
 - Uploads ueber Links mit Modus "Beides" landen jetzt direkt in dem Ordner, in dem man gerade blaettert, statt in einem Unterordner mit Datum. Reine Ablage-Links sortieren weiterhin nach Tag.
 - Die Ablageart ist im Link-Dialog waehlbar: direkt im Ordner, Unterordner je Tag, Unterordner je Konto.

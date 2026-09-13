@@ -1644,6 +1644,58 @@ def api_sharing_status():
     })
 
 
+CROWDSEC_DIR = "/config/.storage/crowdsec/config"
+CROWDSEC_FILES = {
+    "parsers/s01-parse/simplenas-share.yaml": "simplenas-share-parser.yaml",
+    "scenarios/simplenas-share.yaml": "simplenas-share-scenarios.yaml",
+    "acquis.d/simplenas-share.yaml": "simplenas-share-acquis.yaml",
+}
+
+
+def _crowdsec_src(name):
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "crowdsec", name)
+
+
+@app.route("/api/sharing/crowdsec/status")
+def api_sharing_crowdsec_status():
+    present = os.path.isdir(CROWDSEC_DIR)
+    installed = {rel: os.path.exists(os.path.join(CROWDSEC_DIR, rel)) for rel in CROWDSEC_FILES}
+    export = (_opt("share_log_export_path", "") or "").strip()
+    return jsonify({
+        "crowdsec_config_found": present,
+        "config_dir": CROWDSEC_DIR,
+        "installed": installed,
+        "all_installed": present and all(installed.values()),
+        "export_path": export,
+        "export_active": accesslog.export_path() == export if export else False,
+    })
+
+
+@app.route("/api/sharing/crowdsec/install", methods=["POST"])
+def api_sharing_crowdsec_install():
+    """Copy parser, scenarios and acquisition into the CrowdSec add-on's config.
+    Both add-ons see /config, so this is a plain file copy. CrowdSec picks the
+    files up after a restart of its add-on."""
+    if not os.path.isdir(CROWDSEC_DIR):
+        return jsonify({"error": f"CrowdSec-Konfiguration nicht gefunden ({CROWDSEC_DIR}). Ist das CrowdSec-Addon installiert?"}), 404
+    export = (_opt("share_log_export_path", "") or "").strip()
+    if not export:
+        return jsonify({"error": "share_log_export_path ist leer. Bitte in der Addon-Konfiguration setzen, z. B. /share/simplenas/share_access.log, und das Addon neu starten."}), 400
+    written = []
+    for rel, src in CROWDSEC_FILES.items():
+        dest = os.path.join(CROWDSEC_DIR, rel)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(_crowdsec_src(src), encoding="utf-8") as f:
+            content = f.read()
+        if src.endswith("acquis.yaml"):
+            content = content.replace("/share/simplenas/share_access.log", export)
+        with open(dest, "w", encoding="utf-8") as f:
+            f.write(content)
+        written.append(rel)
+    print(f"[SHARE] CrowdSec-Dateien installiert: {', '.join(written)}", flush=True)
+    return jsonify({"ok": True, "written": written, "restart_needed": "CrowdSec"})
+
+
 @app.route("/api/sharing/clamav/test", methods=["POST"])
 def api_sharing_clamav_test():
     """PING, then an EICAR round trip - the difference between configured and working."""
@@ -2266,6 +2318,10 @@ def start_share_site():
         return False
     share_app = share_web.create_share_app(_opt, lambda: load_json(SHARES_FILE, []), share_roots, DATA_DIR)
     share_web.assert_public_surface(share_app)
+    export = (_opt("share_log_export_path", "") or "").strip()
+    if export:
+        accesslog.init(os.path.join(DATA_DIR, "share_access.log"), _opt("share_log_max_mb", 5), export)
+        print(f"[SHARE] Zugriffsprotokoll wird zusaetzlich nach {export} geschrieben (CrowdSec)", flush=True)
     share_web.SCAN_HOOK = clamav.make_hook(_opt)
     if share_web.SCAN_HOOK:
         print(f"[SHARE] Virenpruefung ueber clamd {_opt('share_clamav_host', '127.0.0.1')}:"

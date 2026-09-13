@@ -1,0 +1,8 @@
+# CrowdSec acquisition for the exported Simple NAS share access log.
+# Install into <crowdsec config>/acquis.d/ - or use the button in the Sharing tab.
+# The path must match share_log_export_path in the Simple NAS options and be
+# visible inside the CrowdSec add-on (it maps /share).
+filenames:
+  - /share/simplenas/share_access.log
+labels:
+  type: simplenas-share

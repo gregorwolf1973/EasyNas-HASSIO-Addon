@@ -1,0 +1,24 @@
+# CrowdSec parser for the Simple NAS share access log (one JSON object per line).
+# Install into <crowdsec config>/parsers/s01-parse/ - or use the button in the
+# Sharing tab, which copies this file there.
+onsuccess: next_stage
+filter: "evt.Line.Labels.type == 'simplenas-share'"
+name: simplenas/share-logs
+description: "Parse Simple NAS share access log"
+statics:
+  - meta: log_type
+    value: simplenas_share
+  - meta: service
+    value: simplenas
+  - meta: source_ip
+    expression: JsonExtract(evt.Line.Raw, "ip")
+  - meta: event
+    expression: JsonExtract(evt.Line.Raw, "event")
+  - meta: user
+    expression: JsonExtract(evt.Line.Raw, "user")
+  - meta: link_id
+    expression: JsonExtract(evt.Line.Raw, "link_id")
+  - meta: detail
+    expression: JsonExtract(evt.Line.Raw, "detail")
+  - target: evt.StrTime
+    expression: JsonExtract(evt.Line.Raw, "time")

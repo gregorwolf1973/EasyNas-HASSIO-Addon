@@ -1,0 +1,42 @@
+# CrowdSec scenarios for the Simple NAS share site.
+# Install into <crowdsec config>/scenarios/ - or use the button in the Sharing tab.
+#
+# share-bf:     five failed passwords within ~50 s from one address
+# share-scan:   ten requests for unknown links within ~5 min from one address
+# share-locked: the add-on locked the address itself - ban it at the firewall too
+type: leaky
+name: simplenas/share-bf
+description: "Password guessing on Simple NAS share links"
+filter: "evt.Meta.log_type == 'simplenas_share' && evt.Meta.event == 'auth_fail'"
+groupby: evt.Meta.source_ip
+capacity: 5
+leakspeed: "10s"
+blackhole: 5m
+labels:
+  service: simplenas
+  type: bruteforce
+  remediation: true
+---
+type: leaky
+name: simplenas/share-scan
+description: "Probing for unknown Simple NAS share links"
+filter: "evt.Meta.log_type == 'simplenas_share' && evt.Meta.event == 'link_404'"
+groupby: evt.Meta.source_ip
+capacity: 10
+leakspeed: "30s"
+blackhole: 5m
+labels:
+  service: simplenas
+  type: scan
+  remediation: true
+---
+type: trigger
+name: simplenas/share-locked
+description: "Simple NAS locked this address after repeated failures"
+filter: "evt.Meta.log_type == 'simplenas_share' && evt.Meta.event == 'rate_limited' && evt.Meta.detail startsWith 'lock'"
+groupby: evt.Meta.source_ip
+blackhole: 10m
+labels:
+  service: simplenas
+  type: bruteforce
+  remediation: true

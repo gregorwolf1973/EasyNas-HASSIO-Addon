@@ -225,7 +225,20 @@ Without `client_max_body_size` every upload fails at nginx's 1 MB default; witho
 - Each failure also sleeps 0.15-0.35 s, so even the allowed attempts are slow.
 - Link passwords and account passwords need at least 8 characters; use longer ones for anything that matters.
 - The real visitor address is taken from `X-Forwarded-For` (Nginx Proxy Manager) or `CF-Connecting-IP` (Cloudflare), but only when the request comes from an address in `share_trusted_proxies`. Without a proxy the socket address is used. Either way the limits apply to the visitor, not to the proxy.
-- Lockouts live in memory; a restart of the add-on clears them. Persistent bans belong in a firewall: if you run CrowdSec, its bouncer can act on the access log (`/data/share_access.log`, one JSON object per line, events `auth_fail` and `rate_limited`).
+- Lockouts live in memory; a restart of the add-on clears them. Persistent bans belong in a firewall - see the CrowdSec section below.
+
+### CrowdSec integration
+
+The add-on ships a parser, three scenarios and an acquisition file for CrowdSec and can install them into the CrowdSec add-on's configuration with one click (both add-ons see `/config`).
+
+1. Set `share_log_export_path` to `/share/simplenas/share_access.log` and restart Simple NAS. The access log is now also written there, where the CrowdSec add-on can read it.
+2. In the Sharing tab click **Set up CrowdSec**. This copies `parsers/s01-parse/simplenas-share.yaml`, `scenarios/simplenas-share.yaml` and `acquis.d/simplenas-share.yaml` into `/config/.storage/crowdsec/config/`.
+3. Restart the CrowdSec add-on. `cscli metrics` then shows the `simplenas-share` source and `cscli scenarios list` the three scenarios: `simplenas/share-bf` (5 failed passwords in ~50 s), `simplenas/share-scan` (10 unknown links in ~5 min) and `simplenas/share-locked` (the add-on locked the address itself).
+
+Bans then reach whatever bouncer you run. Two things to know:
+
+- With the **firewall bouncer** on the Home Assistant host, bans only bite for traffic that reaches the host directly or through Nginx Proxy Manager. Traffic through a **Cloudflare tunnel** arrives from the tunnel container, so the offender's address is never seen by the host firewall. For that path use CrowdSec's Cloudflare bouncer (it pushes decisions into Cloudflare's firewall) or Cloudflare's own WAF rules.
+- The log records the visitor address as the add-on sees it (`X-Forwarded-For` / `CF-Connecting-IP` from trusted proxies). That is the address CrowdSec bans.
 
 ### Virus scanning
 

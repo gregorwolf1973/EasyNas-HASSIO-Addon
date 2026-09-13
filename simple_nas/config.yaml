@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Simple NAS with Samba shares and web GUI for drive management"
-version: "3.6.1"
+version: "3.7.0"
 url: "https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon"
 slug: "simple_nas"
 init: false
@@ -97,6 +97,7 @@ options:
   share_clamav_timeout: 120
   share_clamav_on_error: "reject"
   share_clamav_large_file: "accept"
+  share_log_export_path: ""
 schema:
   workgroup: str
   nas_name: str
@@ -135,6 +136,7 @@ schema:
   share_clamav_timeout: int(5,3600)
   share_clamav_on_error: list(reject|accept)
   share_clamav_large_file: list(reject|accept)
+  share_log_export_path: str?
 map:
   - share:rw
   - media:rw

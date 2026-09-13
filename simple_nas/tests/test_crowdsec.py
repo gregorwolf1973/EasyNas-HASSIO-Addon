@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""CrowdSec integration: exported log, RFC3339 time field, shipped YAML, installer."""
+import json
+import os
+import shutil
+import sys
+import tempfile
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "app"))
+
+import yaml  # noqa: E402
+
+import accesslog  # noqa: E402
+import app as nas  # noqa: E402
+
+
+class LogExportTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        accesslog.init(os.path.join(self.tmp, "x.log"))
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_time_field_and_export_copy(self):
+        main = os.path.join(self.tmp, "share_access.log")
+        export = os.path.join(self.tmp, "share", "simplenas", "share_access.log")
+        accesslog.init(main, 1, export)
+        accesslog.log("auth_fail", ip="203.0.113.7", link_id="abc", user="x")
+        for p in (main, export):
+            with open(p, encoding="utf-8") as f:
+                rec = json.loads(f.readline())
+            self.assertEqual(rec["event"], "auth_fail")
+            self.assertEqual(rec["ip"], "203.0.113.7")
+            self.assertRegex(rec["time"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+        self.assertEqual(accesslog.export_path(), export)
+
+    def test_unwritable_export_does_not_break_logging(self):
+        main = os.path.join(self.tmp, "share_access.log")
+        bad = os.path.join(self.tmp, "nofile.txt", "sub", "x.log")
+        open(os.path.join(self.tmp, "nofile.txt"), "w").close()      # a file where a dir is needed
+        accesslog.init(main, 1, bad)
+        accesslog.log("view", ip="1.2.3.4")
+        self.assertTrue(os.path.getsize(main) > 0)
+        self.assertIsNone(accesslog.export_path())
+
+
+class ShippedYamlTest(unittest.TestCase):
+    def test_files_parse_and_reference_each_other(self):
+        d = os.path.join(HERE, "..", "app", "crowdsec")
+        parser = yaml.safe_load(open(os.path.join(d, "simplenas-share-parser.yaml"), encoding="utf-8"))
+        scen = list(yaml.safe_load_all(open(os.path.join(d, "simplenas-share-scenarios.yaml"), encoding="utf-8")))
+        acq = yaml.safe_load(open(os.path.join(d, "simplenas-share-acquis.yaml"), encoding="utf-8"))
+        self.assertEqual(acq["labels"]["type"], "simplenas-share")
+        self.assertIn("simplenas-share", parser["filter"])
+        metas = {s["meta"] for s in parser["statics"] if "meta" in s}
+        self.assertTrue({"source_ip", "event", "log_type"} <= metas)
+        self.assertEqual([s["name"] for s in scen], ["simplenas/share-bf", "simplenas/share-scan", "simplenas/share-locked"])
+        for sc in scen:
+            self.assertIn("simplenas_share", sc["filter"])
+            self.assertEqual(sc["groupby"], "evt.Meta.source_ip")
+            self.assertTrue(sc["labels"]["remediation"])
+
+
+class InstallerTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self._saved = (nas.CROWDSEC_DIR, nas._OPTIONS)
+        nas.CROWDSEC_DIR = os.path.join(self.tmp, "crowdsec", "config")
+        nas._OPTIONS = {"share_log_export_path": "/share/simplenas/share_access.log"}
+        nas.app.config["TESTING"] = True
+        nas.app.secret_key = "k"
+        self.c = nas.app.test_client()
+        self.c.get("/api/roots")
+        with self.c.session_transaction() as s:
+            self.h = {"X-CSRF-Token": s["csrf"]}
+
+    def tearDown(self):
+        nas.CROWDSEC_DIR, nas._OPTIONS = self._saved
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_status_without_crowdsec(self):
+        st = self.c.get("/api/sharing/crowdsec/status").get_json()
+        self.assertFalse(st["crowdsec_config_found"])
+        self.assertEqual(self.c.post("/api/sharing/crowdsec/install", headers=self.h).status_code, 404)
+
+    def test_install_writes_files_with_export_path(self):
+        os.makedirs(nas.CROWDSEC_DIR)
+        nas._OPTIONS["share_log_export_path"] = "/share/nas/log.jsonl"
+        r = self.c.post("/api/sharing/crowdsec/install", headers=self.h)
+        self.assertEqual(r.status_code, 200, r.get_json())
+        for rel in nas.CROWDSEC_FILES:
+            p = os.path.join(nas.CROWDSEC_DIR, rel)
+            self.assertTrue(os.path.exists(p), rel)
+            yaml.safe_load_all(open(p, encoding="utf-8")) and list(yaml.safe_load_all(open(p, encoding="utf-8")))
+        acq = yaml.safe_load(open(os.path.join(nas.CROWDSEC_DIR, "acquis.d/simplenas-share.yaml"), encoding="utf-8"))
+        self.assertEqual(acq["filenames"], ["/share/nas/log.jsonl"])
+        st = self.c.get("/api/sharing/crowdsec/status").get_json()
+        self.assertTrue(st["all_installed"])
+
+    def test_install_needs_export_path(self):
+        os.makedirs(nas.CROWDSEC_DIR)
+        nas._OPTIONS["share_log_export_path"] = ""
+        self.assertEqual(self.c.post("/api/sharing/crowdsec/install", headers=self.h).status_code, 400)
+
+
+if __name__ == "__main__":
+    unittest.main()

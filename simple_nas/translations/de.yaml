@@ -95,3 +95,6 @@ configuration:
   share_clamav_large_file:
     name: "Datei zu gross fuer die Pruefung"
     description: "clamd prueft Datenstroeme nur bis zu seinem StreamMaxLength (Standard 25 MB); danach wird der Pfad-Modus versucht. Schlaegt auch der fehl: accept = annehmen, reject = ablehnen."
+  share_log_export_path:
+    name: "Zugriffsprotokoll zusaetzlich exportieren nach"
+    description: "Zweite Kopie des Zugriffsprotokolls an einem Ort, den das CrowdSec-Addon lesen kann, z. B. /share/simplenas/share_access.log. Leer = kein Export. Dazu im Reiter Teilen 'CrowdSec einrichten' klicken."

@@ -15,15 +15,19 @@ import time
 
 _logger = None
 _path = None
+_export = None
 _lock = threading.Lock()
 
 EVENTS = ("view", "auth_ok", "auth_fail", "download", "zip", "upload",
           "upload_reject", "rate_limited", "link_404")
 
 
-def init(path, max_mb=5):
-    global _logger, _path
+def init(path, max_mb=5, export_path=None):
+    """export_path: an optional second copy in a place another add-on can read
+    (CrowdSec maps /share). Failure to open it must never break the site."""
+    global _logger, _path, _export
     _path = path
+    _export = None
     lg = logging.getLogger("nas.share.access")
     lg.setLevel(logging.INFO)
     lg.propagate = False
@@ -34,13 +38,30 @@ def init(path, max_mb=5):
         path, maxBytes=int(max_mb) * 1024 * 1024, backupCount=1, encoding="utf-8")
     h.setFormatter(logging.Formatter("%(message)s"))
     lg.addHandler(h)
+    if export_path:
+        try:
+            os.makedirs(os.path.dirname(export_path), exist_ok=True)
+            eh = logging.handlers.RotatingFileHandler(
+                export_path, maxBytes=int(max_mb) * 1024 * 1024, backupCount=1, encoding="utf-8")
+            eh.setFormatter(logging.Formatter("%(message)s"))
+            lg.addHandler(eh)
+            _export = export_path
+        except OSError as e:
+            print(f"[SHARE] Protokoll-Export nach {export_path} nicht moeglich: {e}", flush=True)
     _logger = lg
+
+
+def export_path():
+    return _export
 
 
 def log(event, **fields):
     if _logger is None:
         return
-    rec = {"ts": round(time.time(), 3), "event": event}
+    now = time.time()
+    rec = {"ts": round(now, 3),
+           "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),   # RFC3339 for CrowdSec
+           "event": event}
     for k, v in fields.items():
         if v is None or v == "":
             continue
