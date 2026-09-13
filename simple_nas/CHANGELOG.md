@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.4.3
+- **Portal auf der Startseite der Freigabe-Seite.** Unter `/` steht jetzt eine Anmeldung mit dem Freigabe-Konto. Danach erscheint "Meine Freigaben": alle aktiven Links der Art "Nur bestimmte Konten", die dieses Konto oeffnen darf. Ohne Anmeldung verraet die Seite weiterhin nichts, weder Namen noch Adressen. Die Portal-Anmeldung gilt zugleich fuer die einzelnen Links.
+- Fehlversuche am Portal zaehlen gegen dieselben Sperren wie an den Links (je Adresse und je Konto).
+- **Echte Besucheradresse hinter Cloudflare.** Durch einen Cloudflare-Tunnel kam bisher nur die Adresse des Tunnel-Containers an; alle Besucher aus dem Internet teilten sich damit ein Anfragekontingent. Jetzt wird `CF-Connecting-IP` beachtet, aber nur von vertrauenswuerdigen Proxys.
+- Falsche HTTP-Methode auf bekannten Pfaden liefert dieselbe "nicht gefunden"-Seite statt einer Fehlerseite.
+
 ## 3.4.2
 - Start der Freigabe-Seite prueft, ob `share_port` frei ist, und meldet sonst klar im Log, dass ein anderes Addon den Port belegt, statt es stillschweigend zu verdraengen.
 - Dokumentation und Optionstext zu `share_bind` korrigiert: Laeuft der Nginx Proxy Manager als Addon, muss `0.0.0.0` bleiben, denn dieses Addon erreicht das Loopback des Hosts nicht. Im Proxy-Host die LAN-IP des Hosts, Schema http und den Freigabe-Port eintragen. Ein Hinweis dazu erscheint auch im Addon-Log.

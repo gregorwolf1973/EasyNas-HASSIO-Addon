@@ -98,7 +98,9 @@ class SurfaceTest(Base):
     def test_healthz_and_root(self):
         r = self.c.get("/healthz")
         self.assertEqual((r.status_code, r.get_data(as_text=True)), (200, "ok"))
-        self.assertEqual(self.c.get("/").status_code, 404)
+        r = self.c.get("/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('name="username"', r.get_data(as_text=True))
 
     def test_security_headers(self):
         r = self.c.get("/healthz")
@@ -352,3 +354,81 @@ class ZipRouteTest(Base):
             zipstream.preflight = real
         self.assertEqual(r.status_code, 413)
         self.assertEqual(r.mimetype, "text/html")
+
+
+class PortalTest(Base):
+    def setUp(self):
+        super().setUp()
+        ss.create_account("gregor", "geheim123", display_name="Gregor")
+        ss.create_account("anna", "annapass1")
+        self.mine = self.link(name="Gregors Ordner", access="users", users=["gregor"], mode="both")
+        self.everyone = self.link(name="Alle Konten", access="users", users=[])
+        self.annas = self.link(name="Nur Anna", access="users", users=["anna"])
+        self.public = self.link(name="Offen", access="public")
+        self.pw = self.link(name="Mit Passwort", access="password", password="x1234567")
+        self.dead = self.link(name="Aus", access="users", users=["gregor"], enabled=False)
+
+    def csrf_root(self):
+        self.c.get("/")
+        with self.c.session_transaction() as s:
+            return s.get("csrf", "")
+
+    def test_root_leaks_nothing_before_login(self):
+        h = self.c.get("/").get_data(as_text=True)
+        for l in (self.mine, self.everyone, self.annas, self.public, self.pw, self.dead):
+            self.assertNotIn(l["token"], h)
+            self.assertNotIn(l["name"], h)
+        self.assertEqual(self.c.get("/home").status_code, 302)
+
+    def test_login_lists_only_my_links(self):
+        tok = self.csrf_root()
+        r = self.c.post("/login", data={"username": "gregor", "password": "geheim123", "csrf": tok})
+        self.assertEqual(r.status_code, 302)
+        h = self.c.get("/home").get_data(as_text=True)
+        self.assertIn(self.mine["token"], h)
+        self.assertIn(self.everyone["token"], h)
+        for l in (self.annas, self.public, self.pw, self.dead):
+            self.assertNotIn(l["token"], h, l["name"])
+        self.assertIn("Gregor", h)
+        # the portal session also opens my users-only link directly
+        self.assertEqual(self.c.get(f"/s/{self.mine['token']}/d/a.jpg").status_code, 200)
+        self.c.get("/logout")
+        self.assertEqual(self.c.get("/home").status_code, 302)
+        self.assertEqual(self.c.get(f"/s/{self.mine['token']}/d/a.jpg").status_code, 302)
+
+    def test_wrong_login_and_lockout(self):
+        tok = self.csrf_root()
+        share_web.time.sleep = lambda s: None
+        r = self.c.post("/login", data={"username": "gregor", "password": "falsch", "csrf": tok})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('class="err"', r.get_data(as_text=True))
+        for _ in range(ratelimit.AUTHFAIL_IP[0]):
+            self.c.post("/login", data={"username": "gregor", "password": "falsch", "csrf": tok})
+        r = self.c.post("/login", data={"username": "gregor", "password": "geheim123", "csrf": tok})
+        self.assertIn('class="warn"', r.get_data(as_text=True))
+
+    def test_csrf_required_on_portal(self):
+        self.csrf_root()
+        r = self.c.post("/login", data={"username": "gregor", "password": "geheim123"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(self.c.get("/home").status_code, 302)
+
+    def test_disabled_account_is_thrown_out(self):
+        tok = self.csrf_root()
+        self.c.post("/login", data={"username": "gregor", "password": "geheim123", "csrf": tok})
+        self.assertEqual(self.c.get("/home").status_code, 200)
+        ss.update_account("gregor", {"enabled": False})
+        self.assertEqual(self.c.get("/home").status_code, 302)
+
+
+class CloudflareIpTest(Base):
+    def test_cf_connecting_ip_only_from_trusted_proxy(self):
+        # trusted proxy (127.0.0.1) says the visitor is 203.0.113.7 -> that IP is limited
+        for _ in range(ratelimit.REQ_PER_IP[0]):
+            self.c.get("/healthz", headers={"CF-Connecting-IP": "203.0.113.7", "X-Forwarded-For": "172.30.33.3"})
+        self.assertEqual(self.c.get("/healthz", headers={"CF-Connecting-IP": "203.0.113.7"}).status_code, 429)
+        self.assertEqual(self.c.get("/healthz", headers={"CF-Connecting-IP": "203.0.113.8"}).status_code, 200)
+        # untrusted source: the header is ignored, the socket address counts
+        for _ in range(ratelimit.REQ_PER_IP[0]):
+            self.c.get("/healthz", headers={"CF-Connecting-IP": "1.1.1.1"}, environ_base={"REMOTE_ADDR": "192.168.1.50"})
+        self.assertEqual(self.c.get("/healthz", headers={"CF-Connecting-IP": "9.9.9.9"}, environ_base={"REMOTE_ADDR": "192.168.1.50"}).status_code, 429)

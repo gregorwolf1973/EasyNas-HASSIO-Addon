@@ -32,6 +32,7 @@ RUNNING = False
 PUBLIC_ENDPOINTS = frozenset({
     "healthz", "share_root", "share_landing", "share_auth", "share_logout",
     "share_browse", "share_download", "share_view", "share_lang", "share_zip",
+    "share_root_login", "share_home", "share_home_logout",
 })
 
 # Only these are shown inline. Everything else is an attachment: a user-uploaded
@@ -56,6 +57,10 @@ LANG = {
         "upload_soon": "Das Hochladen ist noch nicht verfügbar.",
         "shared_by": "Freigegeben über Simple NAS", "too_many": "Zu viele Anfragen.",
         "zip": "Ordner als ZIP", "zip_too_big": "Dieser Ordner ist zu groß für einen ZIP-Download. Bitte Dateien einzeln laden.",
+        "portal_title": "Anmeldung", "portal_sub": "Mit deinem Freigabe-Konto anmelden, um deine Freigaben zu sehen.",
+        "my_shares": "Meine Freigaben", "no_shares": "Für dieses Konto sind keine Freigaben eingerichtet.",
+        "mode": "Modus", "expires": "Gültig bis", "open": "Öffnen",
+        "mode_download": "Herunterladen", "mode_upload": "Ablage", "mode_both": "Herunterladen + Ablage",
     },
     "en": {
         "title": "Share", "not_found": "Link not found or no longer valid.",
@@ -70,6 +75,10 @@ LANG = {
         "upload_soon": "Uploading is not available yet.",
         "shared_by": "Shared via Simple NAS", "too_many": "Too many requests.",
         "zip": "Folder as ZIP", "zip_too_big": "This folder is too large for a ZIP download. Please download files individually.",
+        "portal_title": "Sign in", "portal_sub": "Sign in with your share account to see your shares.",
+        "my_shares": "My shares", "no_shares": "No shares are set up for this account.",
+        "mode": "Mode", "expires": "Valid until", "open": "Open",
+        "mode_download": "Download", "mode_upload": "Drop box", "mode_both": "Download + drop box",
     },
 }
 
@@ -147,7 +156,16 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
         return any(ip in n for n in trusted_nets())
 
     def ext_ip():
+        """Address used for rate limits and the log.
+
+        Behind a Cloudflare tunnel the proxy chain is cloudflared -> Nginx Proxy
+        Manager -> here, so X-Forwarded-For only names the tunnel container.
+        Cloudflare carries the visitor in CF-Connecting-IP; honour it, but only
+        when the request really came from a trusted proxy."""
         if from_trusted_proxy():
+            cf = request.headers.get("CF-Connecting-IP", "").strip()
+            if cf:
+                return cf
             xff = request.headers.get("X-Forwarded-For", "")
             if xff:
                 return xff.split(",")[-1].strip() or request.remote_addr
@@ -232,7 +250,8 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
             resp = render("error.html", 429, msg_key="too_many")
             resp.headers["Retry-After"] = str(retry)
             return resp
-        if request.endpoint in ("healthz", "share_root", "share_lang", None):
+        if request.endpoint in ("healthz", "share_root", "share_lang", "share_root_login",
+                                "share_home", "share_home_logout", None):
             return
         token = (request.view_args or {}).get("token", "")
         if not sharing_store.token_shape_ok(token):
@@ -273,8 +292,16 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
     def _404(e):
         return not_found()
 
+    @app.errorhandler(405)
+    def _405(e):
+        # wrong method on a known path: reveal nothing, same page as unknown
+        return not_found()
+
     @app.errorhandler(Exception)
     def _500(e):
+        from werkzeug.exceptions import HTTPException
+        if isinstance(e, HTTPException):
+            return e
         print(f"[SHARE] Fehler: {type(e).__name__}: {e}", flush=True)
         return render("error.html", 500, msg_key="error")
 
@@ -283,9 +310,79 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
     def healthz():
         return "ok", 200, {"Content-Type": "text/plain"}
 
+    def account_session():
+        """The logged-in share account, or None. Same session keys the
+        per-link login uses, so a portal login also opens users-only links."""
+        user = session.get("su")
+        if not user:
+            return None
+        acc = sharing_store.get_account(user)
+        if not acc or not acc.get("enabled", True) or session.get("su_epoch") != acc.get("auth_epoch", 1):
+            return None
+        return acc
+
+    def portal_locked():
+        return LIMITER.locked(f"authfail:ip:{g.ip}", *AUTHFAIL_IP)
+
     @app.route("/")
     def share_root():
-        return not_found()
+        if account_session():
+            return redirect(url_for("share_home"))
+        return render("home_login.html", locked=portal_locked(), error=None)
+
+    @app.route("/login", methods=["POST"])
+    def share_root_login():
+        if not csrf_ok():
+            return render("home_login.html", locked=False, error="wrong")
+        if portal_locked():
+            accesslog.log("rate_limited", ip=g.ip, detail="portal auth locked")
+            return render("home_login.html", locked=True, error="locked")
+        user = request.form.get("username", "").strip()
+        user_key = f"authfail:user:{user.lower()}"
+        if user and LIMITER.locked(user_key, *AUTHFAIL_USER):
+            accesslog.log("rate_limited", ip=g.ip, user=user, detail="portal user locked")
+            return render("home_login.html", locked=True, error="locked")
+        acc = sharing_store.check_account_password(user, request.form.get("password", ""))
+        if not acc:
+            time.sleep(random.uniform(0.15, 0.35))
+            LIMITER.record(f"authfail:ip:{g.ip}")
+            if user:
+                LIMITER.record(user_key)
+            accesslog.log("auth_fail", ip=g.ip, user=user, detail="portal", ua=request.headers.get("User-Agent"))
+            return render("home_login.html", locked=False, error="wrong")
+        session.permanent = True
+        session["su"] = acc["username"]
+        session["su_epoch"] = acc.get("auth_epoch", 1)
+        sharing_store.touch_login(acc["username"])
+        accesslog.log("auth_ok", ip=g.ip, user=acc["username"], detail="portal")
+        return redirect(url_for("share_home"))
+
+    @app.route("/home")
+    def share_home():
+        acc = account_session()
+        if not acc:
+            return redirect(url_for("share_root"))
+        user = acc["username"].lower()
+        links = []
+        for l in sharing_store.list_links():
+            if l.get("access") != "users" or not sharing_store.link_is_live(l):
+                continue
+            allowed = l.get("users") or []
+            if allowed and not any(u.lower() == user for u in allowed):
+                continue
+            try:
+                sharing_store.validate_root(l["root"], l.get("share", ""), l.get("file", ""), load_shares(), share_roots())
+            except sharing_store.ShareError:
+                continue
+            links.append(l)
+        links.sort(key=lambda l: l["name"].lower())
+        return render("home.html", links=links, display_name=acc.get("display_name") or acc["username"])
+
+    @app.route("/logout")
+    def share_home_logout():
+        session.pop("su", None)
+        session.pop("su_epoch", None)
+        return redirect(url_for("share_root"))
 
     @app.route("/lang/<code>")
     def share_lang(code):

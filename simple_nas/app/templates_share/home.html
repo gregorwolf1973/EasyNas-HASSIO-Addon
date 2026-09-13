@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ L.portal_title }}{% endblock %}
+{% block body %}
+<header>
+  <div><h1>{{ L.my_shares }}</h1><div class="sub">{{ display_name }}</div></div>
+  <a class="btn sm" href="{{ url_for('share_home_logout') }}">{{ L.logout }}</a>
+</header>
+<div class="card" style="padding:6px 8px">
+{% if not links %}
+  <p class="center" style="color:var(--dim)">{{ L.no_shares }}</p>
+{% else %}
+  <table>
+    <thead><tr><th>{{ L.name }}</th><th class="hide">{{ L.mode }}</th><th class="hide" style="text-align:right">{{ L.expires }}</th><th></th></tr></thead>
+    <tbody>
+    {% for l in links %}
+      <tr>
+        <td><a class="name" href="{{ url_for('share_landing', token=l.token) }}"><span class="ico">{% if l.file %}📄{% else %}📁{% endif %}</span>{{ l.name }}</a></td>
+        <td class="hide" style="color:var(--dim);font-size:.82rem">{{ L['mode_' ~ l.mode] }}</td>
+        <td class="num hide">{% if l.expires %}<span data-ts="{{ l.expires }}">{{ l.expires }}</span>{% else %}–{% endif %}</td>
+        <td class="act"><a class="btn sm" href="{{ url_for('share_landing', token=l.token) }}">{{ L.open }}</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% endif %}
+</div>
+<script>
+  document.querySelectorAll('[data-ts]').forEach(el => {
+    const n = parseInt(el.dataset.ts, 10);
+    if (!isNaN(n)) el.textContent = new Date(n * 1000).toLocaleDateString();
+  });
+</script>
+{% endblock %}

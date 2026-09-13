@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ L.portal_title }}{% endblock %}
+{% block body %}
+<header><div><h1>{{ L.portal_title }}</h1><div class="sub">{{ L.portal_sub }}</div></div></header>
+<div class="card" style="max-width:420px;margin:0 auto">
+  {% if locked %}
+    <div class="warn">{{ L.locked }}</div>
+  {% else %}
+  <form method="post" action="{{ url_for('share_root_login') }}" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="u">{{ L.username }}</label>
+    <input type="text" id="u" name="username" autocapitalize="none" autocorrect="off" required autofocus>
+    <label for="p">{{ L.password }}</label>
+    <input type="password" id="p" name="password" required>
+    {% if error %}<div class="err">{{ L[error] }}</div>{% endif %}
+    <p style="margin-top:16px"><button class="btn primary" type="submit">{{ L.login }}</button></p>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
