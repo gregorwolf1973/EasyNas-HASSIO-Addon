@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.4.1
+- **Ordner als ZIP herunterladen**, auf der Freigabe-Seite (Knopf ueber der Dateiliste, auch in Unterordnern) und im Dateimanager (neues Symbol an jedem Ordner). Das Archiv wird waehrend der Uebertragung gepackt, ohne Zwischendatei auf der Platte.
+- Vor dem ersten Byte wird der Ordner vermessen; ueber `share_zip_max_gb` (Vorgabe 5) oder `share_zip_max_files` (Vorgabe 10000) gibt es eine ordentliche Fehlerseite statt eines abgebrochenen Downloads.
+- Verschwindet eine Datei waehrend des Packens, bleibt das Archiv gueltig; sie steht in `_MISSING.txt`. Waechst der Ordner deutlich ueber die Messung hinaus, wird sauber geschlossen und `ZIP-INCOMPLETE.txt` erklaert es. Ein kurzes, gueltiges ZIP ist besser als ein abgeschnittenes.
+- Versteckte Dateien, `.part`-Dateien und Symlinks landen nie im Archiv. Standard ist Packen ohne Komprimierung (`share_zip_compress`), Fotos und Videos werden ohnehin nicht kleiner.
+- Jeder ZIP-Abruf zaehlt als ein Download und steht im Zugriffsprotokoll.
+
 ## 3.4.0
 - **Die oeffentliche Freigabe-Seite ist da.** Eine zweite, eigenstaendige Anwendung auf Port 8101 (Option `share_port`), auf der ausschliesslich `/s/<link>` existiert. Verwaltung, Dateimanager und Samba-Einstellungen sind dort nicht erreichbar; das Addon verweigert den Start, sollte dort je etwas anderes registriert sein.
 - Sie startet nur mit `sharing_enabled: true` **und** gesetztem Admin-Passwort. run.sh und app.py pruefen das unabhaengig voneinander.

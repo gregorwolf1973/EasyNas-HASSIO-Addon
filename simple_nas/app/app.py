@@ -18,6 +18,7 @@ import safepath
 import sharing_store
 import share_web
 import accesslog
+import zipstream
 from ratelimit import LIMITER, AUTHFAIL_LINK
 
 app = Flask(__name__)
@@ -2024,6 +2025,24 @@ def api_files_download():
     if not os.path.isfile(path):
         return jsonify({"error": "Datei nicht gefunden"}), 404
     return send_file(path, as_attachment=True)
+
+@app.route("/api/files/zip")
+def api_files_zip():
+    """Stream a folder as a ZIP - same generator as the public site."""
+    folder = _safe(request.args.get("path", "").strip())
+    if not os.path.isdir(folder):
+        return jsonify({"error": "Ordner nicht gefunden"}), 404
+    limit_bytes = int(_opt("share_zip_max_gb", 5) or 5) * 1024 ** 3
+    try:
+        total, count = zipstream.preflight(folder, limit_bytes, int(_opt("share_zip_max_files", 10000) or 10000))
+    except zipstream.TooBig as e:
+        return jsonify({"error": f"Ordner zu groß für ZIP (Grenze {e.limit_bytes // 1024**3} GB / {e.limit_files} Dateien)"}), 413
+    name = (os.path.basename(folder.rstrip("/")) or "archive") + ".zip"
+    resp = app.response_class(zipstream.stream(folder, total), mimetype="application/zip")
+    resp.headers["Content-Disposition"] = share_web.content_disposition(name)
+    resp.headers["X-Accel-Buffering"] = "no"
+    return resp
+
 
 @app.route("/api/files/view")
 def api_files_view():

@@ -314,3 +314,41 @@ class RateAndLogTest(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ZipRouteTest(Base):
+    def test_zip_of_link_root_and_subfolder(self):
+        import io as _io
+        import zipfile
+        l = self.link()
+        r = self.c.get(f"/s/{l['token']}/zip")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.mimetype, "application/zip")
+        self.assertIn("fotos.zip", r.headers["Content-Disposition"])
+        with zipfile.ZipFile(_io.BytesIO(r.get_data())) as z:
+            self.assertIsNone(z.testzip())
+            names = z.namelist()
+            self.assertIn("fotos/a.jpg", names)
+            self.assertFalse(any(".hidden" in n or ".part" in n for n in names))
+        self.assertEqual(ss.get_link(l["id"])["download_count"], 1)
+        self.assertEqual(self.c.get(f"/s/{l['token']}/zip/2026").status_code, 200)
+        self.assertEqual(self.c.get(f"/s/{l['token']}/zip/../").status_code, 404)
+
+    def test_zip_respects_link_settings(self):
+        self.assertEqual(self.c.get(f"/s/{self.link(allow_zip=False)['token']}/zip").status_code, 404)
+        self.assertEqual(self.c.get(f"/s/{self.link(file='a.jpg')['token']}/zip").status_code, 404)
+        self.assertEqual(self.c.get(f"/s/{self.link(mode='upload')['token']}/zip").status_code, 403)
+        self.assertEqual(self.c.get(f"/s/{self.link(allow_subdirs=False)['token']}/zip/2026").status_code, 404)
+
+    def test_zip_too_big_gives_413_before_streaming(self):
+        self.opts["share_zip_max_files"] = 100          # below the schema minimum on purpose: unit test only
+        self.opts["share_zip_max_gb"] = 1
+        import zipstream
+        real = zipstream.preflight
+        zipstream.preflight = lambda *a, **k: (_ for _ in ()).throw(zipstream.TooBig(1, 1, 1, 1))
+        try:
+            r = self.c.get(f"/s/{self.link()['token']}/zip")
+        finally:
+            zipstream.preflight = real
+        self.assertEqual(r.status_code, 413)
+        self.assertEqual(r.mimetype, "text/html")

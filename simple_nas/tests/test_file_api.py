@@ -182,3 +182,17 @@ class FileApiConfinementTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AdminZipTest(FileApiConfinementTest):
+    def test_zip_inside_root_streams_a_valid_archive(self):
+        import io as _io
+        import zipfile
+        r = self.c.get("/api/files/zip", query_string={"path": os.path.join(self.root, "fotos")})
+        self.assertEqual(r.status_code, 200)
+        with zipfile.ZipFile(_io.BytesIO(r.get_data())) as z:
+            self.assertIsNone(z.testzip())
+            self.assertIn("fotos/a.txt", z.namelist())
+
+    def test_zip_outside_root_is_refused(self):
+        self.assertEqual(self.c.get("/api/files/zip", query_string={"path": self.outside}).status_code, 403)

@@ -23,6 +23,7 @@ from werkzeug.security import check_password_hash
 import accesslog
 import safepath
 import sharing_store
+import zipstream
 from ratelimit import (AUTHFAIL_IP, AUTHFAIL_LINK, AUTHFAIL_USER, LIMITER, REQ_PER_IP)
 
 RUNNING = False
@@ -30,7 +31,7 @@ RUNNING = False
 # Every endpoint that may exist on the public app. Anything else = refuse to start.
 PUBLIC_ENDPOINTS = frozenset({
     "healthz", "share_root", "share_landing", "share_auth", "share_logout",
-    "share_browse", "share_download", "share_view", "share_lang",
+    "share_browse", "share_download", "share_view", "share_lang", "share_zip",
 })
 
 # Only these are shown inline. Everything else is an attachment: a user-uploaded
@@ -54,6 +55,7 @@ LANG = {
         "size": "Größe", "modified": "Geändert", "name": "Name",
         "upload_soon": "Das Hochladen ist noch nicht verfügbar.",
         "shared_by": "Freigegeben über Simple NAS", "too_many": "Zu viele Anfragen.",
+        "zip": "Ordner als ZIP", "zip_too_big": "Dieser Ordner ist zu groß für einen ZIP-Download. Bitte Dateien einzeln laden.",
     },
     "en": {
         "title": "Share", "not_found": "Link not found or no longer valid.",
@@ -67,6 +69,7 @@ LANG = {
         "size": "Size", "modified": "Modified", "name": "Name",
         "upload_soon": "Uploading is not available yet.",
         "shared_by": "Shared via Simple NAS", "too_many": "Too many requests.",
+        "zip": "Folder as ZIP", "zip_too_big": "This folder is too large for a ZIP download. Please download files individually.",
     },
 }
 
@@ -243,7 +246,7 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
             return
         if not authed(link):
             return redirect(url_for("share_landing", token=token))
-        if link["mode"] == "upload" and request.endpoint in ("share_browse", "share_download", "share_view"):
+        if link["mode"] == "upload" and request.endpoint in ("share_browse", "share_download", "share_view", "share_zip"):
             abort(403)
 
     @app.after_request
@@ -444,6 +447,36 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
         resp = send_file(fp, as_attachment=True, conditional=True, download_name=os.path.basename(fp))
         resp.headers["Content-Disposition"] = content_disposition(os.path.basename(fp))
         resp.headers["X-Accel-Buffering"] = "no"
+        return resp
+
+    @app.route("/s/<token>/zip", defaults={"sub": ""})
+    @app.route("/s/<token>/zip/<path:sub>")
+    def share_zip(token, sub):
+        link = g.link
+        if link.get("file") or not link.get("allow_zip", True):
+            abort(404)
+        if sub and not link.get("allow_subdirs", True):
+            abort(404)
+        try:
+            folder = safepath.resolve_within(link["_real_root"], sub)
+        except safepath.PathError:
+            abort(404)
+        if not os.path.isdir(folder):
+            abort(404)
+        limit_bytes = int(opt("share_zip_max_gb", 5) or 5) * 1024 ** 3
+        try:
+            total, count = zipstream.preflight(folder, limit_bytes, int(opt("share_zip_max_files", 10000) or 10000))
+        except zipstream.TooBig:
+            return render("error.html", 413, msg_key="zip_too_big")
+        name = (os.path.basename(folder.rstrip(os.sep)) or link["name"]) + ".zip"
+        sharing_store.record_download(link["id"], g.ip)
+        accesslog.log("zip", ip=g.ip, link_id=link["id"], link_name=link["name"], user=session.get("su"),
+                      path=sub or ".", bytes=total, detail=f"{count} files")
+        resp = app.response_class(zipstream.stream(folder, total, compress=bool(opt("share_zip_compress", False))),
+                                  mimetype="application/zip")
+        resp.headers["Content-Disposition"] = content_disposition(name)
+        resp.headers["X-Accel-Buffering"] = "no"
+        resp.headers["Cache-Control"] = "private, no-store"
         return resp
 
     @app.route("/s/<token>/v/<path:sub>")

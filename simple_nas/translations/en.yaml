@@ -59,3 +59,12 @@ configuration:
   share_log_max_mb:
     name: Access log size (MB)
     description: The log rotates at this size; one older copy is kept.
+  share_zip_max_gb:
+    name: "ZIP download: maximum size (GB)"
+    description: "Folders above this size are not offered as ZIP. Applies to the share site and the file manager."
+  share_zip_max_files:
+    name: "ZIP download: maximum file count"
+    description: "Folders with more files are not offered as ZIP."
+  share_zip_compress:
+    name: "Compress ZIPs"
+    description: "Off = store only (fast; photos and videos do not shrink anyway). On = deflate, noticeably CPU-heavy on small boards."

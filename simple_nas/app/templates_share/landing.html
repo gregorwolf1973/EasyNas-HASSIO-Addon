@@ -29,6 +29,9 @@
   </div>
 
 {% else %}
+  {% if link.allow_zip and (dirs or files) %}
+  <p style="margin:0 0 10px;text-align:right"><a class="btn sm" href="{% if crumbs %}{{ url_for('share_zip', token=token, sub=crumbs[-1].rel) }}{% else %}{{ url_for('share_zip', token=token) }}{% endif %}">🗜 {{ L.zip }}</a></p>
+  {% endif %}
   {% if crumbs %}
   <div class="crumbs">
     <a href="{{ url_for('share_landing', token=token) }}">{{ link.name }}</a>

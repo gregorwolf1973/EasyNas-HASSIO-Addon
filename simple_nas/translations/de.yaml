@@ -59,3 +59,12 @@ configuration:
   share_log_max_mb:
     name: Groesse des Zugriffsprotokolls (MB)
     description: Das Protokoll wird bei dieser Groesse rotiert, eine aeltere Kopie bleibt erhalten.
+  share_zip_max_gb:
+    name: "ZIP-Download: maximale Groesse (GB)"
+    description: "Ordner ueber dieser Groesse werden nicht als ZIP angeboten. Gilt fuer Freigabe-Seite und Dateimanager."
+  share_zip_max_files:
+    name: "ZIP-Download: maximale Dateianzahl"
+    description: "Ordner mit mehr Dateien werden nicht als ZIP angeboten."
+  share_zip_compress:
+    name: "ZIP komprimieren"
+    description: "Aus = nur packen (schnell, Fotos und Videos lassen sich ohnehin nicht weiter verkleinern). An = Deflate, kostet auf kleinen Rechnern spuerbar CPU."
