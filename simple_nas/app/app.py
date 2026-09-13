@@ -20,6 +20,8 @@ import share_web
 import accesslog
 import zipstream
 import clamav
+import sharesandbox
+import share_worker
 from ratelimit import LIMITER, AUTHFAIL_IP, AUTHFAIL_LINK
 
 app = Flask(__name__)
@@ -1623,7 +1625,7 @@ def _link_out(link):
     out["live"] = sharing_store.link_is_live(link)
     out.pop("password_hash", None)
     out["has_password"] = bool(link.get("password_hash"))
-    out["locked"] = LIMITER.locked(f"authfail:link:{link['id']}", *AUTHFAIL_LINK)
+    out["locked"] = _link_locked(link["id"])
     return out
 
 
@@ -1637,10 +1639,11 @@ def api_sharing_status():
     links = sharing_store.list_links()
     _, fallback = public_link_url("x")
     clam = _clamd_state()
-    snap = LIMITER.snapshot(AUTHFAIL_IP[1])
+    snap = _lock_snapshot()
     return jsonify({
         "sharing_enabled": bool(_opt("sharing_enabled", False)),
-        "public_site_running": share_web.RUNNING,
+        "public_site_running": _share_running(),
+        "sandboxed": _share_sandboxed(),
         "share_port": int(_opt("share_port", 8101)),
         "share_bind": _opt("share_bind", "0.0.0.0"),
         "public_url": (_opt("share_public_url", "") or "").strip(),
@@ -1913,7 +1916,7 @@ def api_sharing_reset_counters(link_id):
 def api_sharing_unlock(link_id):
     if not sharing_store.get_link(link_id):
         return jsonify({"error": "Link nicht gefunden"}), 404
-    LIMITER.clear(key=f"authfail:link:{link_id}")
+    _do_unlock(f"authfail:link:{link_id}")
     return jsonify(_link_out(sharing_store.get_link(link_id)))
 
 
@@ -1923,7 +1926,7 @@ def api_sharing_locks_unlock():
     key = str((request.get_json(silent=True) or {}).get("key", "")).strip()
     if not key or not key.startswith(("authfail:", "ban:", "scan:")):
         return jsonify({"error": "Unbekannte Sperre"}), 400
-    LIMITER.clear(key=key)
+    _do_unlock(key)
     print(f"[SHARE] Sperre aufgehoben: {key}", flush=True)
     return jsonify({"ok": True, "key": key})
 
@@ -2479,27 +2482,145 @@ def _sharing_should_start():
     return True
 
 
-def start_share_site():
-    """Public share app on its own port, in a daemon thread. Returns True if started."""
+# The public share site runs either as a locked-down separate process
+# (share_sandbox=auto|on, the default) or, when that is unavailable, as a
+# thread in this process (the pre-3.8 behaviour). _SHARE tracks which.
+_SHARE = {"sandboxed": False, "proc": None}
+_SNAP_CACHE = {"ts": 0.0, "snap": None}
+
+
+def _share_sandboxed():
+    p = _SHARE["proc"]
+    return bool(_SHARE["sandboxed"] and p is not None and p.poll() is None)
+
+
+def _share_running():
+    return True if _share_sandboxed() else bool(share_web.RUNNING)
+
+
+def _lock_snapshot():
+    """Locks/counters for the admin card. From the worker's snapshot file when
+    sandboxed, straight from the in-process limiter otherwise. Cached ~1 s so
+    rendering a link list does not read the file per row."""
+    if not _share_sandboxed():
+        snap = LIMITER.snapshot(AUTHFAIL_IP[1])
+        snap["link_locked"] = None            # None = ask the limiter per link
+        return snap
+    now = time.time()
+    if _SNAP_CACHE["snap"] is None or now - _SNAP_CACHE["ts"] > 1:
+        _SNAP_CACHE["snap"] = sharesandbox.read_snapshot(DATA_DIR) or {
+            "locks": [], "counters": [], "link_locked": []}
+        _SNAP_CACHE["ts"] = now
+    return _SNAP_CACHE["snap"]
+
+
+def _link_locked(link_id):
+    snap = _lock_snapshot()
+    ll = snap.get("link_locked")
+    if ll is None:
+        return LIMITER.locked(f"authfail:link:{link_id}", *AUTHFAIL_LINK)
+    return link_id in ll
+
+
+def _do_unlock(key):
+    if _share_sandboxed():
+        sharesandbox.queue_unlock(DATA_DIR, key)
+    else:
+        LIMITER.clear(key=key)
+
+
+def _start_log_shipper(src, dst, max_mb):
+    """Sandbox only: the worker writes src; ship new lines to dst (the path
+    CrowdSec reads under /config, which the worker cannot see). Rotates dst so
+    it cannot grow without bound."""
     import threading
+
+    def run():
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+        except OSError:
+            pass
+        pos, ino, cap = None, None, max(1, int(max_mb)) * 1024 * 1024
+        while True:
+            try:
+                st = os.stat(src)
+                if pos is None or ino != st.st_ino or st.st_size < pos:
+                    pos, ino = st.st_size, st.st_ino      # start at the end, ship only new lines
+                elif st.st_size > pos:
+                    with open(src, "r", encoding="utf-8", errors="replace") as f:
+                        f.seek(pos)
+                        data = f.read()
+                        pos = f.tell()
+                    if os.path.exists(dst) and os.path.getsize(dst) > cap:
+                        try:
+                            os.replace(dst, dst + ".1")
+                        except OSError:
+                            pass
+                    with open(dst, "a", encoding="utf-8") as g:
+                        g.write(data)
+            except OSError:
+                pass
+            time.sleep(2)
+
+    threading.Thread(target=run, daemon=True, name="share-logship").start()
+
+
+def _launch_sandbox(host, port, export):
+    """Start the worker in a mount namespace, dropped to nobody. Returns the
+    Popen once it answers /healthz, or None (caller falls back)."""
+    import shutil
+    import urllib.request
+    if not (shutil.which("unshare") and shutil.which("setpriv")):
+        print("[SHARE] unshare/setpriv nicht vorhanden - keine Sandbox", flush=True)
+        return None
+    os.makedirs(os.path.join(DATA_DIR, "tmp"), exist_ok=True)
+    # every file the jail binds must already exist, or the bind mount fails
+    seeds = {"share_links.json": "[]", "share_accounts.json": "[]", "share_auth.json": "{}",
+             "shares.json": "[]", "share_counters.json": "{}",
+             sharesandbox.SNAPSHOT_FILE: "{}", sharesandbox.UNLOCK_FILE: "[]"}
+    for name, default in seeds.items():
+        p = os.path.join(DATA_DIR, name)
+        if not os.path.exists(p):
+            with open(p, "w", encoding="utf-8") as h:
+                h.write(default)
+    for name in (sharesandbox.LOG_FILE,):
+        p = os.path.join(DATA_DIR, name)
+        if not os.path.exists(p):
+            open(p, "a").close()
+    sharesandbox.write_options(DATA_DIR, sharesandbox.curate_options(
+        _opt, {"share_bind": host, "share_port": port}))
+    env = dict(os.environ, SHARE_DATA_DIR="/data", TMPDIR="/data/tmp")
+    cmd = ["unshare", "--mount", "--propagation", "private", "--", "/bin/sh", "/app/share_jail.sh"]
     try:
-        from waitress import create_server
-    except ImportError:
-        print("[SHARE] waitress fehlt - oeffentliche Seite bleibt aus", flush=True)
-        return False
-    share_app = share_web.create_share_app(_opt, lambda: load_json(SHARES_FILE, []), share_roots, DATA_DIR)
-    share_web.assert_public_surface(share_app)
-    export = _share_export_path()
-    if export or _crowdsec_installed():
-        accesslog.init(os.path.join(DATA_DIR, "share_access.log"), _opt("share_log_max_mb", 5))
-        cs_path = _apply_export_paths(export, announce=True)
-        _sync_crowdsec_acquis(cs_path)
-    share_web.SCAN_HOOK = clamav.make_hook(_opt)
-    if share_web.SCAN_HOOK:
-        print(f"[SHARE] Virenpruefung ueber clamd {_opt('share_clamav_host', '127.0.0.1')}:"
-              f"{_opt('share_clamav_port', 3310)} (bei Fehler: {_opt('share_clamav_on_error', 'reject')})", flush=True)
+        proc = subprocess.Popen(cmd, env=env)
+    except OSError as e:
+        print(f"[SHARE] Sandbox-Start fehlgeschlagen: {e}", flush=True)
+        return None
+    url = f"http://127.0.0.1:{port}/healthz"
+    for _ in range(50):                       # up to ~10 s
+        if proc.poll() is not None:
+            print(f"[SHARE] Sandbox-Prozess sofort beendet (Code {proc.returncode})", flush=True)
+            return None
+        try:
+            with urllib.request.urlopen(url, timeout=1) as r:
+                if r.status == 200:
+                    return proc
+        except Exception:
+            pass
+        time.sleep(0.2)
+    print("[SHARE] Sandbox antwortet nicht auf /healthz - Abbruch, Rueckfall", flush=True)
+    try:
+        proc.terminate()
+    except Exception:
+        pass
+    return None
+
+
+def start_share_site():
+    """Bring up the public share site. Returns True once it is serving."""
     host = str(_opt("share_bind", "0.0.0.0") or "0.0.0.0")
     port = int(_opt("share_port", 8101) or 8101)
+
     import socket as _s
     probe = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
     probe.setsockopt(_s.SOL_SOCKET, _s.SO_REUSEADDR, 1)
@@ -2515,12 +2636,46 @@ def start_share_site():
         print("[SHARE] Hinweis: share_bind=127.0.0.1 - nur ein Reverse Proxy, der selbst im Host-Netz "
               "laeuft, erreicht die Seite. Der Nginx Proxy Manager als Addon kann das NICHT; "
               "dann share_bind=0.0.0.0 und im Proxy die IP des Hosts eintragen.", flush=True)
-    body_limit = int(_opt("share_max_upload_mb", 1024) or 1024) * 1024 * 1024 + 8 * 1024 * 1024
-    srv = create_server(share_app, host=host, port=port, threads=8, ident=None,
-                        channel_timeout=600, max_request_body_size=body_limit, asyncore_use_poll=True)
+
+    export = _share_export_path()
+    cs_needed = bool(export or _crowdsec_installed())
+    cs_path = _crowdsec_log_path(export) if cs_needed else None
+    max_mb = _opt("share_log_max_mb", 5)
+
+    mode = str(_opt("share_sandbox", "auto") or "auto").strip().lower()
+    if mode not in ("auto", "on", "off"):
+        mode = "auto"
+    if mode != "off":
+        proc = _launch_sandbox(host, port, export)
+        if proc is not None:
+            _SHARE.update(sandboxed=True, proc=proc)
+            main_log = os.path.join(DATA_DIR, sharesandbox.LOG_FILE)
+            accesslog.attach_read(main_log)          # admin reads the worker's log
+            if cs_path:
+                _sync_crowdsec_acquis(cs_path)        # parent owns /config
+                if cs_path != main_log:
+                    _start_log_shipper(main_log, cs_path, max_mb)
+                    print(f"[SHARE] Protokoll wird nach {cs_path} weitergereicht (CrowdSec)", flush=True)
+            return True
+        if mode == "on":
+            print("[SHARE] FEHLER: share_sandbox=on, aber die Sandbox startet nicht. Seite bleibt aus.", flush=True)
+            return False
+        print("[SHARE] Sandbox nicht verfuegbar - Rueckfall auf den Hauptprozess", flush=True)
+
+    # ── in-process fallback (pre-3.8 behaviour) ─────────────────────────────
+    if cs_needed:
+        accesslog.init(os.path.join(DATA_DIR, sharesandbox.LOG_FILE), max_mb)
+        cs2 = _apply_export_paths(export, announce=True)
+        _sync_crowdsec_acquis(cs2)
+    try:
+        srv = share_worker.serve_share(_opt, lambda: load_json(SHARES_FILE, []),
+                                       share_roots, DATA_DIR, blocking=False, sandboxed=False)
+    except Exception as e:
+        print(f"[SHARE] Start der oeffentlichen Seite fehlgeschlagen: {e}", flush=True)
+        return False
+    import threading
     threading.Thread(target=srv.run, daemon=True, name="share-http").start()
-    share_web.RUNNING = True
-    print(f"[SHARE] oeffentliche Freigabe-Seite auf {host}:{port}", flush=True)
+    _SHARE.update(sandboxed=False, proc=None)
     return True
 
 

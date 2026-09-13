@@ -18,6 +18,11 @@ import share_web  # noqa: E402
 import sharing_store as ss  # noqa: E402
 
 
+# Capture the real time.sleep at import: these tests set share_web.time.sleep
+# (the shared time module) to a no-op, and must restore it so later suites keep
+# real timing.
+_REAL_SLEEP = time.sleep
+
 class FakeClock:
     def __init__(self):
         self.t = 1000.0
@@ -62,6 +67,7 @@ class Base(unittest.TestCase):
     def tearDown(self):
         ratelimit.LIMITER = self._saved_limiter
         share_web.LIMITER = self._saved_limiter
+        share_web.time.sleep = _REAL_SLEEP
         nas._OPTIONS, nas.DATA_DIR = self._saved_nas
         ss._index["mtime"] = None
         shutil.rmtree(self.tmp, ignore_errors=True)

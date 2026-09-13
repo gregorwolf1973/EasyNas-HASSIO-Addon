@@ -56,6 +56,9 @@ configuration:
   share_session_hours:
     name: Sitzungsdauer der Freigabe-Seite (Stunden)
     description: Wie lange eine Anmeldung an einem Link gilt.
+  share_sandbox:
+    name: Freigabe-Seite abschotten
+    description: "auto (empfohlen): die oeffentliche Seite laeuft als eigener Prozess ohne root und sieht /config, /ssl, andere Addons und Backups nicht. on: erzwingen, sonst startet die Seite nicht. off: wie frueher im Hauptprozess."
   share_log_max_mb:
     name: Groesse des Zugriffsprotokolls (MB)
     description: Das Protokoll wird bei dieser Groesse rotiert, eine aeltere Kopie bleibt erhalten.

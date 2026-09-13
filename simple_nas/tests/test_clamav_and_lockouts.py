@@ -9,6 +9,7 @@ import struct
 import sys
 import tempfile
 import threading
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -20,6 +21,11 @@ import ratelimit  # noqa: E402
 import share_web  # noqa: E402
 import sharing_store as ss  # noqa: E402
 
+
+# Capture the real time.sleep at import: these tests set share_web.time.sleep
+# (the shared time module) to a no-op, and must restore it so later suites keep
+# real timing.
+_REAL_SLEEP = time.sleep
 
 class FakeClamd(socketserver.ThreadingTCPServer):
     """Speaks just enough clamd: zPING, zINSTREAM, zSCAN. Verdict rules:
@@ -252,6 +258,7 @@ class SiteHardeningTest(unittest.TestCase):
     def tearDown(self):
         ratelimit.LIMITER, nas._OPTIONS, nas.DATA_DIR = self._saved
         share_web.LIMITER = ratelimit.LIMITER
+        share_web.time.sleep = _REAL_SLEEP
         ss._index["mtime"] = None
         shutil.rmtree(self.tmp, ignore_errors=True)
 

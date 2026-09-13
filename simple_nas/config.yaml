@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Simple NAS with Samba shares and web GUI for drive management"
-version: "3.7.5"
+version: "3.8.0"
 url: "https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon"
 slug: "simple_nas"
 init: false
@@ -57,6 +57,7 @@ options:
   share_cookie_secure: true
   share_session_hours: 8
   share_log_max_mb: 5
+  share_sandbox: "auto"
   share_zip_max_gb: 5
   share_zip_max_files: 10000
   share_zip_compress: false
@@ -122,6 +123,7 @@ schema:
   share_cookie_secure: bool?
   share_session_hours: int(1,720)?
   share_log_max_mb: int(1,100)?
+  share_sandbox: list(auto|on|off)?
   share_zip_max_gb: int(1,512)?
   share_zip_max_files: int(100,1000000)?
   share_zip_compress: bool?

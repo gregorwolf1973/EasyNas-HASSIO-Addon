@@ -248,9 +248,17 @@ Enable `share_clamav_enabled` and make sure the ClamAV add-on exposes clamd on T
 
 Every view, login, failed login, download and lock-out is written to `/data/share_access.log` (JSON lines, rotated at `share_log_max_mb`). The Sharing tab shows the last entries with filters. The log records link ids and paths relative to the link, never tokens or absolute paths.
 
-### Known limitation
+### The public site runs sandboxed (`share_sandbox`, default `auto`)
 
-This add-on runs as root with `full_access` because of its drive-management features. A code-execution flaw in the public site would therefore be a compromise of the whole host. The share site is small, has no upload path yet, sets strict headers and rate limits, but the honest mitigation is the reverse proxy being the only way in and `share_bind: 127.0.0.1` wherever possible. Running the share site as a separate unprivileged process is on the roadmap.
+The add-on as a whole runs as root with `full_access` for its drive management, but the internet-facing share site does **not**. Since 3.8.0 it runs as its own process, dropped to the unprivileged user `nobody`, stripped of `SYS_ADMIN`/`SYS_RAWIO` and every capability except the file ones an upload needs, and locked into a mount namespace where `/config`, `/ssl`, `/addon_configs`, `/backup` and the secret files under `/data` (the admin password, the Samba password database, the backups) simply are not present. A code-execution flaw in the public code then reaches only the shared folders and its own handful of state files - not the Home Assistant host, not the admin password.
+
+- `share_sandbox: auto` (default) uses the sandbox and, if it cannot be set up on your system, falls back to running the site in the main process (the pre-3.8 behaviour) so the site is never left down.
+- `share_sandbox: on` requires the sandbox: if it cannot start, the public site stays off rather than running unconfined.
+- `share_sandbox: off` runs it in the main process, as before.
+
+The sandbox needs `unshare` and `setpriv` (both present in the image) and Protection Mode off (as the rest of the add-on already does). The admin UI keeps full function: it reads the worker's lock-outs and access log through small files and passes unlock requests back the same way.
+
+The reverse proxy being the only way in and, where the proxy runs on the same host, `share_bind: 127.0.0.1`, remain good extra measures.
 
 ## Reinstall-safe backup
 

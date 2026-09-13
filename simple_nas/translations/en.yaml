@@ -56,6 +56,9 @@ configuration:
   share_session_hours:
     name: Share site session length (hours)
     description: How long a login to a link stays valid.
+  share_sandbox:
+    name: Sandbox the sharing site
+    description: "auto (recommended): the public site runs as its own non-root process that cannot see /config, /ssl, other add-ons or backups. on: require it, or the site stays down. off: in the main process, as before."
   share_log_max_mb:
     name: Access log size (MB)
     description: The log rotates at this size; one older copy is kept.

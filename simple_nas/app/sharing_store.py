@@ -155,20 +155,20 @@ _index = {"mtime": None, "map": {}}
 
 
 def _token_index():
-    """sha256(token) -> link id, rebuilt when the links file changes.
+    """sha256(token) -> link id, built fresh from the links file each call.
+
+    This used to cache on the file's mtime, but no cheap file-stat key is
+    correct: a token rotated in place keeps the file's size, and on coarse
+    clocks its mtime too, so a revoked token kept resolving and a just-created
+    one 404'd for a second. The links file holds a handful of entries, so
+    rebuilding the digest map per request costs a few hashes and is always
+    right - including across the admin and the sandboxed worker processes,
+    which share only the file.
 
     The hash is constant-time in the secret; the dict lookup afterwards works
     on a digest that says nothing about the token.
     """
-    p = _path(LINKS)
-    try:
-        mtime = os.path.getmtime(p)
-    except OSError:
-        mtime = -1
-    if _index["mtime"] != mtime:
-        _index["map"] = {_digest(l["token"]): l["id"] for l in _load(p, []) if l.get("token")}
-        _index["mtime"] = mtime
-    return _index["map"]
+    return {_digest(l["token"]): l["id"] for l in _load(_path(LINKS), []) if l.get("token")}
 
 
 # ── counters ─────────────────────────────────────────────────────────────────

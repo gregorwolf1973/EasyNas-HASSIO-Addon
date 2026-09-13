@@ -84,6 +84,17 @@ def set_export(export_path, max_mb=5, slot="main"):
     return True
 
 
+def attach_read(path):
+    """Point tail()/clear() at a log file this process does NOT write.
+
+    In the sandboxed layout the worker process is the only writer; the admin
+    process only needs to read the file for the log view. Opening a
+    RotatingFileHandler here as well would give the one file two writers and
+    shred its rotation, so this sets the read path and nothing else."""
+    global _path
+    _path = path
+
+
 def export_path(slot="main"):
     """The file this slot writes, or the file another slot writes for it."""
     entry = _handlers.get(slot)
