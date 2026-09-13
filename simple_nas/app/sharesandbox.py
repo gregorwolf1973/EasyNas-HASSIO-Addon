@@ -34,16 +34,20 @@ UNLOCK_FILE = "share_unlock.json"
 OPTS_FILE = "share_worker_opts.json"
 LOG_FILE = "share_access.log"
 
-# Files under /data the worker is allowed to see inside its jail. Everything
-# else in /data (admin_auth.json, options.json, the samba password db, the
-# auto-backup) stays hidden, so leaking the log or a link never leaks the
-# admin password.
-JAIL_DATA_FILES = (
-    "share_links.json", "share_accounts.json", "share_auth.json", "shares.json",
-    "share_counters.json", SNAPSHOT_FILE, UNLOCK_FILE, OPTS_FILE, LOG_FILE, LOG_FILE + ".1",
-)
+# /data stays live inside the jail (so writes and admin edits are shared), but
+# these secret files/dirs in it are masked with an empty file / empty tmpfs, so
+# leaking the log or a link never leaks the admin password or the Samba db.
+JAIL_MASK_FILES = ("admin_auth.json", "options.json")
+JAIL_MASK_DIRS = ("samba",)
 # Top-level trees blanked with an empty tmpfs inside the jail.
 JAIL_HIDE_TREES = ("/config", "/ssl", "/addon_configs", "/backup")
+
+# Files the worker must be able to read or write in /data (used only to seed
+# them before launch, since a bind mount is no longer involved).
+JAIL_SEED_FILES = (
+    "share_links.json", "share_accounts.json", "share_auth.json", "shares.json",
+    "share_counters.json", SNAPSHOT_FILE, UNLOCK_FILE, OPTS_FILE, LOG_FILE,
+)
 
 
 def _p(data_dir, name):

@@ -69,15 +69,17 @@ class IpcTest(unittest.TestCase):
         self.assertNotIn("SECRET", open(os.path.join(self.tmp, sb.OPTS_FILE)).read())
         self.assertEqual(sb.read_options(self.tmp)["share_bind"], "0.0.0.0")
 
-    def test_jail_list_hides_the_secret_data_files(self):
-        # the files an RCE in the worker must NOT be able to reach
-        for secret in ("admin_auth.json", "options.json", "samba"):
-            self.assertNotIn(secret, sb.JAIL_DATA_FILES)
+    def test_jail_masks_the_secret_data_files(self):
+        # the files an RCE in the worker must NOT be able to read
+        self.assertIn("admin_auth.json", sb.JAIL_MASK_FILES)
+        self.assertIn("options.json", sb.JAIL_MASK_FILES)
+        self.assertIn("samba", sb.JAIL_MASK_DIRS)
         for hidden in ("/config", "/ssl", "/addon_configs", "/backup"):
             self.assertIn(hidden, sb.JAIL_HIDE_TREES)
-        # but the files it legitimately needs are present
-        for needed in ("share_links.json", "share_accounts.json", sb.LOG_FILE):
-            self.assertIn(needed, sb.JAIL_DATA_FILES)
+        # the writable state files the worker seeds are not among the masks
+        for needed in ("share_links.json", "share_accounts.json", sb.LOG_FILE, sb.SNAPSHOT_FILE):
+            self.assertIn(needed, sb.JAIL_SEED_FILES)
+            self.assertNotIn(needed, sb.JAIL_MASK_FILES)
 
 
 class WorkerSnapshotLoopTest(unittest.TestCase):
