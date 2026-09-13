@@ -204,7 +204,11 @@ proxy_send_timeout 3600s;
 
 Without `client_max_body_size` every upload fails at nginx's 1 MB default; without `proxy_buffering off` nginx spools a whole folder download to disk before the browser sees the first byte.
 
-**If Nginx Proxy Manager runs as an add-on on the same host, set `share_bind: 127.0.0.1`.** The share site is then reachable *only* through the proxy. Note that because this add-on uses `host_network`, the `ports:` entry in the add-on UI is informational - the port is open on the LAN as soon as the site listens, unless bound to 127.0.0.1.
+**Forward host:** use the LAN IP of your Home Assistant host (e.g. `192.168.1.10`), scheme **http**, port `share_port`. The add-on does not speak TLS itself; a proxy host set to `https` hangs and ends in a 502/504.
+
+**About `share_bind`:** keep `0.0.0.0` when Nginx Proxy Manager runs as a Home Assistant add-on. That add-on lives in its own container network and cannot reach the host's loopback, so a site bound to `127.0.0.1` is unreachable for it. Use `127.0.0.1` only for a reverse proxy running directly on the host (or an add-on with `host_network`). Because this add-on uses `host_network`, the `ports:` entry in the add-on UI is informational - the port is open on the LAN as soon as the site listens.
+
+**Do not reuse a port that another add-on maps** (the start log then says "Port ... ist bereits belegt"). Each add-on needs its own port.
 
 ### How links work
 

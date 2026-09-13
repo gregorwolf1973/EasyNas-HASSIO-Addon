@@ -40,7 +40,7 @@ configuration:
     description: Port, auf dem die oeffentliche Freigabe-Seite lauscht (Standard 8101). Diesen Port im Nginx Proxy Manager mit einer Domain und TLS veroeffentlichen.
   share_bind:
     name: Freigabe-Seite lauscht auf
-    description: 0.0.0.0 = im ganzen Netz erreichbar. 127.0.0.1 = nur ueber einen Reverse Proxy auf demselben Host erreichbar (empfohlen, wenn der Nginx Proxy Manager als Addon laeuft).
+    description: 0.0.0.0 = im Netz erreichbar (noetig, wenn der Nginx Proxy Manager als Addon laeuft - der erreicht das Loopback des Hosts nicht). 127.0.0.1 = nur fuer einen Reverse Proxy, der direkt auf dem Host laeuft.
   share_public_url:
     name: Oeffentliche Adresse
     description: Die Adresse, unter der die Freigabe-Seite von aussen erreichbar ist, z. B. https://files.example.com. Wird in die erzeugten Links eingesetzt.

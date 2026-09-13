@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.4.2
+- Start der Freigabe-Seite prueft, ob `share_port` frei ist, und meldet sonst klar im Log, dass ein anderes Addon den Port belegt, statt es stillschweigend zu verdraengen.
+- Dokumentation und Optionstext zu `share_bind` korrigiert: Laeuft der Nginx Proxy Manager als Addon, muss `0.0.0.0` bleiben, denn dieses Addon erreicht das Loopback des Hosts nicht. Im Proxy-Host die LAN-IP des Hosts, Schema http und den Freigabe-Port eintragen. Ein Hinweis dazu erscheint auch im Addon-Log.
+
 ## 3.4.1
 - **Ordner als ZIP herunterladen**, auf der Freigabe-Seite (Knopf ueber der Dateiliste, auch in Unterordnern) und im Dateimanager (neues Symbol an jedem Ordner). Das Archiv wird waehrend der Uebertragung gepackt, ohne Zwischendatei auf der Platte.
 - Vor dem ersten Byte wird der Ordner vermessen; ueber `share_zip_max_gb` (Vorgabe 5) oder `share_zip_max_files` (Vorgabe 10000) gibt es eine ordentliche Fehlerseite statt eines abgebrochenen Downloads.

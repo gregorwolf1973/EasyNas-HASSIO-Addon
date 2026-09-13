@@ -2254,6 +2254,21 @@ def start_share_site():
     share_web.assert_public_surface(share_app)
     host = str(_opt("share_bind", "0.0.0.0") or "0.0.0.0")
     port = int(_opt("share_port", 8101) or 8101)
+    import socket as _s
+    probe = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+    probe.setsockopt(_s.SOL_SOCKET, _s.SO_REUSEADDR, 1)
+    try:
+        probe.bind((host, port))
+    except OSError as e:
+        print(f"[SHARE] FEHLER: Port {port} ist bereits belegt ({e}). Laeuft ein anderes Addon auf "
+              f"diesem Port (z. B. Nextcloud)? share_port aendern oder das andere Addon stoppen.", flush=True)
+        return False
+    finally:
+        probe.close()
+    if host == "127.0.0.1":
+        print("[SHARE] Hinweis: share_bind=127.0.0.1 - nur ein Reverse Proxy, der selbst im Host-Netz "
+              "laeuft, erreicht die Seite. Der Nginx Proxy Manager als Addon kann das NICHT; "
+              "dann share_bind=0.0.0.0 und im Proxy die IP des Hosts eintragen.", flush=True)
     srv = create_server(share_app, host=host, port=port, threads=8, ident=None,
                         channel_timeout=300, max_request_body_size=64 * 1024, asyncore_use_poll=True)
     threading.Thread(target=srv.run, daemon=True, name="share-http").start()

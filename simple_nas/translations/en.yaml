@@ -40,7 +40,7 @@ configuration:
     description: Port the public sharing site listens on (default 8101). Publish this port through Nginx Proxy Manager with a domain and TLS.
   share_bind:
     name: Sharing site listens on
-    description: 0.0.0.0 = reachable across the network. 127.0.0.1 = only through a reverse proxy on the same host (recommended when Nginx Proxy Manager runs as an add-on).
+    description: 0.0.0.0 = reachable on the network (required when Nginx Proxy Manager runs as an add-on - it cannot reach the host loopback). 127.0.0.1 = only for a reverse proxy running directly on the host.
   share_public_url:
     name: Public address
     description: The address the sharing site is reachable at from outside, e.g. https://files.example.com. Used in the generated links.
