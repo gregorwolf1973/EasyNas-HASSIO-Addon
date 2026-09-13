@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.7.4
+- **Fix: abgewiesene Streams verloren das Urteil von clamd.** Ueberschreitet eine Datei `StreamMaxLength`, antwortet clamd sofort mit "INSTREAM size limit exceeded" und legt auf, waehrend das Addon noch sendet. Der darauf folgende Schreibfehler ueberschrieb die bereits eingetroffene Antwort mit einem allgemeinen Fehler - und mit `share_clamav_on_error: reject` wurde der Upload dann kommentarlos abgelehnt, statt ueber den Pfad-Scan doch noch geprueft zu werden. Der Client achtet jetzt nach jedem Block auf eine wartende Antwort, bricht dann ab und wertet sie aus. Nebeneffekt: grosse Dateien werden nicht mehr vollstaendig in einen Socket geschoben, der laengst nicht mehr gelesen wird.
+
 ## 3.7.3
 - **Fix: CrowdSec sah das Zugriffsprotokoll nie.** Der Standardpfad lag unter `/share`, das in das CrowdSec-Addon gar nicht eingebunden ist - CrowdSec meldete beim Start "No matching files for pattern" und keines der Szenarien konnte je ausloesen. Neuer Standard ist `/config/.simplenas/share_access.log`; die Konfigurationsordner von Home Assistant sehen beide Addons. Bestehende Installationen ziehen beim Start automatisch um, die Acquisition-Datei wird dabei mitgeschrieben. Danach das CrowdSec-Addon einmal neu starten.
 - **Sperren sind jetzt sichtbar.** Die Karte "Oeffentliche Freigabe-Seite" zeigt laufende Sperren mit Restzeit und die aktuellen Fehlversuche je Adresse im Verhaeltnis zur Schwelle (10 in 15 Minuten). Wer sich fuenfmal falsch anmeldet, sieht jetzt "ip 1.2.3.4: 5/10" statt gar nichts. Ein Klick auf eine Sperre hebt sie auf.

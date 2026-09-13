@@ -49,6 +49,15 @@ class FakeClamd(socketserver.ThreadingTCPServer):
                     total += n
                     if total > self.server.max_stream:
                         self.wfile.write(b"INSTREAM size limit exceeded. ERROR\0")
+                        self.wfile.flush()
+                        # Real clamd stops reading here; draining keeps the
+                        # reply out of a reset so this test stays decidable.
+                        self.connection.settimeout(0.5)
+                        try:
+                            while self.rfile.read(4096):
+                                pass
+                        except OSError:
+                            pass
                         return
                     data += chunk
                 self.wfile.write(b"stream: Eicar-Test-Signature FOUND\0" if clamav.EICAR in data else b"stream: OK\0")
@@ -103,6 +112,57 @@ class ClamavProtocolTest(unittest.TestCase):
             self.assertEqual(clamav.scan_file(good, "127.0.0.1", self.port, path_fallback=False)[0], "too_large")
         finally:
             self.srv.max_stream = 10 * 1024 * 1024
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_verdict_survives_a_hangup_mid_stream(self):
+        """clamd answers and closes the moment StreamMaxLength is exceeded,
+        while we are still sending. On a reset the reply can be lost with the
+        receive buffer - the upload must still end in a real verdict via the
+        path scan, not in a generic error that on_error=reject would turn into
+        a refused upload."""
+        class RudeClamd(socketserver.ThreadingTCPServer):
+            allow_reuse_address = True
+
+            class Handler(socketserver.StreamRequestHandler):
+                def handle(self):
+                    cmd = b""
+                    while not cmd.endswith(b"\0"):
+                        ch = self.rfile.read(1)
+                        if not ch:
+                            return
+                        cmd += ch
+                    cmd = cmd.rstrip(b"\0")
+                    if cmd == b"zINSTREAM":
+                        self.rfile.read(4)                      # one length header
+                        self.wfile.write(b"INSTREAM size limit exceeded. ERROR\0")
+                        self.wfile.flush()
+                        self.connection.close()                 # hang up mid-stream
+                    elif cmd.startswith(b"zSCAN "):
+                        path = cmd[6:].decode()
+                        verdict = ": Eicar-Test-Signature FOUND\0" if "bad" in path else ": OK\0"
+                        self.wfile.write((path + verdict).encode())
+
+            def __init__(self):
+                super().__init__(("127.0.0.1", 0), self.Handler)
+
+        srv = RudeClamd()
+        port = srv.server_address[1]
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        tmp = tempfile.mkdtemp()
+        try:
+            for name, expected in (("good.bin", "clean"), ("bad.bin", "infected")):
+                p = os.path.join(tmp, name)
+                with open(p, "wb") as f:
+                    f.write(b"x" * (clamav.CHUNK * 4))
+                self.assertEqual(clamav.scan_file(p, "127.0.0.1", port, timeout=5)[0], expected)
+            # Without the fallback the answer depends on whether the reply
+            # survived the reset - both outcomes are honest, and neither may
+            # be a verdict about the file itself.
+            p = os.path.join(tmp, "good.bin")
+            v = clamav.scan_file(p, "127.0.0.1", port, timeout=5, path_fallback=False)[0]
+            self.assertIn(v, ("error", "too_large"))
+        finally:
+            srv.shutdown()
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_hook_policy(self):

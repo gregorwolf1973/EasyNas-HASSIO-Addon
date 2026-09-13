@@ -8,6 +8,7 @@ directly.
 Verdicts: "clean", "infected", "too_large", "error".
 """
 
+import select
 import socket
 import struct
 
@@ -26,7 +27,9 @@ def _recv_all(s):
     while True:
         try:
             part = s.recv(4096)
-        except socket.timeout:
+        except OSError:
+            # Timeout, or the peer hung up right after answering. Whatever is
+            # already in `out` is the verdict; raising here would throw it away.
             break
         if not part:
             break
@@ -58,17 +61,46 @@ def _parse(reply):
 
 def scan_stream(fileobj, host, port, timeout=120):
     """INSTREAM: push the file through the socket. Subject to clamd's
-    StreamMaxLength (25 MB by default)."""
+    StreamMaxLength (25 MB by default).
+
+    clamd does not wait politely for the end of a stream it has already
+    rejected: on StreamMaxLength it writes "INSTREAM size limit exceeded.
+    ERROR" and closes. So after every chunk we check whether an answer is
+    waiting and stop as soon as there is one. That keeps the verdict (a clean
+    "too_large", which scan_file can retry as a path scan) instead of losing
+    it to the broken pipe that follows - with share_clamav_on_error=reject a
+    lost verdict silently refuses the upload. It also stops us from pushing
+    gigabytes down a socket nobody is reading any more.
+    """
     try:
         with _connect(host, port, timeout) as s:
             s.sendall(b"zINSTREAM\0")
-            while True:
-                chunk = fileobj.read(CHUNK)
-                if not chunk:
-                    break
-                s.sendall(struct.pack("!I", len(chunk)) + chunk)
-            s.sendall(b"\0\0\0\0")
-            return _parse(_recv_all(s))
+            send_error = None
+            try:
+                while True:
+                    chunk = fileobj.read(CHUNK)
+                    if not chunk:
+                        break
+                    s.sendall(struct.pack("!I", len(chunk)) + chunk)
+                    if select.select([s], [], [], 0)[0]:
+                        early = _recv_all(s)
+                        if early:
+                            return _parse(early)
+                        break
+                s.sendall(b"\0\0\0\0")
+            except OSError as e:
+                send_error = e
+            reply = _recv_all(s)
+            if reply:
+                return _parse(reply)
+            if send_error:
+                # clamd hung up in the middle of the stream and the reply was
+                # lost with the reset. The usual cause is StreamMaxLength, but
+                # a crashed daemon looks the same from here - so this is its
+                # own verdict, never silently a "too_large" that the policy
+                # would wave through. scan_file settles it with a path scan.
+                return "hangup", str(send_error)
+            return "error", "empty reply"
     except OSError as e:
         return "error", str(e)
 
@@ -91,11 +123,15 @@ def scan_file(path, host, port, timeout=120, path_fallback=True):
             verdict, detail = scan_stream(f, host, port, timeout)
     except OSError as e:
         return "error", str(e)
-    if verdict == "too_large" and path_fallback:
+    if verdict in ("too_large", "hangup") and path_fallback:
         v2, d2 = scan_path(path, host, port, max(timeout, 300))
         if v2 in ("clean", "infected"):
             return v2, d2
-        return "too_large", detail
+        # No second opinion: a clean size limit stays "too_large" (the
+        # large-file policy decides), an unexplained hangup stays an error.
+        return ("too_large", detail) if verdict == "too_large" else ("error", detail)
+    if verdict == "hangup":
+        return "error", detail
     return verdict, detail
 
 
