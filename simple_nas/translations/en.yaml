@@ -101,3 +101,21 @@ configuration:
   share_log_export_path:
     name: "Also export the access log to"
     description: "Second copy of the access log somewhere the CrowdSec add-on can read, e.g. /config/.simplenas/share_access.log. Empty = the default path the 'Set up CrowdSec' button uses. Note: /share is not mapped into the CrowdSec add-on, so a log kept there stays invisible to it. Then click 'Set up CrowdSec' in the Sharing tab."
+  collabora_enabled:
+    name: "Integrate Collabora Online"
+    description: "Open office files (docx, xlsx, odt, ...) on the share site in the browser and - on links with 'Allow editing' - edit them. Needs a running Collabora server."
+  collabora_url:
+    name: "Collabora: public address"
+    description: "Address the browser uses to reach Collabora, e.g. https://collabora.example.com."
+  collabora_internal_url:
+    name: "Collabora: internal address (optional)"
+    description: "Only for Simple NAS fetching the supported file types, e.g. https://homeassistant:9980, when the public address is not reachable from the server (Cloudflare challenge). Empty = public address."
+  collabora_wopi_url:
+    name: "Address Collabora uses to reach Simple NAS (optional)"
+    description: "Empty = the share site's public address. Only set it when Collabora cannot reach the public address, e.g. http://homeassistant:8097 - that host must then be allowed as a WOPI host in Collabora."
+  collabora_verify_tls:
+    name: "Collabora: verify TLS certificate"
+    description: "Leave on. Only switch off when the internal address presents a certificate for a different name."
+  collabora_verify_proof:
+    name: "Collabora: verify call signatures"
+    description: "Leave on: only the configured Collabora server may read and save files through the editor interface. Switch off for troubleshooting only."

@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.9.0
+- **Collabora Online eingebunden: Office-Dateien auf der Freigabe-Seite im Browser oeffnen und bearbeiten.** Mit `collabora_enabled` und `collabora_url` zeigt die Freigabe-Seite bei docx, xlsx, pptx, odt und allen weiteren Typen, die der Collabora-Server meldet, einen Knopf zum Oeffnen. Bearbeiten und Speichern gibt es nur bei Links mit dem neuen Schalter **Bearbeiten mit Collabora erlauben** (Standard aus, nicht bei reinen Ablage-Links), alle anderen oeffnen schreibgeschuetzt. Gespeichert wird direkt in die Datei im Ordner; Besitzer und Rechte fuer Samba bleiben erhalten.
+- Simple NAS ist dafuer WOPI-Host (`/wopi/files/...` auf dem Port der Freigabe-Seite): Zugangs-Tokens gelten nur fuer einen Link, eine Datei und ein Konto, laufen nach `share_session_hours` ab und werden bei jedem Aufruf erneut geprueft - ein deaktivierter Link, ein neuer Token, ein geaendertes Passwort oder ein gesperrtes Konto beenden auch eine offene Editor-Sitzung. Die Aufrufe muessen mit dem Proof-Key des eingestellten Collabora-Servers signiert sein (`collabora_verify_proof`, reines Python, kein zusaetzliches Paket). Sperren ueberleben einen Neustart, und eine Datei, die zwischendurch per Samba geaendert wurde, loest in Collabora eine Rueckfrage aus statt ueberschrieben zu werden.
+- Nur die Editor-Seite darf den Collabora-Server einbetten; alle anderen Seiten behalten die strikte Content-Security-Policy.
+- Neue Optionen fuer Sonderfaelle: `collabora_internal_url` (Dateitypen ueber eine interne Adresse abfragen, etwa wegen einer Cloudflare-Pruefung), `collabora_wopi_url` (Adresse, unter der Collabora Simple NAS erreicht), `collabora_verify_tls`. Im Reiter Teilen zeigt eine neue Zeile den Collabora-Status mit Test-Knopf.
+- Bei einem geaenderten Ordner oder einer geaenderten Einzeldatei eines Links enden jetzt ebenfalls alle Sitzungen dieses Links.
+
 ## 3.8.1
 - Fix zur Abschottung: In der Sandbox schrieb der Worker seine Zaehler und den Sperren-Schnappschuss nicht (das atomare Ersetzen scheiterte an den eingehaengten Einzeldateien), und Aenderungen der Verwaltung erreichten ihn nicht. Das Jail laesst `/data` jetzt echt und blendet nur die geheimen Dateien (admin_auth.json, options.json, samba/) einzeln aus. Sperren-Karte, Zaehler und Live-Aenderungen an Links funktionieren damit auch abgeschottet.
 

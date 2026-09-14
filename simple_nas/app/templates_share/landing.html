@@ -68,7 +68,10 @@
     <p class="big">📄</p>
     <p style="font-weight:500;overflow-wrap:anywhere">{{ single.name }}</p>
     {% if single.size is not none %}<p class="sub">{{ fmt_size(single.size) }}</p>{% endif %}
-    <p style="margin-top:16px"><a class="btn primary" href="{{ url_for('share_download', token=token, sub=single.rel) }}">⬇ {{ L.download }}</a></p>
+    <p style="margin-top:16px">
+      {% if single.office %}<a class="btn" href="{{ url_for('share_edit', token=token, sub=single.rel) }}">{% if single.office == 'edit' %}✎ {{ L.edit }}{% else %}👁 {{ L.open_office }}{% endif %}</a>{% endif %}
+      <a class="btn primary" href="{{ url_for('share_download', token=token, sub=single.rel) }}">⬇ {{ L.download }}</a>
+    </p>
   </div>
 
 {% else %}
@@ -101,10 +104,10 @@
       {% endfor %}
       {% for f in files %}
         <tr>
-          <td>{% if f.inline %}<a class="name" href="{{ url_for('share_view', token=token, sub=f.rel) }}" target="_blank" rel="noopener"><span class="ico">📄</span>{{ f.name }}</a>{% else %}<a class="name" href="{{ url_for('share_download', token=token, sub=f.rel) }}"><span class="ico">📄</span>{{ f.name }}</a>{% endif %}</td>
+          <td>{% if f.office %}<a class="name" href="{{ url_for('share_edit', token=token, sub=f.rel) }}"><span class="ico">📄</span>{{ f.name }}</a>{% elif f.inline %}<a class="name" href="{{ url_for('share_view', token=token, sub=f.rel) }}" target="_blank" rel="noopener"><span class="ico">📄</span>{{ f.name }}</a>{% else %}<a class="name" href="{{ url_for('share_download', token=token, sub=f.rel) }}"><span class="ico">📄</span>{{ f.name }}</a>{% endif %}</td>
           <td class="num hide">{{ fmt_size(f.size) }}</td>
           <td class="num hide">{{ f.mtime | int | string }}</td>
-          <td class="act"><a class="btn sm" href="{{ url_for('share_download', token=token, sub=f.rel) }}">⬇</a></td>
+          <td class="act">{% if f.office %}<a class="btn sm" href="{{ url_for('share_edit', token=token, sub=f.rel) }}" title="{% if f.office == 'edit' %}{{ L.edit }}{% else %}{{ L.open_office }}{% endif %}">{% if f.office == 'edit' %}✎{% else %}👁{% endif %}</a> {% endif %}<a class="btn sm" href="{{ url_for('share_download', token=token, sub=f.rel) }}">⬇</a></td>
         </tr>
       {% endfor %}
       </tbody>

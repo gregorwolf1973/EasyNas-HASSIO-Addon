@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """The public share site - a separate Flask app on its own port.
 
-Never imports app.py. Serves only /healthz and /s/<token>/... - nothing
-else exists on this port, and assert_public_surface() refuses to start if
-anything else ever gets registered here.
+Never imports app.py. Serves only /healthz, the portal, /s/<token>/... and,
+for Collabora, /wopi/files/... - nothing else exists on this port, and
+assert_public_surface() refuses to start if anything else ever gets
+registered here.
 """
 
 import hmac
@@ -26,6 +27,7 @@ from werkzeug.security import check_password_hash
 import accesslog
 import safepath
 import sharing_store
+import wopi
 import zipstream
 from ratelimit import (AUTHFAIL_IP, AUTHFAIL_LINK, AUTHFAIL_USER, LIMITER, REQ_PER_IP, UPLOAD_PER_IP,
                        SCAN_PER_IP, LOCK_BASE, LOCK_CAP)
@@ -37,9 +39,14 @@ PUBLIC_ENDPOINTS = frozenset({
     "healthz", "share_root", "share_landing", "share_auth", "share_logout",
     "share_browse", "share_download", "share_view", "share_lang", "share_zip",
     "share_root_login", "share_home", "share_home_logout", "share_upload", "share_upload_form",
+    "share_edit", "wopi_file", "wopi_contents",
 })
 
+# Authorised by the WOPI access token, not by the link token or the session.
+WOPI_ENDPOINTS = ("wopi_file", "wopi_contents")
+
 SCAN_HOOK = None   # set by the ClamAV integration: scan(path) -> (verdict, detail)
+DISCOVERY = wopi.Discovery()   # module-level so the cache outlives one app and tests can swap the fetcher
 
 
 # Only these are shown inline. Everything else is an attachment: a user-uploaded
@@ -74,6 +81,9 @@ LANG = {
         "err_too_big": "Datei zu groß", "err_quota": "Kontingent dieses Links erschöpft", "err_ext": "Dateityp nicht erlaubt",
         "err_length": "Größe der Datei fehlt", "err_upload": "Upload fehlgeschlagen", "err_scan": "Datei abgelehnt (Virenprüfung)",
         "err_scan_unavailable": "Virenprüfung nicht erreichbar, Upload abgelehnt", "err_rate": "Zu viele Uploads, bitte später erneut",
+        "edit": "Bearbeiten", "open_office": "Im Browser öffnen", "guest": "Gast",
+        "edit_unavailable": "Der Dokumenten-Editor ist gerade nicht erreichbar. Bitte später erneut versuchen.",
+        "editor_loading": "Dokument wird geöffnet …",
     },
     "en": {
         "title": "Share", "not_found": "Link not found or no longer valid.",
@@ -98,6 +108,9 @@ LANG = {
         "err_too_big": "File too large", "err_quota": "This link's quota is used up", "err_ext": "File type not allowed",
         "err_length": "File size missing", "err_upload": "Upload failed", "err_scan": "File rejected (virus scan)",
         "err_scan_unavailable": "Virus scanner unreachable, upload rejected", "err_rate": "Too many uploads, please try again later",
+        "edit": "Edit", "open_office": "Open in browser", "guest": "Guest",
+        "edit_unavailable": "The document editor is not reachable right now. Please try again later.",
+        "editor_loading": "Opening document …",
     },
 }
 
@@ -274,7 +287,7 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
             resp.headers["Retry-After"] = str(retry)
             return resp
         if request.endpoint in ("healthz", "share_root", "share_lang", "share_root_login",
-                                "share_home", "share_home_logout", None):
+                                "share_home", "share_home_logout", None) + WOPI_ENDPOINTS:
             return
         token = (request.view_args or {}).get("token", "")
         if not sharing_store.token_shape_ok(token):
@@ -293,7 +306,8 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
             return
         if not authed(link):
             return redirect(url_for("share_landing", token=token))
-        if link["mode"] == "upload" and request.endpoint in ("share_browse", "share_download", "share_view", "share_zip"):
+        if link["mode"] == "upload" and request.endpoint in ("share_browse", "share_download", "share_view",
+                                                             "share_zip", "share_edit"):
             abort(403)
 
     @app.after_request
@@ -301,10 +315,14 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["X-Frame-Options"] = "DENY"
         resp.headers["Referrer-Policy"] = "no-referrer"
+        # Only the editor page may frame (and post its form to) exactly the
+        # configured Collabora origin. Nothing may ever frame this site.
+        frame = getattr(g, "frame_origin", "")
         resp.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'self' data:; media-src 'self'; "
             "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
-            "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+            + (f"frame-src {frame}; form-action 'self' {frame}; " if frame else "form-action 'self'; ")
+            + "object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         if resp.mimetype == "text/html":
             resp.headers["Cache-Control"] = "private, no-store"
         if ext_scheme() == "https":
@@ -432,6 +450,7 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
         cur = safepath.resolve_within(root, sub)
         if not os.path.isdir(cur):
             abort(404)
+        office = collabora_opener(link)
         dirs, files = [], []
         with os.scandir(cur) as it:
             for e in it:
@@ -449,6 +468,7 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
                     item["size"] = st.st_size
                     mime, _ = mimetypes.guess_type(e.name)
                     item["inline"] = mime in INLINE_MIME
+                    item["office"] = office(e.name)
                     files.append(item)
         dirs.sort(key=lambda x: x["name"].lower())
         files.sort(key=lambda x: x["name"].lower())
@@ -479,7 +499,8 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
                 size = os.path.getsize(fp)
             except OSError:
                 size = None
-            single = {"name": link["file"], "size": size, "rel": link["file"]}
+            single = {"name": link["file"], "size": size, "rel": link["file"],
+                      "office": collabora_opener(link)(link["file"])}
             return render("landing.html", link=link, token=token, single=single,
                           dirs=[], files=[], crumbs=[], parent=None, upload_only=False)
         dirs, files, crumbs, parent = listing(link, "")
@@ -761,6 +782,291 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
                          as_attachment=not inline, conditional=True, download_name=os.path.basename(fp))
         resp.headers["Content-Disposition"] = content_disposition(os.path.basename(fp), inline=inline)
         resp.headers["X-Accel-Buffering"] = "no"
+        return resp
+
+    # ── Collabora Online (WOPI) ─────────────────────────────────────────────
+    # The browser gets an editor page that frames Collabora; Collabora then
+    # reads and writes the file through /wopi/files/<id>, authorised by a
+    # short-lived access token minted here and bound to one link and one file.
+    locks = wopi.LockTable(data_dir)
+
+    def collabora_on():
+        return bool(opt("collabora_enabled", False)) and bool(str(opt("collabora_url", "") or "").strip())
+
+    def discovery():
+        if not collabora_on():
+            return None
+        return DISCOVERY.get(opt("collabora_url", ""), opt("collabora_internal_url", ""),
+                             bool(opt("collabora_verify_tls", True)))
+
+    def link_can_edit(link):
+        return bool(link.get("allow_edit")) and link.get("mode") != "upload"
+
+    def collabora_opener(link):
+        """name -> 'edit' / 'view' / '' for the buttons in a listing. One
+        discovery lookup per listing, not per file."""
+        d = discovery() if link.get("mode") != "upload" else None
+        if not d:
+            return lambda name: ""
+        write = link_can_edit(link)
+
+        def office(name):
+            action, _ = wopi.pick_action(d, name, write)
+            if not action:
+                return ""
+            return "edit" if write and action == "edit" else "view"
+        return office
+
+    def wopi_base():
+        base = str(opt("collabora_wopi_url", "") or opt("share_public_url", "") or "").strip().rstrip("/")
+        return base or f"{ext_scheme()}://{request.host}"
+
+    @app.route("/s/<token>/e/<path:sub>")
+    def share_edit(token, sub):
+        link = g.link
+        if not collabora_on():
+            abort(404)
+        fp = _file_for(link, sub)
+        rel = os.path.relpath(fp, link["_real_root"]).replace(os.sep, "/")
+        want_write = link_can_edit(link)
+        action, urlsrc = wopi.pick_action(discovery(), os.path.basename(fp), want_write)
+        if not urlsrc:
+            if DISCOVERY.error:
+                print(f"[SHARE] Collabora-Discovery fehlgeschlagen: {DISCOVERY.error}", flush=True)
+            return render("error.html", 503, msg_key="edit_unavailable")
+        user = session.get("su", "") if link["access"] == "users" else ""
+        acc = sharing_store.get_account(user) if user else None
+        hours = int(opt("share_session_hours", 8) or 8)
+        can_write = want_write and action == "edit"
+        page_origin = wopi.origin_of(f"{ext_scheme()}://{request.host}")
+        access_token, exp = wopi.make_token(app.secret_key, link["id"], rel, user, can_write,
+                                            link.get("auth_epoch", 1), acc.get("auth_epoch", 1) if acc else 0,
+                                            hours * 3600, origin=page_origin)
+        src = wopi.editor_url(urlsrc, f"{wopi_base()}/wopi/files/{wopi.file_id(link['id'], rel)}", pick_lang())
+        sharing_store.record_download(link["id"], g.ip)
+        accesslog.log("edit_open", ip=g.ip, link_id=link["id"], link_name=link["name"], user=session.get("su"),
+                      path=rel, detail="edit" if can_write else "view", ua=request.headers.get("User-Agent"))
+        parent = "/".join(rel.split("/")[:-1])
+        if link.get("file") or not parent:
+            back = url_for("share_landing", token=token)
+        else:
+            back = url_for("share_browse", token=token, sub=parent)
+        g.frame_origin = wopi.origin_of(opt("collabora_url", ""))
+        return render("editor.html", link=link, name=os.path.basename(fp), action_url=src,
+                      access_token=access_token, ttl_ms=exp * 1000, back=back, collabora_origin=g.frame_origin)
+
+    def wopi_fail(status, why, claims=None, **extra_headers):
+        if why:
+            accesslog.log("wopi_denied", ip=g.ip, link_id=(claims or {}).get("l"), user=(claims or {}).get("u"),
+                          detail=why)
+        resp = make_response("", status)
+        for k, v in extra_headers.items():
+            resp.headers[k.replace("_", "-")] = v
+        return resp
+
+    def proof_ok(access_token):
+        if not bool(opt("collabora_verify_proof", True)):
+            return True
+        d = discovery()
+        if not d:
+            return False                   # fail closed: cannot tell Collabora from anyone else
+        if not d.get("proof"):
+            return True                    # this Collabora publishes no proof key
+        qs = request.query_string.decode("latin-1")
+        tail = request.path + ("?" + qs if qs else "")
+        urls = [wopi_base() + tail, f"{ext_scheme()}://{request.host}{tail}", request.url_root.rstrip("/") + tail]
+        return wopi.verify_proof(d["proof"], access_token, urls, request.headers.get("X-WOPI-TimeStamp", ""),
+                                 request.headers.get("X-WOPI-Proof", ""), request.headers.get("X-WOPI-ProofOld", ""))
+
+    def wopi_context(fid):
+        """(ctx, None) or (None, error response). Re-checks everything the
+        editor page checked, because the token outlives the page: a disabled
+        link, a rotated token, a changed password or a disabled account all
+        end a running editor session at its next call."""
+        if not collabora_on():
+            return None, make_response("", 404)
+        access_token = request.args.get("access_token", "")
+        claims = wopi.read_token(app.secret_key, access_token)
+        if not claims or not hmac.compare_digest(wopi.file_id(claims["l"], claims["p"]), fid):
+            return None, wopi_fail(401, "token")
+        if not proof_ok(access_token):
+            return None, wopi_fail(401, "proof", claims)
+        link = sharing_store.get_link(claims["l"])
+        # Deliberately not link_is_live(): opening the editor counted as a
+        # download, and a one-download link must still save what it opened.
+        now = time.time()
+        if (not link or not link.get("enabled") or (link.get("expires") and now > link["expires"])
+                or link.get("mode") == "upload" or int(link.get("auth_epoch", 1)) != claims["le"]):
+            return None, wopi_fail(401, "link", claims)
+        try:
+            root = sharing_store.validate_root(link["root"], link.get("share", ""), link.get("file", ""),
+                                               load_shares(), share_roots())
+        except sharing_store.ShareError:
+            return None, wopi_fail(404, "root", claims)
+        user = claims.get("u") or ""
+        display = ""
+        if user:
+            acc = sharing_store.get_account(user)
+            allowed = link.get("users") or []
+            if (link.get("access") != "users" or not acc or not acc.get("enabled", True)
+                    or int(acc.get("auth_epoch", 1)) != claims["ue"]
+                    or (allowed and not any(u.lower() == user.lower() for u in allowed))):
+                return None, wopi_fail(401, "account", claims)
+            display = acc.get("display_name") or acc["username"]
+        elif link.get("access") == "users":
+            return None, wopi_fail(401, "account", claims)
+        if link.get("file") and claims["p"] != link["file"]:
+            return None, wopi_fail(404, "path", claims)
+        try:
+            path = safepath.resolve_within(root, claims["p"])
+        except safepath.PathError:
+            return None, wopi_fail(404, "path", claims)
+        base = os.path.basename(path)
+        if not os.path.isfile(path) or base.startswith(".") or base.endswith(".part"):
+            return None, wopi_fail(404, "")
+        return {"link": link, "path": path, "rel": claims["p"], "user": user, "claims": claims,
+                "display": display or LANG[pick_lang()]["guest"],
+                "can_write": bool(claims.get("w")) and link_can_edit(link)}, None
+
+    def check_file_info(ctx):
+        st = os.stat(ctx["path"])
+        stamp = wopi.iso_mtime(st.st_mtime)
+        link = ctx["link"]
+        info = {
+            "BaseFileName": os.path.basename(ctx["path"]),
+            "Size": st.st_size,
+            "Version": stamp,
+            "LastModifiedTime": stamp,
+            "OwnerId": "simplenas",
+            "UserId": ctx["user"] or f"guest-{link['id']}",
+            "UserFriendlyName": ctx["display"],
+            "IsAnonymousUser": not ctx["user"],
+            "UserCanWrite": ctx["can_write"],
+            "ReadOnly": not ctx["can_write"],
+            "SupportsLocks": True,
+            "SupportsGetLock": True,
+            "SupportsUpdate": True,
+            "SupportsRename": False,
+            "UserCanRename": False,
+            "UserCanNotWriteRelative": True,       # no "save as" into the folder
+            "EnableInsertRemoteImage": False,
+            "EnableShare": False,
+            "HideUserList": "false",
+        }
+        origin = ctx["claims"].get("o") or ""
+        if origin:
+            info["PostMessageOrigin"] = origin
+        return jsonify(info)
+
+    def lock_response(ok, current, status_ok=200):
+        resp = make_response("", status_ok if ok else 409)
+        resp.headers["X-WOPI-Lock"] = current or ""
+        if not ok:
+            resp.headers["X-WOPI-LockFailureReason"] = "locked by another session" if current else "not locked"
+        return resp
+
+    @app.route("/wopi/files/<fid>", methods=["GET", "POST"])
+    def wopi_file(fid):
+        ctx, err = wopi_context(fid)
+        if err is not None:
+            return err
+        if request.method == "GET":
+            return check_file_info(ctx)
+        override = request.headers.get("X-WOPI-Override", "").upper()
+        lock_id = request.headers.get("X-WOPI-Lock", "")
+        path = ctx["path"]
+        if override == "GET_LOCK":
+            return lock_response(True, locks.get(path))
+        if override in ("LOCK", "REFRESH_LOCK", "UNLOCK"):
+            if not ctx["can_write"]:
+                return wopi_fail(401, "readonly", ctx["claims"])
+            if override == "LOCK":
+                old = request.headers.get("X-WOPI-OldLock")
+                return lock_response(*locks.lock(path, lock_id, old_lock=old if old else None))
+            if override == "REFRESH_LOCK":
+                return lock_response(*locks.refresh(path, lock_id))
+            return lock_response(*locks.unlock(path, lock_id))
+        return make_response("", 501)          # PUT_RELATIVE, RENAME_FILE, ... are not offered
+
+    @app.route("/wopi/files/<fid>/contents", methods=["GET", "POST"])
+    def wopi_contents(fid):
+        ctx, err = wopi_context(fid)
+        if err is not None:
+            return err
+        path, link = ctx["path"], ctx["link"]
+        if request.method == "GET":
+            resp = send_file(path, mimetype="application/octet-stream", as_attachment=False, conditional=False)
+            resp.headers["X-WOPI-ItemVersion"] = wopi.iso_mtime(os.stat(path).st_mtime)
+            resp.headers["Cache-Control"] = "private, no-store"
+            return resp
+
+        if not ctx["can_write"]:
+            return wopi_fail(401, "readonly", ctx["claims"])
+        lock_id = request.headers.get("X-WOPI-Lock", "")
+        current = locks.get(path)
+        if current and current != lock_id:
+            return lock_response(False, current)
+        if not current and lock_id:
+            # The lock lapsed (e.g. the host was offline past its expiry) but
+            # this very session holds a write token: take it again rather
+            # than throw away the user's edits.
+            ok, current = locks.lock(path, lock_id)
+            if not ok:
+                return lock_response(False, current)
+        st = os.stat(path)
+        stamp = wopi.iso_mtime(st.st_mtime)
+        sent = request.headers.get("X-COOL-WOPI-Timestamp") or request.headers.get("X-LOOL-WOPI-Timestamp")
+        if sent and sent != stamp:
+            # Changed behind Collabora's back (Samba, another link): let the
+            # user choose instead of silently overwriting.
+            resp = jsonify({"COOLStatusCode": 1010, "LOOLStatusCode": 1010})
+            resp.status_code = 409
+            return resp
+
+        cap = int(opt("share_max_upload_mb", 1024) or 1024) * 1024 * 1024
+        length = request.headers.get("Content-Length", "")
+        if length.isdigit() and int(length) > cap:
+            return make_response("", 413)
+        folder = os.path.dirname(path)
+        fd, tmp = tempfile.mkstemp(prefix=".wopi-", suffix=".part", dir=folder)
+        written = 0
+        try:
+            with os.fdopen(fd, "wb") as out:
+                while True:
+                    chunk = request.stream.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > cap:
+                        return make_response("", 413)
+                    out.write(chunk)
+                out.flush()
+                os.fsync(out.fileno())
+            if SCAN_HOOK is not None:
+                verdict, detail = SCAN_HOOK(tmp)
+                if verdict in ("infected", "error"):
+                    accesslog.log("upload_reject", ip=g.ip, link_id=link["id"], link_name=link["name"],
+                                  user=ctx["user"] or None, path=ctx["rel"], detail=f"wopi {verdict}: {detail}")
+                    return make_response("", 500)
+            try:                               # keep the Samba owner and mode of the original
+                os.chown(tmp, st.st_uid, st.st_gid)
+                os.chmod(tmp, st.st_mode & 0o7777)
+            except (OSError, AttributeError):
+                pass
+            os.replace(tmp, path)
+            tmp = None
+        finally:
+            if tmp and os.path.exists(tmp):
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+        new_stamp = wopi.iso_mtime(os.stat(path).st_mtime)
+        accesslog.log("edit_save", ip=g.ip, link_id=link["id"], link_name=link["name"], user=ctx["user"] or None,
+                      path=ctx["rel"], bytes=written,
+                      detail="autosave" if request.headers.get("X-COOL-WOPI-IsAutosave") == "true" else "")
+        resp = jsonify({"LastModifiedTime": new_stamp})
+        resp.headers["X-WOPI-ItemVersion"] = new_stamp
         return resp
 
     return app

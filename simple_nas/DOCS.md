@@ -244,6 +244,35 @@ Bans then reach whatever bouncer you run. Two things to know:
 
 Enable `share_clamav_enabled` and make sure the ClamAV add-on exposes clamd on TCP 3310 (`TCPSocket`/`TCPAddr` in its clamd configuration). The Sharing tab's **Test** button sends `PING` and then the EICAR test string through the scanner and reports both. With `share_clamav_on_error: reject` (default) uploads are refused while the scanner is down - silently accepting would defeat the point of enabling it.
 
+### Editing office files with Collabora Online
+
+Since 3.9.0 the share site can open office documents (docx, xlsx, pptx, odt, ods, odp and whatever else your Collabora server announces) in the browser through [Collabora Online](https://www.collaboraonline.com/), e.g. the Collabora add-on. Simple NAS acts as the WOPI host - the same role Nextcloud plays for Collabora.
+
+**Setup**
+
+1. Collabora must be reachable in the browser under its own domain, e.g. `https://collabora.example.com` (Nginx Proxy Manager: scheme `https`, port 9980, *Websockets Support* on).
+2. Allow the share site's domain as a WOPI host in Collabora. With the Collabora add-on that is `extra_params`, e.g.
+   `--o:storage.wopi.alias_groups[@mode]=groups --o:storage.wopi.alias_groups.group[1].host[0]=files\.example\.com --o:storage.wopi.alias_groups.group[1].host[0][@allow]=true`
+3. Simple NAS options: `collabora_enabled: true`, `collabora_url: https://collabora.example.com`. `share_public_url` must be set - Collabora calls the share site under that address.
+4. Sharing tab → **Collabora: Test** shows how many file types were found and whether a proof key is present.
+5. On every link that should allow saving, switch on **Allow editing with Collabora**. Links without it open documents read-only. Drop-box links never offer documents.
+
+The Nginx Proxy Manager settings from above (`client_max_body_size 0;` in particular) matter here too: saving a document is an upload to the share site.
+
+**How it is secured**
+
+- The editor page hands Collabora a short-lived access token bound to one link, one file and - for account links - one account. Collabora uses it for every read and save; every call re-checks the link (enabled, not expired, token not rotated, password unchanged), the account (enabled, password unchanged) and whether editing is still allowed. Revoking any of them ends a running editor session at its next call.
+- Every WOPI call must carry a valid signature from the proof key in your Collabora server's discovery, so a leaked access token alone cannot be used from anywhere else (`collabora_verify_proof`, leave on).
+- Saves go through a temporary file in the same folder and replace the document atomically, keeping owner and mode for Samba. If the file changed on disk since Collabora loaded it (a Samba user saved it), Collabora asks the user instead of overwriting it. Locks are kept in `/data/wopi_locks.json`, so a restart does not orphan an open editor.
+- "Save as" into the folder is disabled; downloading a copy in another format from Collabora still works.
+- Only the editor page may frame the configured Collabora origin; every other page keeps `frame-src` closed. With virus scanning on, every save is scanned like an upload.
+
+**Special cases**
+
+- *The server cannot reach Collabora's public address* (e.g. a Cloudflare challenge): set `collabora_internal_url`, e.g. `https://homeassistant:9980`. Only the list of file types is fetched there; browser URLs are rewritten to `collabora_url`. If that certificate is issued for a different name, also set `collabora_verify_tls: false`.
+- *Collabora cannot reach the share site's public address*: set `collabora_wopi_url`, e.g. `http://homeassistant:8101`, and allow that host (and add `--o:net.frame_ancestors=files.example.com`) in Collabora.
+- The access log records `edit_open`, `edit_save` and `wopi_denied` events.
+
 ### Access log
 
 Every view, login, failed login, download and lock-out is written to `/data/share_access.log` (JSON lines, rotated at `share_log_max_mb`). The Sharing tab shows the last entries with filters. The log records link ids and paths relative to the link, never tokens or absolute paths.

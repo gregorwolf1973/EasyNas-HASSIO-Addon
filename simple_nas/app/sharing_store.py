@@ -327,6 +327,9 @@ def _normalise_link(body, existing=None, shares=(), allowed_roots=None):
     out["upload_subdir"] = sub
     out["allow_subdirs"] = bool(body.get("allow_subdirs", e.get("allow_subdirs", True)))
     out["allow_zip"] = bool(body.get("allow_zip", e.get("allow_zip", True)))
+    # Editing overwrites files in place - a stronger right than a drop box,
+    # which never replaces anything. Off unless the admin switches it on.
+    out["allow_edit"] = bool(body.get("allow_edit", e.get("allow_edit", False))) and mode != "upload"
     out["enabled"] = bool(body.get("enabled", e.get("enabled", True)))
     out["notes"] = str(body.get("notes", e.get("notes", "")) or "")[:500]
     return out
@@ -384,6 +387,7 @@ def create_link(body, created_by="admin", shares=(), allowed_roots=None):
 def _auth_relevant_changed(old, new):
     return (old.get("password_hash") != new.get("password_hash")
             or old.get("access") != new.get("access")
+            or old.get("root") != new.get("root") or old.get("file") != new.get("file")
             or sorted(old.get("users", [])) != sorted(new.get("users", [])))
 
 

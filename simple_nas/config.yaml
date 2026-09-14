@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Simple NAS with Samba shares and web GUI for drive management"
-version: "3.8.1"
+version: "3.9.0"
 url: "https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon"
 slug: "simple_nas"
 init: false
@@ -99,6 +99,12 @@ options:
   share_clamav_on_error: "reject"
   share_clamav_large_file: "accept"
   share_log_export_path: ""
+  collabora_enabled: false
+  collabora_url: ""
+  collabora_internal_url: ""
+  collabora_wopi_url: ""
+  collabora_verify_tls: true
+  collabora_verify_proof: true
 schema:
   workgroup: str
   nas_name: str
@@ -139,6 +145,12 @@ schema:
   share_clamav_on_error: list(reject|accept)?
   share_clamav_large_file: list(reject|accept)?
   share_log_export_path: str?
+  collabora_enabled: bool?
+  collabora_url: str?
+  collabora_internal_url: str?
+  collabora_wopi_url: str?
+  collabora_verify_tls: bool?
+  collabora_verify_proof: bool?
 map:
   - share:rw
   - media:rw

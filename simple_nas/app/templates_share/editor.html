@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{{ name }} · Simple NAS</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f5f6fa; --surface:#fff; --border:#e1e5eb; --text:#1c1c1c; --dim:#6e7681; --accent:#03a9f4; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111318; --surface:#1c1f27; --border:#333842; --text:#c8cdd5; --dim:#6b7280; --accent:#4fc3f7; } }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  body { display:flex; flex-direction:column; }
+  .bar { display:flex; align-items:center; gap:10px; padding:6px 12px; background:var(--surface); border-bottom:1px solid var(--border); min-height:36px; }
+  .bar a { color:var(--accent); text-decoration:none; white-space:nowrap; }
+  .bar .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
+  .bar .sub { color:var(--dim); font-size:.8rem; white-space:nowrap; }
+  iframe { flex:1; width:100%; border:0; display:block; }
+  .loading { position:absolute; top:60px; left:0; right:0; text-align:center; color:var(--dim); }
+</style>
+</head>
+<body>
+<div class="bar">
+  <a href="{{ back }}">← {{ L.up }}</a>
+  <span class="name">{{ name }}</span>
+  <span class="sub">{{ link.name }}</span>
+</div>
+<div class="loading" id="loading">{{ L.editor_loading }}</div>
+<form id="office_form" name="office_form" target="office_frame" action="{{ action_url }}" method="post">
+  <input name="access_token" value="{{ access_token }}" type="hidden">
+  <input name="access_token_ttl" value="{{ ttl_ms }}" type="hidden">
+</form>
+<iframe id="office_frame" name="office_frame" title="{{ name }}"
+        allow="clipboard-read *; clipboard-write *; fullscreen"
+        allowfullscreen></iframe>
+<script>
+(function(){
+  var origin = {{ collabora_origin|tojson }}, back = {{ back|tojson }};
+  var frame = document.getElementById('office_frame');
+  frame.addEventListener('load', function(){ var l = document.getElementById('loading'); if (l) l.remove(); });
+  window.addEventListener('message', function(e){
+    if (e.origin !== origin) return;
+    var msg; try { msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (x) { return; }
+    if (!msg) return;
+    if (msg.MessageId === 'App_LoadingStatus' && msg.Values && msg.Values.Status === 'Frame_Ready') {
+      frame.contentWindow.postMessage(JSON.stringify({MessageId: 'Host_PostmessageReady', SendTime: Date.now()}), origin);
+    }
+    if (msg.MessageId === 'UI_Close' || msg.MessageId === 'close') location.href = back;
+  });
+  document.getElementById('office_form').submit();
+})();
+</script>
+</body>
+</html>

@@ -20,7 +20,7 @@ _handlers = {}          # slot -> (path, handler); "main" is the configured one,
 _lock = threading.Lock()
 
 EVENTS = ("view", "auth_ok", "auth_fail", "download", "zip", "upload",
-          "upload_reject", "rate_limited", "link_404")
+          "upload_reject", "rate_limited", "link_404", "edit_open", "edit_save", "wopi_denied")
 
 
 def init(path, max_mb=5, export_path=None):

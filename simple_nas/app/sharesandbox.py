@@ -72,6 +72,8 @@ SANDBOX_OPT_KEYS = (
     "share_max_upload_mb", "share_upload_blocked_ext", "share_upload_allowed_ext",
     "share_clamav_enabled", "share_clamav_host", "share_clamav_port",
     "share_clamav_timeout", "share_clamav_on_error", "share_clamav_large_file",
+    "collabora_enabled", "collabora_url", "collabora_internal_url", "collabora_wopi_url",
+    "collabora_verify_tls", "collabora_verify_proof",
 )
 
 

@@ -19,6 +19,7 @@ A lightweight NAS add-on for Home Assistant OS. Turns your Raspberry Pi (or othe
 - **Dark/Light theme** – switchable in the header
 - **Protection** against accidental unmounting of system partitions
 - **File manager** – browse, upload, download, copy, move, rename and delete files
+- **Web sharing with Collabora Online** – share links and accounts on a separate, sandboxed site; office files open and (where allowed) save in the browser via Collabora
 - **Backup jobs** – configure source/destination, run manually, auto-clean old backups
 - **Reinstall-safe backup** – settings auto-backed up to `/config/.simplenas/auto`, restored on fresh install
 - **Persistent configuration** – shares, users, groups, mounts and passwords survive restarts

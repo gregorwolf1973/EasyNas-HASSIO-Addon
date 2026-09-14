@@ -22,6 +22,7 @@ import zipstream
 import clamav
 import sharesandbox
 import share_worker
+import wopi
 from ratelimit import LIMITER, AUTHFAIL_IP, AUTHFAIL_LINK
 
 app = Flask(__name__)
@@ -1662,6 +1663,9 @@ def api_sharing_status():
         "authfail_window_min": AUTHFAIL_IP[1] // 60,
         "locks": snap["locks"],
         "authfail": snap["counters"],
+        "collabora_enabled": bool(_opt("collabora_enabled", False)),
+        "collabora_url": (_opt("collabora_url", "") or "").strip(),
+        "links_editable": sum(1 for l in links if l.get("allow_edit")),
     })
 
 
@@ -1867,6 +1871,32 @@ def api_sharing_clamav_test():
     ok, msg = clamav.self_test(host, port)
     print(f"[SHARE] ClamAV-Test {host}:{port}: {'OK' if ok else 'FEHLER'} - {msg}", flush=True)
     return jsonify({"ok": ok, "message": msg, "enabled": bool(_opt("share_clamav_enabled", False))})
+
+
+_COLLABORA_DISCOVERY = wopi.Discovery()
+
+
+@app.route("/api/sharing/collabora/test", methods=["POST"])
+def api_sharing_collabora_test():
+    """Fetch discovery the way the share site does: reachable, how many file
+    types, proof key present. The worker keeps its own cache."""
+    url = (_opt("collabora_url", "") or "").strip()
+    if not url:
+        return jsonify({"ok": False, "message": "collabora_url ist nicht gesetzt",
+                        "enabled": bool(_opt("collabora_enabled", False))})
+    d = _COLLABORA_DISCOVERY.get(url, _opt("collabora_internal_url", ""),
+                                 bool(_opt("collabora_verify_tls", True)), force=True)
+    if not d:
+        msg = f"Discovery nicht erreichbar: {_COLLABORA_DISCOVERY.error}"
+        ok = False
+    else:
+        exts = sorted(d["actions"])
+        editable = sum(1 for a in d["actions"].values() if "edit" in a)
+        msg = (f"{len(exts)} Dateitypen, {editable} bearbeitbar"
+               + ("" if d.get("proof") else " - WARNUNG: kein Proof-Key, Signaturpruefung nicht moeglich"))
+        ok = True
+    print(f"[SHARE] Collabora-Test {url}: {'OK' if ok else 'FEHLER'} - {msg}", flush=True)
+    return jsonify({"ok": ok, "message": msg, "enabled": bool(_opt("collabora_enabled", False))})
 
 
 @app.route("/api/sharing/links", methods=["GET"])
