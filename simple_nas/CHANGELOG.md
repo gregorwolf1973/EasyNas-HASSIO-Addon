@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.9.2
+- **Dunkelmodus-Schalter auf der Freigabe-Seite.** Oben rechts wechselt ein Knopf zwischen hell und dunkel; die Wahl merkt sich der Browser, ohne Wahl folgt die Seite weiter der Geraete-Einstellung. Gilt auch fuer die Collabora-Editor-Seite.
+- **Zurueck zu "Meine Freigaben".** Wer mit einem Freigabe-Konto angemeldet ist, hat auf jeder Link-, Ordner- und Editor-Seite ganz oben einen Link zurueck zur Auswahlseite.
+
 ## 3.9.1
 - **Fix: Der Download-Knopf im Dateimanager tat nichts (seit 3.0.9).** Der Regex `/\/+$/` stand in einem JavaScript-String fuer das `onclick`-Attribut; dort verliert er die Backslashes, das Attribut enthielt `//+$/` - ein Kommentar - und der Handler brach mit einem SyntaxError ab, ohne eine Anfrage zu senden. Der Knopf ruft jetzt eine benannte Funktion auf.
 - **Loeschen auf der Freigabe-Seite.** Neuer Link-Schalter **Loeschen erlauben** (Standard aus): Besucher sehen dann bei Dateien und Ordnern einen Loeschknopf und muessen vorher bestaetigen. Nicht bei Ablage- und Einzeldatei-Links, nie die Link-Wurzel selbst, keine versteckten Dateien oder Symlinks, nur mit CSRF-Token. Eine gerade in Collabora geoeffnete Datei (oder ein Ordner mit einer solchen) wird nicht geloescht. Jeder Loeschvorgang steht im Zugriffsprotokoll.

@@ -419,6 +419,18 @@ class PortalTest(Base):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(self.c.get("/home").status_code, 302)
 
+    def test_back_to_my_shares_and_theme_switch(self):
+        home = 'href="/home"'
+        page = self.c.get(f"/s/{self.public['token']}/").get_data(as_text=True)
+        self.assertNotIn(home, page, "ohne Konto gibt es keine Auswahlseite")
+        self.assertIn('id="theme-btn"', page)
+        self.assertIn("nas-share-theme", page)
+        tok = self.csrf_root()
+        self.c.post("/login", data={"username": "gregor", "password": "geheim123", "csrf": tok})
+        self.assertIn(home, self.c.get(f"/s/{self.mine['token']}/").get_data(as_text=True))
+        self.assertIn(home, self.c.get(f"/s/{self.mine['token']}/b/2026").get_data(as_text=True))
+        self.assertNotIn(home, self.c.get("/home").get_data(as_text=True), "nicht auf der Auswahlseite selbst")
+
     def test_disabled_account_is_thrown_out(self):
         tok = self.csrf_root()
         self.c.post("/login", data={"username": "gregor", "password": "geheim123", "csrf": tok})

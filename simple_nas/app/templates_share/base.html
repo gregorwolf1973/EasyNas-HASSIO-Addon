@@ -5,13 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>{% block title %}{{ L.title }}{% endblock %} · Simple NAS</title>
+<script>
+  // Before the first paint, so a chosen theme never flashes the other one.
+  try { var th = localStorage.getItem('nas-share-theme'); if (th === 'dark' || th === 'light') document.documentElement.setAttribute('data-theme', th); } catch (e) {}
+</script>
 <style>
-  :root { color-scheme: light dark;
+  :root { color-scheme: light;
     --bg:#f5f6fa; --surface:#fff; --surface2:#f0f2f5; --border:#e1e5eb; --text:#1c1c1c; --dim:#6e7681;
     --accent:#03a9f4; --accent-text:#fff; --danger:#db4437; --warn-bg:#fff8e1; --warn-bd:#ffe082; --warn-tx:#7a5b00; --radius:12px; }
-  @media (prefers-color-scheme: dark) { :root {
+  /* dark: follows the device unless the visitor picked a theme with the switch */
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark;
     --bg:#111318; --surface:#1c1f27; --surface2:#252830; --border:#333842; --text:#c8cdd5; --dim:#6b7280;
     --accent:#4fc3f7; --accent-text:#0a0a0a; --danger:#f44336; --warn-bg:rgba(255,183,77,.1); --warn-bd:rgba(255,183,77,.3); --warn-tx:#ffb74d; } }
+  :root[data-theme="dark"] { color-scheme: dark;
+    --bg:#111318; --surface:#1c1f27; --surface2:#252830; --border:#333842; --text:#c8cdd5; --dim:#6b7280;
+    --accent:#4fc3f7; --accent-text:#0a0a0a; --danger:#f44336; --warn-bg:rgba(255,183,77,.1); --warn-bd:rgba(255,183,77,.3); --warn-tx:#ffb74d; }
+  .topbar { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; min-height:32px; }
+  .topbar .back { color:var(--accent); text-decoration:none; font-size:.88rem; }
+  .theme-btn { width:34px; height:32px; justify-content:center; padding:0; font-size:1rem; margin-left:auto; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
   main { max-width:900px; margin:0 auto; padding:24px 16px 48px; }
@@ -49,6 +60,26 @@
 </head>
 <body>
 <main>
+<div class="topbar">
+  {% if session.get('su') and request.endpoint not in ('share_home', 'share_root') %}
+  <a class="back" href="{{ url_for('share_home') }}">← {{ L.my_shares }}</a>
+  {% endif %}
+  <button class="btn sm theme-btn" type="button" id="theme-btn" title="{{ L.theme_toggle }}" aria-label="{{ L.theme_toggle }}">🌙</button>
+</div>
+<script>
+  (function(){
+    var root = document.documentElement, btn = document.getElementById('theme-btn');
+    function isDark(){ var t = root.getAttribute('data-theme'); return t ? t === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    function paint(){ btn.textContent = isDark() ? '☀️' : '🌙'; }
+    btn.addEventListener('click', function(){
+      var next = isDark() ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('nas-share-theme', next); } catch (e) {}
+      paint();
+    });
+    paint();
+  })();
+</script>
 {% block body %}{% endblock %}
 <div class="foot">
   <span>{{ L.shared_by }}</span>
