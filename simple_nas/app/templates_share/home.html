@@ -14,7 +14,7 @@
     <tbody>
     {% for l in links %}
       <tr>
-        <td><a class="name" href="{{ url_for('share_landing', token=l.token) }}"><span class="ico">{% if l.file %}📄{% else %}📁{% endif %}</span>{{ l.name }}</a></td>
+        <td><a class="name" href="{{ url_for('share_landing', token=l.token) }}"><span class="ico">{% if l.file %}{{ file_icon(l.file) }}{% else %}{{ file_icon(l.name, true) }}{% endif %}</span>{{ l.name }}</a></td>
         <td class="hide" style="color:var(--dim);font-size:.82rem">{{ L['mode_' ~ l.mode] }}</td>
         <td class="num hide">{% if l.expires %}<span data-ts="{{ l.expires }}">{{ l.expires }}</span>{% else %}–{% endif %}</td>
         <td class="act"><a class="btn sm" href="{{ url_for('share_landing', token=l.token) }}">{{ L.open }}</a></td>

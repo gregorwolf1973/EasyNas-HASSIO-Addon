@@ -22,6 +22,7 @@ import zipstream
 import clamav
 import sharesandbox
 import share_worker
+import fileicons
 import wopi
 from ratelimit import LIMITER, AUTHFAIL_IP, AUTHFAIL_LINK
 
@@ -2485,7 +2486,8 @@ def api_run_backup(job_id):
 def index():
     return render_template("index.html",
                            admin_enabled=_admin_auth.get("enabled", False),
-                           csrf=csrf_token())
+                           csrf=csrf_token(),
+                           file_icons={"svg": fileicons.svgs(), "ext": fileicons.ext_kinds()})
 
 def _install_safe_getfqdn():
     """Keep the reverse DNS lookup during bind from killing the addon.

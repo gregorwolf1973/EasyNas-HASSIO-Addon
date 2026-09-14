@@ -25,6 +25,7 @@ from flask import (Flask, abort, g, jsonify, make_response, redirect, render_tem
 from werkzeug.security import check_password_hash
 
 import accesslog
+import fileicons
 import safepath
 import sharing_store
 import wopi
@@ -221,6 +222,7 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
         return request.scheme
 
     app.jinja_env.globals["fmt_size"] = fmt_size
+    app.jinja_env.globals["file_icon"] = fileicons.icon
 
     # ── language ────────────────────────────────────────────────────────────
     def pick_lang():

@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.9.3
+- **Dateisymbole wie im Explorer.** Dateimanager und Freigabe-Seite zeigen je Dateityp ein eigenes Symbol: Word (blau W), Excel (gruen X), PowerPoint (orange P), PDF, Bilder, Videos, Musik, Archive, Text, Code, Programme, E-Mail, dazu gelbe Ordner. Eigene Zeichnungen statt Herstellerlogos, direkt im HTML, eine gemeinsame Quelle (`app/fileicons.py`) fuer beide Oberflaechen.
+
 ## 3.9.2
 - **Dunkelmodus-Schalter auf der Freigabe-Seite.** Oben rechts wechselt ein Knopf zwischen hell und dunkel; die Wahl merkt sich der Browser, ohne Wahl folgt die Seite weiter der Geraete-Einstellung. Gilt auch fuer die Collabora-Editor-Seite.
 - **Zurueck zu "Meine Freigaben".** Wer mit einem Freigabe-Konto angemeldet ist, hat auf jeder Link-, Ordner- und Editor-Seite ganz oben einen Link zurueck zur Auswahlseite.

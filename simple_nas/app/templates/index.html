@@ -331,6 +331,7 @@
   .file-row:last-child { border-bottom:none; }
   .file-row:hover { background:var(--surface2); }
   .file-row svg { width:16px; height:16px; flex-shrink:0; }
+  .file-row svg.ficon { width:20px; height:20px; }
   .file-row .fname { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
   .file-row .fsize { font-family:monospace; font-size:11px; color:var(--text-dim); width:80px; text-align:right; flex-shrink:0; }
   .fbar { display:inline-block; vertical-align:middle; width:90px; height:8px; background:var(--surface2); border-radius:4px; overflow:hidden; flex-shrink:0; position:relative; }
@@ -2383,6 +2384,14 @@ function _sizeBarHtml(bytes,maxLog){
   return '<span class="fbar"><span class="fbar-fill '+_sizeColorClass(bytes)+'" style="width:'+pct.toFixed(1)+'%"></span></span>';
 }
 
+// File-type icons from app/fileicons.py - the share site draws the same ones.
+const _FICONS={{ file_icons|tojson }};
+function fileIcon(name,isDir){
+  if(isDir)return _FICONS.svg.folder;
+  const n=String(name||'').toLowerCase(), i=n.lastIndexOf('.');
+  return _FICONS.svg[_FICONS.ext[i>=0?n.slice(i+1):n]||'file'];
+}
+
 async function loadFiles(path){
   renderRootButtons();
   if(path)_filesPath=path;
@@ -2414,7 +2423,7 @@ async function loadFiles(path){
     for(const e of dirs){
       const sizeStr=(_showSizeBars&&typeof e.size==='number')?fmtSize(e.size)+(e.size_truncated?' <span class="fsize-trunc" title="'+t('size_truncated')+'">≈</span>':''):t('folder_label');
       const barHtml=_showSizeBars?_sizeBarHtml(e.size,maxLog):'';
-      rows.push('<div class="file-row"><svg viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span class="fname" onclick="loadFiles(\''+escJs(e.path)+'\')"><strong>'+esc(e.name)+'</strong></span>'+barHtml+'<span class="fsize">'+sizeStr+'</span><span class="fdate">'+fmtTime(e.modified)+'</span><span class="factions">'+fileActionBtns(e)+'</span></div>');
+      rows.push('<div class="file-row">'+fileIcon(e.name,true)+'<span class="fname" onclick="loadFiles(\''+escJs(e.path)+'\')"><strong>'+esc(e.name)+'</strong></span>'+barHtml+'<span class="fsize">'+sizeStr+'</span><span class="fdate">'+fmtTime(e.modified)+'</span><span class="factions">'+fileActionBtns(e)+'</span></div>');
     }
     for(const e of files){
       const barHtml=_showSizeBars?_sizeBarHtml(e.size,maxLog):'';
@@ -2423,7 +2432,7 @@ async function loadFiles(path){
       const viewable=_isViewable(e.name);
       const nameStyle=viewable?' style="cursor:pointer" title="'+t('dblclick_open')+'"':'';
       const dbl=viewable?' ondblclick="openFileViewer(\''+pEsc+'\',\''+nEsc+'\')"':'';
-      rows.push('<div class="file-row"'+dbl+'><svg viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="fname"'+nameStyle+'>'+esc(e.name)+'</span>'+barHtml+'<span class="fsize">'+fmtSize(e.size)+'</span><span class="fdate">'+fmtTime(e.modified)+'</span><span class="factions">'+fileActionBtns(e)+'</span></div>');
+      rows.push('<div class="file-row"'+dbl+'>'+fileIcon(e.name,false)+'<span class="fname"'+nameStyle+'>'+esc(e.name)+'</span>'+barHtml+'<span class="fsize">'+fmtSize(e.size)+'</span><span class="fdate">'+fmtTime(e.modified)+'</span><span class="factions">'+fileActionBtns(e)+'</span></div>');
     }
     if(!dirs.length&&!files.length&&!d.parent)rows.push('<div style="padding:30px;text-align:center;color:var(--text-dim)">'+t('empty_folder')+'</div>');
     list.innerHTML=rows.join('');

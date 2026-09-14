@@ -74,7 +74,7 @@
 
 {% elif single %}
   <div class="card center">
-    <p class="big">📄</p>
+    <p class="big big-icon">{{ file_icon(single.name) }}</p>
     <p style="font-weight:500;overflow-wrap:anywhere">{{ single.name }}</p>
     {% if single.size is not none %}<p class="sub">{{ fmt_size(single.size) }}</p>{% endif %}
     <p style="margin-top:16px">
@@ -105,7 +105,7 @@
       {% endif %}
       {% for d in dirs %}
         <tr>
-          <td>{% if link.allow_subdirs %}<a class="name" href="{{ url_for('share_browse', token=token, sub=d.rel) }}"><span class="ico">📁</span>{{ d.name }}</a>{% else %}<span class="ico">📁</span>{{ d.name }}{% endif %}</td>
+          <td>{% if link.allow_subdirs %}<a class="name" href="{{ url_for('share_browse', token=token, sub=d.rel) }}"><span class="ico">{{ file_icon(d.name, true) }}</span>{{ d.name }}</a>{% else %}<span class="ico">{{ file_icon(d.name, true) }}</span>{{ d.name }}{% endif %}</td>
           <td class="num hide"></td>
           <td class="num hide">{{ d.mtime | int | string }}</td>
           <td class="act">{% if link.allow_delete %}{{ delete_button(d.rel, L.confirm_delete_folder.replace('{name}', d.name)) }}{% endif %}</td>
@@ -113,7 +113,8 @@
       {% endfor %}
       {% for f in files %}
         <tr>
-          <td>{% if f.office %}<a class="name" href="{{ url_for('share_edit', token=token, sub=f.rel) }}"><span class="ico">📄</span>{{ f.name }}</a>{% elif f.inline %}<a class="name" href="{{ url_for('share_view', token=token, sub=f.rel) }}" target="_blank" rel="noopener"><span class="ico">📄</span>{{ f.name }}</a>{% else %}<a class="name" href="{{ url_for('share_download', token=token, sub=f.rel) }}"><span class="ico">📄</span>{{ f.name }}</a>{% endif %}</td>
+          {% set ico %}<span class="ico">{{ file_icon(f.name) }}</span>{% endset %}
+          <td>{% if f.office %}<a class="name" href="{{ url_for('share_edit', token=token, sub=f.rel) }}">{{ ico }}{{ f.name }}</a>{% elif f.inline %}<a class="name" href="{{ url_for('share_view', token=token, sub=f.rel) }}" target="_blank" rel="noopener">{{ ico }}{{ f.name }}</a>{% else %}<a class="name" href="{{ url_for('share_download', token=token, sub=f.rel) }}">{{ ico }}{{ f.name }}</a>{% endif %}</td>
           <td class="num hide">{{ fmt_size(f.size) }}</td>
           <td class="num hide">{{ f.mtime | int | string }}</td>
           <td class="act">{% if f.office %}<a class="btn sm" href="{{ url_for('share_edit', token=token, sub=f.rel) }}" title="{% if f.office == 'edit' %}{{ L.edit }}{% else %}{{ L.open_office }}{% endif %}">{% if f.office == 'edit' %}✎{% else %}👁{% endif %}</a> {% endif %}<a class="btn sm" href="{{ url_for('share_download', token=token, sub=f.rel) }}">⬇</a>{% if link.allow_delete %} {{ delete_button(f.rel, L.confirm_delete_file.replace('{name}', f.name)) }}{% endif %}</td>
