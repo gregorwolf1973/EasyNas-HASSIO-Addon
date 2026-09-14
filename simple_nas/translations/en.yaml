@@ -19,7 +19,7 @@ configuration:
     description: Username for accessing the web interface (default admin). Only active when admin_password_enabled is true.
   admin_password:
     name: Admin Password
-    description: Password for accessing the web interface. Stored encrypted. Only active when admin_password_enabled is true.
+    description: Password for accessing the web interface. Stored only as a hash. Only active when admin_password_enabled is true.
   smb_port:
     name: SMB Port
     description: SMB port (default 445). Change to e.g. 4445 if the official Samba add-on is also running.
@@ -112,7 +112,7 @@ configuration:
     description: "Only for Simple NAS fetching the supported file types, e.g. https://homeassistant:9980, when the public address is not reachable from the server (Cloudflare challenge). Empty = public address."
   collabora_wopi_url:
     name: "Address Collabora uses to reach Simple NAS (optional)"
-    description: "Empty = the share site's public address. Only set it when Collabora cannot reach the public address, e.g. http://homeassistant:8097 - that host must then be allowed as a WOPI host in Collabora."
+    description: "Empty = the share site's public address. Only set it when Collabora cannot reach the public address, e.g. http://homeassistant:8101 - that host must then be allowed as a WOPI host in Collabora."
   collabora_verify_tls:
     name: "Collabora: verify TLS certificate"
     description: "Leave on. Only switch off when the internal address presents a certificate for a different name."

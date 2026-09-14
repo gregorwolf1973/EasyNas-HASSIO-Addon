@@ -160,32 +160,22 @@ Since v3.0.56 the migration step in `run.sh` automatically cleans any obsolete b
 
 ## Automation: reconnect shares after HA restart
 
-When Home Assistant restarts, HA Core may try to access a network path (backup location, media source) before Simple NAS has finished starting up. The automation below waits for Simple NAS to be ready and then triggers a Samba reload to ensure all shares are available.
+When Home Assistant restarts, HA Core may try to access a network path (backup location, media source) before Simple NAS has finished starting up. The automation below waits for Simple NAS to be ready and then restarts the add-on once, so Samba comes up again with all drives mounted and all shares available.
 
-**Step 1 – Add a REST command** to `configuration.yaml`:
+> **Why not call the web API?** Earlier versions of this page used a `rest_command` that POSTed to `/api/samba/restart`. That no longer works: every state-changing API call needs the CSRF token of a browser session (otherwise `403`), and with `admin_password_enabled` also a login (otherwise `401`). Use Home Assistant's built-in `hassio.addon_restart` action instead - it goes through the Supervisor and needs no password or token.
 
-```yaml
-rest_command:
-  simplenas_reload:
-    url: "http://localhost:8100/api/samba/restart"
-    method: POST
-    headers:
-      Content-Type: "application/json"
-```
+**Step 1 – Find the add-on slug.** Open **Settings → Apps → Simple NAS**. The last part of the address in your browser's address bar is the slug, e.g. `…/a0d7b954_simple_nas/info` → `a0d7b954_simple_nas` (the prefix before `_simple_nas` differs per installation; a local add-on is `local_simple_nas`). In the automation UI editor you can also simply pick **Simple NAS** from the add-on dropdown of the action.
 
-**Step 2 – Add the automation** (UI editor or `automations.yaml`):
+**Step 2 – Add the automation** (UI editor or `automations.yaml`), replacing `a0d7b954_simple_nas` with your slug:
 
 ```yaml
 alias: "NAS: Reconnect shares after restart"
 description: >
-  Waits for Simple NAS to be ready after a reboot and reloads Samba
-  shares. Skips if the add-on is not running.
+  Waits for Simple NAS to be ready after Home Assistant has started and
+  restarts the add-on once. Skips if the add-on is not running.
 trigger:
   - platform: homeassistant
     event: start
-  - platform: state
-    entity_id: binary_sensor.simple_nas_running
-    to: "on"
 condition: []
 action:
   - alias: "Wait until Simple NAS is running (max. 5 minutes)"
@@ -201,13 +191,17 @@ action:
     entity_id: binary_sensor.simple_nas_running
     state: "on"
 
-  - alias: "Reload Samba shares"
-    service: rest_command.simplenas_reload
+  - alias: "Restart Simple NAS (remounts drives, restarts Samba)"
+    service: hassio.addon_restart
+    data:
+      addon: a0d7b954_simple_nas
 mode: single
 max_exceeded: silent
 ```
 
-> **Note:** The entity ID `binary_sensor.simple_nas_running` may differ slightly on your system. Check under **Settings → Devices & Services → Supervisor → Simple NAS → Entities** to find the correct name.
+> **Note:** The entity ID `binary_sensor.simple_nas_running` may differ slightly on your system. Check under **Settings → Devices & Services → Supervisor → Simple NAS → Entities** to find the correct name. If the sensor is shown as disabled there, enable it first.
+>
+> Do not add a trigger on this sensor turning `on`: the restart itself switches it off and on again, and the automation would restart the add-on in a loop. A restart interrupts open Samba connections for a few seconds.
 
 ---
 
@@ -403,4 +397,4 @@ Upgrade to v3.0.32 or later — the `/ssl` mapping was changed from `ro` to `rw`
 Set `smb_port` to a value other than `445` in Simple NAS configuration. See section above.
 
 **Samba share unavailable right after HA restart**  
-This is a start-order race condition: HA Core checks the network path before Simple NAS has finished loading. Use the automation described above to automatically reload shares once the add-on is ready.
+This is a start-order race condition: HA Core checks the network path before Simple NAS has finished loading. Use the automation described above to automatically restart the add-on once it is ready.

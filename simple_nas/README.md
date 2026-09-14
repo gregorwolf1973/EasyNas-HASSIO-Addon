@@ -51,15 +51,17 @@ Or manually:
    ├── Dockerfile
    ├── run.sh
    ├── smb.service
+   ├── icon.png, logo.png
+   ├── README.md, DOCS.md, CHANGELOG.md
+   ├── translations/     (en.yaml, de.yaml)
+   ├── tests/            (unit tests, not needed at runtime)
    └── app/
-       ├── app.py
-       ├── generate_smb_conf.py
-       ├── restore_mounts.py
-       ├── mount_helper.sh
-       └── templates/
-           ├── index.html
-           └── login.html
+       ├── *.py, *.sh    (web GUI, share site, Samba/mount helpers)
+       ├── crowdsec/     (parser, scenarios, acquisition file)
+       ├── templates/    (admin web GUI)
+       └── templates_share/ (public sharing site)
    ```
+   Copy the complete folder - every file under `app/` is needed.
 2. **Settings → Apps → ⋮ → Reload local apps**
 3. **Simple NAS** under "Local add-ons" → **Install** → **Start**
 
@@ -105,7 +107,7 @@ web_port: 8100                # Port for the web interface (default: 8100)
 smb_port: 445                 # SMB port (use 4445 if running alongside official Samba add-on)
 admin_password_enabled: false # Enable web UI password protection
 admin_username: "admin"       # Admin login username
-admin_password: ""            # Admin login password (stored encrypted)
+admin_password: ""            # Admin login password (stored as a hash)
 web_gui_enabled: true         # Set to false to run Samba only, without web interface
 hdd_idle_seconds: 0           # Spin down mounted drives after this many idle seconds (0 = disabled)
 file_allowed_roots:           # Folders the file manager may open

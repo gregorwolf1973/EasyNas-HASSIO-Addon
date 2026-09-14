@@ -19,7 +19,7 @@ configuration:
     description: Benutzername für den Zugang zur Web-Oberfläche (Standard admin). Nur wirksam wenn admin_password_enabled aktiviert ist.
   admin_password:
     name: Admin-Passwort
-    description: Passwort für den Zugang zur Web-Oberfläche. Wird verschlüsselt gespeichert. Nur wirksam wenn admin_password_enabled aktiviert ist.
+    description: Passwort für den Zugang zur Web-Oberfläche. Wird nur als Hash gespeichert. Nur wirksam wenn admin_password_enabled aktiviert ist.
   smb_port:
     name: SMB-Port
     description: SMB-Port (Standard 445). Ändere auf z.B. 4445 falls das offizielle Samba-Add-on parallel läuft.
@@ -112,7 +112,7 @@ configuration:
     description: "Nur fuer die Abfrage der Dateitypen durch Simple NAS, z. B. https://homeassistant:9980, wenn die oeffentliche Adresse vom Server aus nicht erreichbar ist (Cloudflare-Pruefung). Leer = oeffentliche Adresse."
   collabora_wopi_url:
     name: "Adresse, unter der Collabora Simple NAS erreicht (optional)"
-    description: "Leer = Oeffentliche Adresse der Freigabe-Seite. Nur setzen, wenn Collabora die oeffentliche Adresse nicht erreicht, z. B. http://homeassistant:8097 - dann muss dieser Host in Collabora als WOPI-Host erlaubt sein."
+    description: "Leer = Oeffentliche Adresse der Freigabe-Seite. Nur setzen, wenn Collabora die oeffentliche Adresse nicht erreicht, z. B. http://homeassistant:8101 - dann muss dieser Host in Collabora als WOPI-Host erlaubt sein."
   collabora_verify_tls:
     name: "Collabora: TLS-Zertifikat pruefen"
     description: "An lassen. Nur ausschalten, wenn die interne Adresse ein Zertifikat fuer einen anderen Namen hat."

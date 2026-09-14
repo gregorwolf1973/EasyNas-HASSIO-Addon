@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.9.4
+- **Korrekte Beschreibungen in den Addon-Optionen.** Das Admin-Passwort wird nicht "verschluesselt", sondern nur als Hash gespeichert - der Text sagt das jetzt auch. Beim Collabora-Feld "Adresse, unter der Collabora Simple NAS erreicht" stand als Beispiel Port 8097, richtig ist der Standard-Port der Freigabe-Seite 8101.
+- **Dokumentation:** Die Automatisierung "Freigaben nach HA-Neustart wieder verbinden" nutzt jetzt die eingebaute Aktion `hassio.addon_restart`. Der bisherige `rest_command` auf `/api/samba/restart` konnte nicht mehr funktionieren, weil aendernde API-Aufrufe ein CSRF-Token (sonst 403) und bei aktivem Admin-Passwort eine Anmeldung (sonst 401) brauchen. Ausserdem: Dateibaum fuer die lokale Installation vervollstaendigt.
+
 ## 3.9.3
 - **Dateisymbole wie im Explorer.** Dateimanager und Freigabe-Seite zeigen je Dateityp ein eigenes Symbol: Word (blau W), Excel (gruen X), PowerPoint (orange P), PDF, Bilder, Videos, Musik, Archive, Text, Code, Programme, E-Mail, dazu gelbe Ordner. Eigene Zeichnungen statt Herstellerlogos, direkt im HTML, eine gemeinsame Quelle (`app/fileicons.py`) fuer beide Oberflaechen.
 
