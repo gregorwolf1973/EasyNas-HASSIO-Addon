@@ -34,7 +34,7 @@ configuration:
     description: Directories the file manager may open. Anything outside is refused. Only change this if you need to manage files outside the default folders.
   sharing_enabled:
     name: Enable web sharing
-    description: Starts the public sharing site on its own port (arrives with the next release). Requires an admin password to be set.
+    description: Starts the public sharing site on its own port. Requires an admin password to be set.
   share_port:
     name: Sharing site port
     description: Port the public sharing site listens on (default 8101). Publish this port through Nginx Proxy Manager with a domain and TLS.

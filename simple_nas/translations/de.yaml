@@ -34,7 +34,7 @@ configuration:
     description: Verzeichnisse, die der Dateimanager oeffnen darf. Alles ausserhalb wird abgewiesen. Aendere das nur, wenn du Dateien ausserhalb der Standardordner verwalten musst.
   sharing_enabled:
     name: Web-Freigabe aktivieren
-    description: Startet die oeffentliche Freigabe-Seite auf einem eigenen Port (kommt mit dem naechsten Release). Setzt ein gesetztes Admin-Passwort voraus.
+    description: Startet die oeffentliche Freigabe-Seite auf einem eigenen Port. Setzt ein gesetztes Admin-Passwort voraus.
   share_port:
     name: Port der Freigabe-Seite
     description: Port, auf dem die oeffentliche Freigabe-Seite lauscht (Standard 8101). Diesen Port im Nginx Proxy Manager mit einer Domain und TLS veroeffentlichen.

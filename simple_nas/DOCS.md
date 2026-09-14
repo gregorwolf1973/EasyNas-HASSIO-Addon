@@ -1,5 +1,7 @@
 # Simple NAS – Documentation
 
+[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/gregorwolf1973)
+
 A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-based management GUI, USB/external drive support, and reinstall-safe settings backup.
 
 ---
@@ -43,6 +45,36 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 | `admin_password` | string | _(empty)_ | Web GUI password |
 | `web_gui_enabled` | bool | `true` | Set to `false` to run Samba only, without the web interface |
 | `hdd_idle_seconds` | int | `0` | Spin down mounted drives after this many seconds of inactivity (0 = disabled). See "Drive spindown / power saving" below |
+| `file_allowed_roots` | list | `/media`, `/mnt`, `/share`, `/config`, `/addon_configs` | Directories the file manager may open |
+| `sharing_enabled` | bool | `false` | Start the public sharing site on its own port (requires an admin password). See "Sharing files on the internet" below |
+| `share_port` | port | `8101` | Port of the public sharing site |
+| `share_bind` | list | `0.0.0.0` | `0.0.0.0` or `127.0.0.1` |
+| `share_public_url` | string | _(empty)_ | Public address of the sharing site, used in the generated links |
+| `share_allowed_roots` | list | `/media`, `/mnt`, `/share` | Only folders below these can be shared via link |
+| `share_trusted_proxies` | list | `127.0.0.1`, `::1`, `172.30.32.0/23` | `X-Forwarded-For`/`-Proto` are only honoured from these addresses |
+| `share_cookie_secure` | bool | `true` | Share-site cookie over HTTPS only |
+| `share_session_hours` | int | `8` | How long a login to a link stays valid (1–720) |
+| `share_log_max_mb` | int | `5` | Access log rotation size |
+| `share_sandbox` | list | `auto` | `auto` / `on` / `off`. See "The public site runs sandboxed" below |
+| `share_zip_max_gb` | int | `5` | Folders above this size are not offered as ZIP |
+| `share_zip_max_files` | int | `10000` | Folders with more files are not offered as ZIP |
+| `share_zip_compress` | bool | `false` | Deflate ZIP downloads instead of store only |
+| `share_max_upload_mb` | int | `1024` | Largest single file uploaded through a link |
+| `share_upload_blocked_ext` | list | executables, scripts, HTML, SVG, … | Rejected upload extensions |
+| `share_upload_allowed_ext` | list | _(empty)_ | If set, only these extensions are accepted |
+| `share_clamav_enabled` | bool | `false` | Virus scan uploads with the ClamAV add-on. See "Virus scanning" below |
+| `share_clamav_host` | string | `127.0.0.1` | clamd address |
+| `share_clamav_port` | port | `3310` | clamd TCP port |
+| `share_clamav_timeout` | int | `120` | Time limit per scan in seconds |
+| `share_clamav_on_error` | list | `reject` | `reject` / `accept` when clamd is unreachable |
+| `share_clamav_large_file` | list | `accept` | `reject` / `accept` when a file is too large to scan |
+| `share_log_export_path` | string | _(empty)_ | Second copy of the access log for CrowdSec. See "CrowdSec integration" below |
+| `collabora_enabled` | bool | `false` | Integrate Collabora Online. See "Editing office files with Collabora Online" below |
+| `collabora_url` | string | _(empty)_ | Public address of the Collabora server |
+| `collabora_internal_url` | string | _(empty)_ | Internal address used only to fetch the supported file types |
+| `collabora_wopi_url` | string | _(empty)_ | Address Collabora uses to reach Simple NAS (empty = `share_public_url`) |
+| `collabora_verify_tls` | bool | `true` | Verify the Collabora TLS certificate |
+| `collabora_verify_proof` | bool | `true` | Verify the proof-key signature of WOPI calls |
 
 ---
 

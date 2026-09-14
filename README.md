@@ -15,6 +15,8 @@ all inside Home Assistant, no second box needed.
   because they are pinned to stable `/dev/disk/by-id/` paths
 - **Shares, users and groups** with per-share access rules
 - **File manager** — browse, upload, download, copy, move, rename, delete
+- **Web sharing** — share links and accounts on a separate, sandboxed site;
+  office files open in the browser via Collabora Online
 - **Backup jobs** with automatic clean-up of old runs
 - **Network discovery** — the NAS shows up in Windows Explorer (WSDD), in
   Nautilus and Dolphin (Avahi/mDNS) and in the macOS Finder

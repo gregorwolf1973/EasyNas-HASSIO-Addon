@@ -3,7 +3,7 @@
 A lightweight NAS add-on for Home Assistant OS. Turns your Raspberry Pi (or other HA hardware) into a full-featured network storage with web interface.
 
 ![Architectures](https://img.shields.io/badge/arch-aarch64%20|%20amd64%20|%20armv7-blue)
-![Version](https://img.shields.io/badge/version-3.0.x-green)
+![Version](https://img.shields.io/badge/version-3.9.x-green)
 
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/gregorwolf1973)
 
@@ -107,7 +107,16 @@ admin_password_enabled: false # Enable web UI password protection
 admin_username: "admin"       # Admin login username
 admin_password: ""            # Admin login password (stored encrypted)
 web_gui_enabled: true         # Set to false to run Samba only, without web interface
+hdd_idle_seconds: 0           # Spin down mounted drives after this many idle seconds (0 = disabled)
+file_allowed_roots:           # Folders the file manager may open
+  - /media
+  - /mnt
+  - /share
+  - /config
+  - /addon_configs
 ```
+
+The options for web sharing (`sharing_enabled`, `share_*`) and Collabora Online (`collabora_*`) are described in [DOCS.md](DOCS.md).
 
 ### Admin Password Protection
 
@@ -133,6 +142,7 @@ Both add-ons use `host_network: true` and bind to the same SMB ports. Set `smb_p
 | **Shares** | Create Samba shares, assign users/groups, public/private |
 | **Users & Groups** | Create Samba users, change passwords, manage groups |
 | **Files** | File browser with upload, download, copy, move, rename, delete |
+| **Sharing** | Share links and share accounts for the public sharing site, access log, CrowdSec/ClamAV/Collabora status |
 | **Backup** | Create backup jobs, run manually, auto-delete old backups |
 
 ### Dark/Light Theme
