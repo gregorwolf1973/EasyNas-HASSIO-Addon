@@ -39,8 +39,10 @@ PUBLIC_ENDPOINTS = frozenset({
     "healthz", "share_root", "share_landing", "share_auth", "share_logout",
     "share_browse", "share_download", "share_view", "share_lang", "share_zip",
     "share_root_login", "share_home", "share_home_logout", "share_upload", "share_upload_form",
-    "share_edit", "wopi_file", "wopi_contents",
+    "share_edit", "wopi_file", "wopi_contents", "share_delete",
 })
+
+DELETE_PER_IP = (120, 60 * 60)     # a person tidying up, not a script emptying the share
 
 # Authorised by the WOPI access token, not by the link token or the session.
 WOPI_ENDPOINTS = ("wopi_file", "wopi_contents")
@@ -84,6 +86,10 @@ LANG = {
         "edit": "Bearbeiten", "open_office": "Im Browser öffnen", "guest": "Gast",
         "edit_unavailable": "Der Dokumenten-Editor ist gerade nicht erreichbar. Bitte später erneut versuchen.",
         "editor_loading": "Dokument wird geöffnet …",
+        "delete": "Löschen", "confirm_delete_file": "„{name}“ wirklich löschen?",
+        "confirm_delete_folder": "Ordner „{name}“ mit allem Inhalt wirklich löschen?",
+        "err_in_use": "Die Datei ist gerade im Editor geöffnet und kann nicht gelöscht werden.",
+        "err_delete": "Löschen fehlgeschlagen.",
     },
     "en": {
         "title": "Share", "not_found": "Link not found or no longer valid.",
@@ -111,6 +117,10 @@ LANG = {
         "edit": "Edit", "open_office": "Open in browser", "guest": "Guest",
         "edit_unavailable": "The document editor is not reachable right now. Please try again later.",
         "editor_loading": "Opening document …",
+        "delete": "Delete", "confirm_delete_file": "Really delete “{name}”?",
+        "confirm_delete_folder": "Really delete the folder “{name}” and everything in it?",
+        "err_in_use": "The file is open in the editor right now and cannot be deleted.",
+        "err_delete": "Delete failed.",
     },
 }
 
@@ -307,7 +317,7 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
         if not authed(link):
             return redirect(url_for("share_landing", token=token))
         if link["mode"] == "upload" and request.endpoint in ("share_browse", "share_download", "share_view",
-                                                             "share_zip", "share_edit"):
+                                                             "share_zip", "share_edit", "share_delete"):
             abort(403)
 
     @app.after_request
@@ -519,7 +529,7 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
         if not link.get("allow_subdirs", True):
             sub = ""
         base = safepath.resolve_within(root, sub)
-        mode = link.get("upload_subdir", "by-date")
+        mode = sharing_store.upload_subdir_of(link)
         if mode == "by-date":
             base = os.path.join(base, datetime.date.today().isoformat())
         elif mode == "by-user" and session.get("su"):
@@ -643,6 +653,54 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
         except sharing_store.ShareError as e:
             return render("error.html", 400, msg_key=str(e))
         return redirect(url_for("share_landing", token=token))
+
+    @app.route("/s/<token>/delete", methods=["POST"])
+    def share_delete(token):
+        """Delete one file or folder below the link root. The confirmation
+        happens in the browser; here it is CSRF, the link's allow_delete, the
+        path confinement and 'never the root itself'."""
+        link = g.link
+        if not link.get("allow_delete") or link.get("file") or link["mode"] == "upload":
+            abort(403)
+        if not csrf_ok():
+            abort(403)
+        rel = (request.form.get("path") or "").replace("\\", "/").strip("/")
+        parent = "/".join(rel.split("/")[:-1])
+        back = url_for("share_browse", token=token, sub=parent) if parent else url_for("share_landing", token=token)
+        if not rel or (not link.get("allow_subdirs", True) and "/" in rel):
+            abort(404)
+        ok, _ = LIMITER.hit(f"delete:ip:{g.ip}", *DELETE_PER_IP)
+        if not ok:
+            accesslog.log("rate_limited", ip=g.ip, link_id=link["id"], detail="delete")
+            return render("error.html", 429, msg_key="too_many")
+        root = link["_real_root"]
+        lexical = os.path.join(root, *rel.split("/"))
+        name = os.path.basename(lexical)
+        # A symlink would resolve to its target; listings never show them, so
+        # there is nothing legitimate to delete through one.
+        if name.startswith(".") or name.endswith(".part") or os.path.islink(lexical):
+            abort(404)
+        try:
+            target = safepath.resolve_within(root, rel)
+        except safepath.PathError:
+            abort(404)
+        if target == safepath.real(root) or not os.path.lexists(target):
+            abort(404)
+        is_dir = os.path.isdir(target)
+        held = locks.paths()
+        if target in held or (is_dir and any(safepath.is_within(target, p) for p in held)):
+            return render("error.html", 409, msg_key="err_in_use")
+        try:
+            if is_dir:
+                shutil.rmtree(target)
+            else:
+                os.unlink(target)
+        except OSError as e:
+            print(f"[SHARE] Loeschen fehlgeschlagen ({link['id']}): {type(e).__name__}: {e}", flush=True)
+            return render("error.html", 500, msg_key="err_delete")
+        accesslog.log("delete", ip=g.ip, link_id=link["id"], link_name=link["name"], user=session.get("su"),
+                      path=rel, detail="folder" if is_dir else "file")
+        return redirect(back)
 
     @app.route("/s/<token>/auth", methods=["POST"])
     def share_auth(token):

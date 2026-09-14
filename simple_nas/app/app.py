@@ -1822,7 +1822,7 @@ def api_sharing_crowdsec_status():
         "export_path": export,
         "crowdsec_path": cs_path,
         "default_export_path": DEFAULT_EXPORT_PATH,
-        "export_active": accesslog.writes_to(cs_path),
+        "export_active": _crowdsec_export_active(cs_path),
         "option_path_blind": bool(option) and not _crowdsec_can_read(option),
     })
 
@@ -1840,10 +1840,15 @@ def api_sharing_crowdsec_install():
         save_json(CROWDSEC_SETUP_FILE, {"export_path": export})
     cs_path = _crowdsec_log_path(export)
     max_mb = _opt("share_log_max_mb", 5)
-    if export and not accesslog.set_export(export, max_mb, slot="main"):
-        return jsonify({"error": f"Protokoll-Export nach {export} nicht moeglich (Ordner nicht beschreibbar?)."}), 500
-    if not accesslog.set_export(cs_path, max_mb, slot="crowdsec"):
-        return jsonify({"error": f"Protokoll-Export nach {cs_path} nicht moeglich (Ordner nicht beschreibbar?)."}), 500
+    if _share_sandboxed():
+        # The worker writes the log; this process never emits a line, so a
+        # log handler here would feed nothing. Point the shipper at the file.
+        _start_log_shipper(os.path.join(DATA_DIR, sharesandbox.LOG_FILE), cs_path, max_mb)
+    else:
+        if export and not accesslog.set_export(export, max_mb, slot="main"):
+            return jsonify({"error": f"Protokoll-Export nach {export} nicht moeglich (Ordner nicht beschreibbar?)."}), 500
+        if not accesslog.set_export(cs_path, max_mb, slot="crowdsec"):
+            return jsonify({"error": f"Protokoll-Export nach {cs_path} nicht moeglich (Ordner nicht beschreibbar?)."}), 500
     export = cs_path
     written = []
     for rel, src in CROWDSEC_FILES.items():
@@ -1860,7 +1865,7 @@ def api_sharing_crowdsec_install():
         written.append(rel)
     print(f"[SHARE] CrowdSec-Dateien installiert: {', '.join(written)}", flush=True)
     return jsonify({"ok": True, "written": written, "restart_needed": "CrowdSec",
-                    "export_path": export, "export_active": accesslog.writes_to(export)})
+                    "export_path": export, "export_active": _crowdsec_export_active(export)})
 
 
 @app.route("/api/sharing/clamav/test", methods=["POST"])
@@ -2559,40 +2564,68 @@ def _do_unlock(key):
         LIMITER.clear(key=key)
 
 
+_LOG_SHIP = {"src": None, "dst": None, "cap": 5 * 1024 * 1024, "thread": None}
+
+
 def _start_log_shipper(src, dst, max_mb):
     """Sandbox only: the worker writes src; ship new lines to dst (the path
     CrowdSec reads under /config, which the worker cannot see). Rotates dst so
-    it cannot grow without bound."""
+    it cannot grow without bound.
+
+    Idempotent: one thread per process. A later call (the CrowdSec button)
+    only retargets it, so clicking the button never starts a second copier."""
     import threading
 
+    _LOG_SHIP.update(src=src, dst=dst, cap=max(1, int(max_mb)) * 1024 * 1024)
+    t = _LOG_SHIP["thread"]
+    if t is not None and t.is_alive():
+        return
+
     def run():
-        try:
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-        except OSError:
-            pass
-        pos, ino, cap = None, None, max(1, int(max_mb)) * 1024 * 1024
+        pos, ino, made = None, None, None
         while True:
+            src_now, dst_now, cap = _LOG_SHIP["src"], _LOG_SHIP["dst"], _LOG_SHIP["cap"]
             try:
-                st = os.stat(src)
-                if pos is None or ino != st.st_ino or st.st_size < pos:
-                    pos, ino = st.st_size, st.st_ino      # start at the end, ship only new lines
-                elif st.st_size > pos:
-                    with open(src, "r", encoding="utf-8", errors="replace") as f:
-                        f.seek(pos)
-                        data = f.read()
-                        pos = f.tell()
-                    if os.path.exists(dst) and os.path.getsize(dst) > cap:
-                        try:
-                            os.replace(dst, dst + ".1")
-                        except OSError:
-                            pass
-                    with open(dst, "a", encoding="utf-8") as g:
-                        g.write(data)
+                if src_now and dst_now:
+                    if made != dst_now:
+                        os.makedirs(os.path.dirname(dst_now), exist_ok=True)
+                        made = dst_now
+                    st = os.stat(src_now)
+                    if pos is None or ino != st.st_ino or st.st_size < pos:
+                        pos, ino = st.st_size, st.st_ino      # start at the end, ship only new lines
+                    elif st.st_size > pos:
+                        with open(src_now, "r", encoding="utf-8", errors="replace") as f:
+                            f.seek(pos)
+                            data = f.read()
+                            pos = f.tell()
+                        if os.path.exists(dst_now) and os.path.getsize(dst_now) > cap:
+                            try:
+                                os.replace(dst_now, dst_now + ".1")
+                            except OSError:
+                                pass
+                        with open(dst_now, "a", encoding="utf-8") as g:
+                            g.write(data)
             except OSError:
                 pass
             time.sleep(2)
 
-    threading.Thread(target=run, daemon=True, name="share-logship").start()
+    t = threading.Thread(target=run, daemon=True, name="share-logship")
+    _LOG_SHIP["thread"] = t
+    t.start()
+
+
+def _crowdsec_export_active(path):
+    """Is the file CrowdSec reads being fed? In-process the access log writes
+    it directly; sandboxed the worker writes /data and the shipper copies.
+    Checking only the first made the Sharing tab report "not active" after
+    every restart of a sandboxed site, although the shipper was running."""
+    if not path:
+        return False
+    if accesslog.writes_to(path):
+        return True
+    t = _LOG_SHIP["thread"]
+    return (_share_sandboxed() and _LOG_SHIP["dst"] == path
+            and t is not None and t.is_alive())
 
 
 def _launch_sandbox(host, port, export):

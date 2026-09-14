@@ -216,6 +216,8 @@ Without `client_max_body_size` every upload fails at nginx's 1 MB default; witho
 - An unknown, disabled, expired or exhausted link, and a link whose folder is no longer mounted, all show the *same* page. Nobody can tell whether a token exists.
 - Changing a link's password, access mode or account list ends every session on that link immediately. "Generate new link" replaces the token.
 - Share accounts are separate from the Samba users. Their password hashes live in `/data/share_accounts.json` (mode 600) and, like all settings, in the reinstall-safe copy under `/config/.simplenas/auto` - which means they are part of your Home Assistant backups.
+- **Allow deleting** (off by default) gives visitors of a folder link a delete button on every file and folder, with a confirmation first. Drop-box and single-file links never offer it; the link's root folder, hidden files and symlinks cannot be deleted, and a document open in Collabora is refused. Every deletion is logged. There is no recycle bin - use it only for people you would also give Samba write access.
+- **Where uploads are stored:** *directly in the folder* the visitor is viewing, *a subfolder per day*, or *a subfolder per account* (only on links with "Specific accounts", because other links have no account name to sort by).
 - HTML and SVG files are never shown inline on the share site, only offered as downloads. A visitor-uploaded page served from your own domain would otherwise run scripts against every later visitor.
 
 ### Brute-force protection (with or without Cloudflare)

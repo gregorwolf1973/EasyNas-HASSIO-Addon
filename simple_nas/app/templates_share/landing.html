@@ -1,5 +1,14 @@
 {% extends "base.html" %}
 {% block title %}{{ link.name }}{% endblock %}
+{# One POST per entry, so deleting works without JavaScript too; the confirm()
+   is the question before anything is gone. tojson escapes quotes for the
+   single-quoted attribute. #}
+{% macro delete_button(rel, question) -%}
+<form class="del" method="post" action="{{ url_for('share_delete', token=token) }}" onsubmit='return confirm({{ question|tojson }})'>
+  <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="path" value="{{ rel }}">
+  <button class="btn sm danger" type="submit" title="{{ L.delete }}">🗑</button>
+</form>
+{%- endmacro %}
 {% block body %}
 <header>
   <div>
@@ -99,7 +108,7 @@
           <td>{% if link.allow_subdirs %}<a class="name" href="{{ url_for('share_browse', token=token, sub=d.rel) }}"><span class="ico">📁</span>{{ d.name }}</a>{% else %}<span class="ico">📁</span>{{ d.name }}{% endif %}</td>
           <td class="num hide"></td>
           <td class="num hide">{{ d.mtime | int | string }}</td>
-          <td class="act"></td>
+          <td class="act">{% if link.allow_delete %}{{ delete_button(d.rel, L.confirm_delete_folder.replace('{name}', d.name)) }}{% endif %}</td>
         </tr>
       {% endfor %}
       {% for f in files %}
@@ -107,7 +116,7 @@
           <td>{% if f.office %}<a class="name" href="{{ url_for('share_edit', token=token, sub=f.rel) }}"><span class="ico">📄</span>{{ f.name }}</a>{% elif f.inline %}<a class="name" href="{{ url_for('share_view', token=token, sub=f.rel) }}" target="_blank" rel="noopener"><span class="ico">📄</span>{{ f.name }}</a>{% else %}<a class="name" href="{{ url_for('share_download', token=token, sub=f.rel) }}"><span class="ico">📄</span>{{ f.name }}</a>{% endif %}</td>
           <td class="num hide">{{ fmt_size(f.size) }}</td>
           <td class="num hide">{{ f.mtime | int | string }}</td>
-          <td class="act">{% if f.office %}<a class="btn sm" href="{{ url_for('share_edit', token=token, sub=f.rel) }}" title="{% if f.office == 'edit' %}{{ L.edit }}{% else %}{{ L.open_office }}{% endif %}">{% if f.office == 'edit' %}✎{% else %}👁{% endif %}</a> {% endif %}<a class="btn sm" href="{{ url_for('share_download', token=token, sub=f.rel) }}">⬇</a></td>
+          <td class="act">{% if f.office %}<a class="btn sm" href="{{ url_for('share_edit', token=token, sub=f.rel) }}" title="{% if f.office == 'edit' %}{{ L.edit }}{% else %}{{ L.open_office }}{% endif %}">{% if f.office == 'edit' %}✎{% else %}👁{% endif %}</a> {% endif %}<a class="btn sm" href="{{ url_for('share_download', token=token, sub=f.rel) }}">⬇</a>{% if link.allow_delete %} {{ delete_button(f.rel, L.confirm_delete_file.replace('{name}', f.name)) }}{% endif %}</td>
         </tr>
       {% endfor %}
       </tbody>

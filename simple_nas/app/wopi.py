@@ -335,6 +335,11 @@ class LockTable:
             v = self._load().get(path)
             return v["id"] if v else ""
 
+    def paths(self):
+        """Every path currently locked by an open editor."""
+        with self._mutex:
+            return set(self._load())
+
     def lock(self, path, lock_id, old_lock=None):
         """(ok, current). Same id refreshes; with old_lock this is
         UnlockAndRelock and only succeeds when old_lock is the holder."""

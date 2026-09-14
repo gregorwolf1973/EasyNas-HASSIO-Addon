@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -261,6 +262,79 @@ class BlindOptionTest(unittest.TestCase):
             self.assertIn('"ip": "1.1.1.1"', open(good, encoding="utf-8").read())
         finally:
             nas._crowdsec_can_read = real
+
+
+class SandboxedExportTest(unittest.TestCase):
+    """Sandboxed, the worker writes the log and a shipper thread copies it to
+    the CrowdSec path. The Sharing tab used to ask only the access log whether
+    it writes that file - never true here - so after every restart it said
+    "not active" and invited a click on "Set up CrowdSec"."""
+
+    class _Proc:
+        def poll(self):
+            return None
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self._saved = (nas.CROWDSEC_DIR, nas._OPTIONS, nas.CROWDSEC_SETUP_FILE, nas.DATA_DIR,
+                       nas.DEFAULT_EXPORT_PATH, dict(nas._SHARE))
+        nas.CROWDSEC_DIR = os.path.join(self.tmp, "crowdsec", "config")
+        nas.DATA_DIR = self.tmp
+        nas.CROWDSEC_SETUP_FILE = os.path.join(self.tmp, "crowdsec_setup.json")
+        nas.DEFAULT_EXPORT_PATH = os.path.join(self.tmp, "config", "share_access.log")
+        nas._OPTIONS = {"share_log_export_path": "/share/simplenas/share_access.log"}
+        nas._SHARE.update(sandboxed=True, proc=self._Proc())
+        self.worker_log = os.path.join(self.tmp, nas.sharesandbox.LOG_FILE)
+        open(self.worker_log, "a").close()
+        os.makedirs(nas.CROWDSEC_DIR)
+        nas.app.config["TESTING"] = True
+        nas.app.secret_key = "k"
+        self.c = nas.app.test_client()
+        self.c.get("/api/roots")
+        with self.c.session_transaction() as sess:
+            self.h = {"X-CSRF-Token": sess["csrf"]}
+
+    def tearDown(self):
+        nas._LOG_SHIP.update(src=None, dst=None)       # the daemon thread idles from here on
+        (nas.CROWDSEC_DIR, nas._OPTIONS, nas.CROWDSEC_SETUP_FILE, nas.DATA_DIR,
+         nas.DEFAULT_EXPORT_PATH, share) = self._saved
+        nas._SHARE.clear()
+        nas._SHARE.update(share)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def wait_for(self, path, needle, seconds=8):
+        end = time.time() + seconds
+        while time.time() < end:
+            if os.path.exists(path) and needle in open(path, encoding="utf-8").read():
+                return True
+            time.sleep(0.2)
+        return False
+
+    def test_status_is_active_after_restart_without_clicking(self):
+        # what start_share_site() does on boot when CrowdSec is installed
+        nas._start_log_shipper(self.worker_log, nas.DEFAULT_EXPORT_PATH, 1)
+        st = self.c.get("/api/sharing/crowdsec/status").get_json()
+        self.assertTrue(st["export_active"])
+        self.assertEqual(st["crowdsec_path"], nas.DEFAULT_EXPORT_PATH)
+        time.sleep(2.5)                                  # shipper has taken its starting position
+        with open(self.worker_log, "a", encoding="utf-8") as f:
+            f.write('{"event": "auth_fail", "ip": "203.0.113.5"}\n')
+        self.assertTrue(self.wait_for(nas.DEFAULT_EXPORT_PATH, "203.0.113.5"), "Zeile kam nicht an")
+
+    def test_button_retargets_the_shipper_instead_of_a_dead_handler(self):
+        r = self.c.post("/api/sharing/crowdsec/install", headers=self.h)
+        self.assertEqual(r.status_code, 200, r.get_json())
+        self.assertTrue(r.get_json()["export_active"])
+        self.assertEqual(nas._LOG_SHIP["dst"], nas.DEFAULT_EXPORT_PATH)
+        self.assertFalse(nas.accesslog.writes_to(nas.DEFAULT_EXPORT_PATH), "kein zweiter Schreiber")
+        thread = nas._LOG_SHIP["thread"]
+        self.c.post("/api/sharing/crowdsec/install", headers=self.h)
+        self.assertIs(nas._LOG_SHIP["thread"], thread, "zweiter Klick startet keinen zweiten Kopierer")
+
+    def test_not_active_when_the_worker_is_gone(self):
+        nas._start_log_shipper(self.worker_log, nas.DEFAULT_EXPORT_PATH, 1)
+        nas._SHARE.update(sandboxed=False, proc=None)
+        self.assertFalse(self.c.get("/api/sharing/crowdsec/status").get_json()["export_active"])
 
 
 class ExportPathMigrationTest(unittest.TestCase):

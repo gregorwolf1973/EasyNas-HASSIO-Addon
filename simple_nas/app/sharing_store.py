@@ -266,6 +266,20 @@ def _int(v, name, lo=0):
     return n
 
 
+def _default_upload_subdir(mode):
+    """A pure drop box sorts by date; a browse+upload link puts the file where
+    the visitor is standing, anything else surprises people."""
+    return "by-date" if mode == "upload" else "none"
+
+
+def upload_subdir_of(link):
+    """The upload placement a link really uses. Links saved before the option
+    existed have no value; they must behave the way the admin dialog shows
+    them, not by a second, different default."""
+    sub = link.get("upload_subdir")
+    return sub if sub in UPLOAD_SUBDIRS else _default_upload_subdir(link.get("mode"))
+
+
 def _normalise_link(body, existing=None, shares=(), allowed_roots=None):
     """Validated link dict from an admin request. existing = link being edited."""
     e = existing or {}
@@ -319,17 +333,22 @@ def _normalise_link(body, existing=None, shares=(), allowed_roots=None):
     out["max_downloads"] = _int(body.get("max_downloads", e.get("max_downloads", 0)), "Download-Limit")
     out["upload_quota_mb"] = _int(body.get("upload_quota_mb", e.get("upload_quota_mb", 0)), "Upload-Kontingent")
     out["max_file_mb"] = _int(body.get("max_file_mb", e.get("max_file_mb", 0)), "Maximale Dateigröße")
-    # Default: a pure drop box sorts by date; a browse+upload link puts the
-    # file where the visitor is standing, anything else surprises people.
-    sub = body.get("upload_subdir", e.get("upload_subdir") or ("by-date" if mode == "upload" else "none"))
+    sub = body.get("upload_subdir", e.get("upload_subdir") or _default_upload_subdir(mode))
     if sub not in UPLOAD_SUBDIRS:
         raise ShareError("Ungültige Upload-Ablage")
+    if sub == "by-user" and access != "users" and mode != "download":
+        # Without an account there is no name to sort by; the upload used to
+        # land in the folder itself without a word.
+        raise ShareError("„Unterordner je Konto“ geht nur mit Zugriff „Nur bestimmte Konten“")
     out["upload_subdir"] = sub
     out["allow_subdirs"] = bool(body.get("allow_subdirs", e.get("allow_subdirs", True)))
     out["allow_zip"] = bool(body.get("allow_zip", e.get("allow_zip", True)))
     # Editing overwrites files in place - a stronger right than a drop box,
     # which never replaces anything. Off unless the admin switches it on.
     out["allow_edit"] = bool(body.get("allow_edit", e.get("allow_edit", False))) and mode != "upload"
+    # Deleting needs a folder to browse; a drop box shows nothing to delete
+    # and a single-file link has no listing.
+    out["allow_delete"] = bool(body.get("allow_delete", e.get("allow_delete", False))) and mode != "upload" and not file
     out["enabled"] = bool(body.get("enabled", e.get("enabled", True)))
     out["notes"] = str(body.get("notes", e.get("notes", "")) or "")[:500]
     return out
