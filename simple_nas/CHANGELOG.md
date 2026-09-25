@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.9.5
+- **Fix: Grosse Dateien liessen sich im Dateimanager nicht hochladen.** Jede Datei ging in einer einzigen Anfrage hoch. Hinter Cloudflare (kostenloser Tarif) wird eine Anfrage ueber 100 MB abgewiesen, bevor sie Home Assistant erreicht - im Addon-Log stand nichts, und die Seite zeigte waehrend des Hochladens nichts an, auch keinen Fehler. Jetzt geht jede Datei in Stuecken zu 8 MB hoch, mit Fortschrittsbalken (Prozent und MB) und Wiederholung bei kurzen Verbindungsabbruechen. Die Teile sammeln sich als `.upload-*.part` im Zielordner und werden am Ende umbenannt; eine vorhandene Datei wird nie ueberschrieben. Fehler bleiben 10 Sekunden stehen und nennen bei einer Proxy-Fehlerseite den HTTP-Status statt eines JSON-Fehlers. Waehrend ein Upload laeuft, fragt der Browser beim Verlassen der Seite nach.
+- **Fix: Ordnerauswahl mit einer Datei als Pfad.** `/api/browse` antwortete mit einem Absturz (500, Traceback im Log), wenn der Pfad auf eine Datei zeigte. Jetzt kommt eine klare Meldung (400).
+
 ## 3.9.4
 - **Korrekte Beschreibungen in den Addon-Optionen.** Das Admin-Passwort wird nicht "verschluesselt", sondern nur als Hash gespeichert - der Text sagt das jetzt auch. Beim Collabora-Feld "Adresse, unter der Collabora Simple NAS erreicht" stand als Beispiel Port 8097, richtig ist der Standard-Port der Freigabe-Seite 8101.
 - **Dokumentation:** Die Automatisierung "Freigaben nach HA-Neustart wieder verbinden" nutzt jetzt die eingebaute Aktion `hassio.addon_restart`. Der bisherige `rest_command` auf `/api/samba/restart` konnte nicht mehr funktionieren, weil aendernde API-Aufrufe ein CSRF-Token (sonst 403) und bei aktivem Admin-Passwort eine Anmeldung (sonst 401) brauchen. Ausserdem: Dateibaum fuer die lokale Installation vervollstaendigt.

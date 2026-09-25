@@ -278,6 +278,11 @@
     max-width: 320px;
   }
   .toast.error { border-left-color: var(--danger); }
+  .upload-toast { min-width: 240px; border-left-color: var(--accent); }
+  .upload-toast .up-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .upload-toast .up-bar { height: 6px; background: var(--border); border-radius: 3px; margin: 6px 0 4px; overflow: hidden; }
+  .upload-toast .up-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .upload-toast .up-info { font-size: 12px; color: var(--text-dim); }
   @keyframes toast-in { from { opacity:0; transform:translateX(16px); } }
 
   /* ── Empty, Spinner ── */
@@ -1087,7 +1092,7 @@ const T={
     rename_prompt:'Umbenennen:',renamed:'Umbenannt',
     confirm_del_file:'"{n}" wirklich löschen?',
     saved:'Gespeichert',copied:'Kopiert',moved:'Verschoben',
-    err_dst:'Ziel angeben',upload_ok:'Hochgeladen: {n}',new_folder_in:'Neuer Ordner in {p}:',
+    err_dst:'Ziel angeben',upload_ok:'Hochgeladen: {n}',upload_failed:'Upload fehlgeschlagen',upload_http:'Upload fehlgeschlagen (HTTP {s})',new_folder_in:'Neuer Ordner in {p}:',
     settings_autobackup_title:'Automatisches Backup der Einstellungen',
     settings_autobackup_sub:'Wird bei jeder Änderung nach /config/.simplenas/auto gespeichert – reinstall-sicher',
     btn_restore_auto:'Aus Auto-Backup wiederherstellen',
@@ -1199,7 +1204,7 @@ const T={
     rename_prompt:'Rename:',renamed:'Renamed',
     confirm_del_file:'Really delete "{n}"?',
     saved:'Saved',copied:'Copied',moved:'Moved',
-    err_dst:'Enter destination',upload_ok:'Uploaded: {n}',new_folder_in:'New folder in {p}:',
+    err_dst:'Enter destination',upload_ok:'Uploaded: {n}',upload_failed:'Upload failed',upload_http:'Upload failed (HTTP {s})',new_folder_in:'New folder in {p}:',
     settings_autobackup_title:'Automatic Settings Backup',
     settings_autobackup_sub:'Saved on every change to /config/.simplenas/auto – reinstall-safe',
     btn_restore_auto:'Restore from auto-backup',
@@ -1282,7 +1287,7 @@ function toggleLang(){
 
 // ── Utils ──
 function fmt(b){if(b==null)return'–';const g=b/1e9;if(g>=1)return g.toFixed(1)+' GB';return(b/1e6).toFixed(0)+' MB';}
-function toast(m,e=false){const el=document.createElement('div');el.className='toast'+(e?' error':'');el.textContent=m;document.getElementById('toast-container').appendChild(el);setTimeout(()=>el.remove(),3500);}
+function toast(m,e=false,ms=3500){const el=document.createElement('div');el.className='toast'+(e?' error':'');el.textContent=m;document.getElementById('toast-container').appendChild(el);setTimeout(()=>el.remove(),ms);}
 let CSRF = document.querySelector('meta[name="csrf"]')?.content || '';
 function apiBase(){return window.location.pathname.replace(/\/+$/,'');}
 async function api(method,path,body){
@@ -2524,17 +2529,70 @@ async function doFileAction(){
     closeModal('modal-fileaction');loadFiles();
   }catch(e){toast(e.message,true);}
 }
+/* Upload in pieces (v3.9.5). One request per file was refused above 100 MB
+   when Home Assistant sits behind Cloudflare, and nothing showed while a
+   large file was on its way. Now: start, then 8 MB pieces with a progress
+   bar, retries for flaky connections; the server finishes with the last piece. */
+const UPLOAD_CHUNK=8*1024*1024;
+let _uploadsRunning=0;
+window.addEventListener('beforeunload',e=>{if(_uploadsRunning){e.preventDefault();e.returnValue='';}});
+const sleep=ms=>new Promise(z=>setTimeout(z,ms));
+function fmtMB(b){return (b/1048576).toFixed(b<10485760?1:0)+' MB';}
+// A proxy error page is HTML, not JSON - report the status instead of a parse error
+async function upAnswer(r){const txt=await r.text();try{return JSON.parse(txt);}catch(_){return {error:tRaw('upload_http',{s:r.status})};}}
+function upPost(url,body,json){
+  return fetch(apiBase()+url,{method:'POST',
+    headers:{'Content-Type':json?'application/json':'application/octet-stream','X-CSRF-Token':CSRF},
+    body:json?JSON.stringify(body):body});
+}
+function uploadBar(name){
+  const el=document.createElement('div');el.className='toast upload-toast';
+  el.innerHTML='<div class="up-name"></div><div class="up-bar"><i></i></div><div class="up-info"></div>';
+  el.querySelector('.up-name').textContent='↑ '+name;
+  document.getElementById('toast-container').appendChild(el);
+  return {
+    set(done,total){const p=total?Math.floor(done/total*100):100;el.querySelector('i').style.width=p+'%';el.querySelector('.up-info').textContent=p+' % · '+fmtMB(done)+' / '+fmtMB(total);},
+    remove(){el.remove();}
+  };
+}
+async function uploadOne(f){
+  const bar=uploadBar(f.name);bar.set(0,f.size);
+  let id='';
+  try{
+    let r=await upPost('/api/files/upload/start',{path:_filesPath,name:f.name,size:f.size},true);
+    let d=await upAnswer(r);if(!r.ok)throw new Error(d.error||tRaw('upload_failed'));
+    if(!d.done){
+      id=d.id;const step=d.chunk||UPLOAD_CHUNK;let off=0,tries=0;
+      for(;;){
+        try{
+          r=await upPost('/api/files/upload/chunk?id='+encodeURIComponent(id)+'&offset='+off,f.slice(off,off+step),false);
+          d=await upAnswer(r);
+        }catch(netErr){r=null;d={error:netErr.message};}
+        if(r&&r.ok){if(d.done)break;off=d.written;tries=0;bar.set(off,f.size);continue;}
+        // 409 with a position: the piece already landed (retry) or is still being written
+        if(r&&r.status===409&&typeof d.written==='number'){
+          if(d.written!==off){off=d.written;tries=0;bar.set(off,f.size);continue;}
+          if(tries<8){tries++;await sleep(1000);continue;}
+        }
+        if((!r||r.status>=500||r.status===429)&&tries<4){tries++;await sleep(1500*tries);continue;}
+        throw new Error(d.error||tRaw('upload_failed'));
+      }
+      id='';
+    }
+    bar.remove();toast(tRaw('upload_ok',{n:f.name}));
+  }catch(e){
+    bar.remove();
+    if(id)upPost('/api/files/upload/abort',{id},true).catch(()=>{});
+    toast(f.name+': '+e.message,true,10000);
+  }
+}
 async function uploadFiles(fileList){
   if(!fileList||!fileList.length)return;
-  for(const f of fileList){
-    const fd=new FormData();fd.append('file',f);fd.append('path',_filesPath);
-    try{
-      const r=await fetch(apiBase()+'/api/files/upload',{method:'POST',headers:{'X-CSRF-Token':CSRF},body:fd});
-      const d=await r.json();if(!r.ok)throw new Error(d.error||'Upload fehlgeschlagen');
-      toast(t('upload_ok',{n:f.name}));
-    }catch(e){toast(e.message,true);}
-  }
+  const files=[...fileList];                 // copy first: clearing the input empties it
   document.getElementById('file-upload-input').value='';
+  _uploadsRunning++;
+  try{for(const f of files)await uploadOne(f);}
+  finally{_uploadsRunning--;}
   loadFiles();
 }
 async function createFolderInFiles(){

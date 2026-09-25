@@ -179,6 +179,91 @@ class FileApiConfinementTest(unittest.TestCase):
         with open(os.path.join(self.root, "fotos", "a.txt")) as f:
             self.assertEqual(f.read(), "drin")
 
+    # ── upload in pieces (v3.9.5) ────────────────────────────────────
+    # One request per file was refused above 100 MB behind Cloudflare.
+    def start(self, name, size, folder=None):
+        return self.post("/api/files/upload/start",
+                         json={"path": folder or self.root, "name": name, "size": size})
+
+    def chunk(self, uid, offset, data):
+        return self.post("/api/files/upload/chunk", query_string={"id": uid, "offset": offset},
+                         data=data, content_type="application/octet-stream")
+
+    def parts(self, folder=None):
+        return [n for n in os.listdir(folder or self.root) if n.endswith(".part")]
+
+    def test_pieces_are_joined_in_order(self):
+        r = self.start("film.mov", 10)
+        self.assertEqual(r.status_code, 200)
+        uid = r.get_json()["id"]
+        self.assertEqual(self.chunk(uid, 0, b"0123").get_json()["written"], 4)
+        self.assertEqual(self.chunk(uid, 4, b"4567").get_json()["written"], 8)
+        last = self.chunk(uid, 8, b"89")
+        self.assertEqual(last.status_code, 200)
+        self.assertTrue(last.get_json()["done"])
+        with open(os.path.join(self.root, "film.mov"), "rb") as f:
+            self.assertEqual(f.read(), b"0123456789")
+        self.assertEqual(self.parts(), [])
+
+    def test_retried_piece_reports_the_position(self):
+        uid = self.start("film.mov", 8).get_json()["id"]
+        self.chunk(uid, 0, b"0123")
+        again = self.chunk(uid, 0, b"0123")        # the answer got lost, browser resends
+        self.assertEqual(again.status_code, 409)
+        self.assertEqual(again.get_json()["written"], 4)
+        self.assertTrue(self.chunk(uid, 4, b"4567").get_json()["done"])
+        with open(os.path.join(self.root, "film.mov"), "rb") as f:
+            self.assertEqual(f.read(), b"01234567")
+
+    def test_piece_beyond_the_declared_size_is_refused(self):
+        uid = self.start("film.mov", 4).get_json()["id"]
+        self.assertEqual(self.chunk(uid, 0, b"012345").status_code, 400)
+
+    def test_unknown_upload_is_404(self):
+        self.assertEqual(self.chunk("gibtsnicht", 0, b"x").status_code, 404)
+
+    def test_start_refuses_existing_forbidden_and_traversing_names(self):
+        self.assertEqual(self.start("a.txt", 3, os.path.join(self.root, "fotos")).status_code, 409)
+        self.assertEqual(self.start("y.txt", 3, self.outside).status_code, 403)
+        r = self.start("../../../ausbruch.txt", 1)
+        uid = r.get_json()["id"]
+        path = self.chunk(uid, 0, b"x").get_json()["path"]
+        self.assertEqual(os.path.dirname(path), nas.safepath.real(self.root))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "ausbruch.txt")))
+
+    def test_file_appearing_meanwhile_is_not_overwritten(self):
+        uid = self.start("neu.txt", 3).get_json()["id"]
+        with open(os.path.join(self.root, "neu.txt"), "w") as f:
+            f.write("samba")                        # someone else was faster
+        self.assertEqual(self.chunk(uid, 0, b"abc").status_code, 409)
+        with open(os.path.join(self.root, "neu.txt")) as f:
+            self.assertEqual(f.read(), "samba")
+        self.assertEqual(self.parts(), [])
+
+    def test_empty_file_is_done_at_start(self):
+        r = self.start("leer.txt", 0)
+        self.assertTrue(r.get_json()["done"])
+        self.assertEqual(os.path.getsize(os.path.join(self.root, "leer.txt")), 0)
+
+    def test_abort_removes_the_part_file(self):
+        uid = self.start("film.mov", 8).get_json()["id"]
+        self.chunk(uid, 0, b"0123")
+        self.assertEqual(len(self.parts()), 1)
+        self.post("/api/files/upload/abort", json={"id": uid})
+        self.assertEqual(self.parts(), [])
+        self.assertEqual(self.chunk(uid, 4, b"4567").status_code, 404)
+
+    def test_pieces_need_the_csrf_token(self):
+        uid = self.start("film.mov", 4).get_json()["id"]
+        r = self.c.post("/api/files/upload/chunk", query_string={"id": uid, "offset": 0},
+                        data=b"0123", content_type="application/octet-stream")
+        self.assertEqual(r.status_code, 403)
+
+    # ── folder picker handed a file ──────────────────────────────────
+    def test_browse_on_a_file_is_a_clean_400(self):
+        r = self.c.get("/api/browse", query_string={"path": os.path.join(self.root, "fotos", "a.txt")})
+        self.assertEqual(r.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

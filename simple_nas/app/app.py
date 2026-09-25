@@ -10,6 +10,7 @@ import re
 import shutil
 import time
 import socket
+import threading
 from datetime import timedelta
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -2019,6 +2020,10 @@ def api_browse():
                         "entries": [{"name": e["name"], "path": e["path"],
                                      "readable": e["readable"], "is_symlink": False} for e in roots]})
     path = _safe(_remap_path(os.path.abspath(path)))
+    # The folder picker can be handed a file path (typed in, or a stale
+    # entry); listdir() on it raised NotADirectoryError and a 500.
+    if os.path.exists(path) and not os.path.isdir(path):
+        return jsonify({"error": "Kein Ordner: " + path}), 400
     entries = []
     try:
         for name in sorted(os.listdir(path)):
@@ -2293,6 +2298,133 @@ def api_files_upload():
         return jsonify({"error": f"„{leaf}“ existiert bereits"}), 409
     f.save(dest)
     return jsonify({"ok": True, "path": dest})
+
+
+# ── Upload in pieces ──────────────────────────────────────────────────
+# One request per file failed silently for large files: behind Cloudflare
+# (free plan) a request body above 100 MB is refused before it reaches Home
+# Assistant, so the add-on never saw it and the page showed nothing. The UI
+# now sends each file as start -> chunk ... -> (done with the last chunk),
+# every piece far below that limit, and shows progress in between.
+# The part file lives in the target folder, so finishing is a rename on the
+# same filesystem. State is in memory: a restart drops unfinished uploads
+# (the browser then reports "unknown upload"); their .part files are
+# removed by the sweep only while the add-on keeps running.
+UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024
+UPLOAD_STALE_S = 6 * 3600
+_UPLOADS = {}
+_UPLOADS_LOCK = threading.Lock()
+
+
+def _upload_drop(uid):
+    st = _UPLOADS.pop(uid, None)
+    if st:
+        try:
+            os.unlink(st["part"])
+        except OSError:
+            pass
+
+
+def _upload_sweep(now):
+    for uid in [u for u, st in _UPLOADS.items() if now - st["ts"] > UPLOAD_STALE_S]:
+        _upload_drop(uid)
+
+
+def _upload_finish(uid, st):
+    """Move the finished part file into place without overwriting anything."""
+    dest = st["dest"]
+    try:
+        try:
+            os.link(st["part"], dest)            # fails if dest exists, never follows it
+            os.unlink(st["part"])
+        except FileExistsError:
+            raise
+        except OSError:
+            # exFAT/FAT USB drives have no hard links
+            if os.path.lexists(dest):
+                raise FileExistsError(dest)
+            os.rename(st["part"], dest)
+    except FileExistsError:
+        with _UPLOADS_LOCK:
+            _upload_drop(uid)
+        return jsonify({"error": f"„{os.path.basename(dest)}“ existiert bereits"}), 409
+    with _UPLOADS_LOCK:
+        _UPLOADS.pop(uid, None)
+    return jsonify({"ok": True, "done": True, "path": dest})
+
+
+@app.route("/api/files/upload/start", methods=["POST"])
+def api_files_upload_start():
+    body = request.get_json(force=True, silent=True) or {}
+    target_dir = _safe(body.get("path") or "/media")
+    leaf = os.path.basename(str(body.get("name") or "").replace("\\", "/")).strip()
+    if not leaf or leaf in (".", "..") or "\x00" in leaf:
+        return jsonify({"error": "Ungültiger Dateiname"}), 400
+    try:
+        size = int(body.get("size"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Dateigröße fehlt"}), 400
+    if size < 0:
+        return jsonify({"error": "Dateigröße fehlt"}), 400
+    if size > MAX_UPLOAD_BYTES:
+        return jsonify({"error": f"Datei zu groß (höchstens {MAX_UPLOAD_BYTES // (1024 ** 3)} GB)"}), 413
+    os.makedirs(target_dir, exist_ok=True)
+    dest = safepath.resolve_new(target_dir, "", leaf)
+    if os.path.lexists(dest):
+        return jsonify({"error": f"„{leaf}“ existiert bereits"}), 409
+    uid = secrets.token_hex(16)
+    part = os.path.join(os.path.dirname(dest), f".upload-{uid}.part")
+    os.close(safepath.open_new_file(part))
+    st = {"part": part, "dest": dest, "size": size, "written": 0,
+          "ts": time.time(), "lock": threading.Lock()}
+    with _UPLOADS_LOCK:
+        _upload_sweep(st["ts"])
+        _UPLOADS[uid] = st
+    if size == 0:
+        return _upload_finish(uid, st)
+    return jsonify({"ok": True, "id": uid, "chunk": UPLOAD_CHUNK_BYTES})
+
+
+@app.route("/api/files/upload/chunk", methods=["POST"])
+def api_files_upload_chunk():
+    uid = request.args.get("id", "")
+    try:
+        offset = int(request.args.get("offset", ""))
+    except ValueError:
+        return jsonify({"error": "offset fehlt"}), 400
+    with _UPLOADS_LOCK:
+        st = _UPLOADS.get(uid)
+    if not st:
+        return jsonify({"error": "Upload unbekannt oder abgelaufen, bitte neu starten"}), 404
+    if not st["lock"].acquire(blocking=False):
+        return jsonify({"error": "Stück wird noch geschrieben", "written": st["written"]}), 409
+    try:
+        if offset != st["written"]:
+            # A retried piece that already landed: tell the browser where to go on
+            return jsonify({"error": "Versatz passt nicht", "written": st["written"]}), 409
+        data = request.get_data(cache=False)
+        if len(data) > UPLOAD_CHUNK_BYTES or st["written"] + len(data) > st["size"]:
+            return jsonify({"error": "Stück zu groß"}), 400
+        if not data:
+            return jsonify({"error": "Leeres Stück"}), 400
+        with open(st["part"], "ab") as out:
+            out.write(data)
+        st["written"] += len(data)
+        st["ts"] = time.time()
+        if st["written"] < st["size"]:
+            return jsonify({"ok": True, "written": st["written"]})
+    finally:
+        st["lock"].release()
+    return _upload_finish(uid, st)
+
+
+@app.route("/api/files/upload/abort", methods=["POST"])
+def api_files_upload_abort():
+    uid = (request.get_json(force=True, silent=True) or {}).get("id", "")
+    with _UPLOADS_LOCK:
+        _upload_drop(uid)
+    return jsonify({"ok": True})
+
 
 @app.route("/api/files/download")
 def api_files_download():
