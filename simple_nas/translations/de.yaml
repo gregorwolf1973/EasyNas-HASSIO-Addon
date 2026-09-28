@@ -20,6 +20,9 @@ configuration:
   admin_password:
     name: Admin-Passwort
     description: Passwort für den Zugang zur Web-Oberfläche. Wird nur als Hash gespeichert. Nur wirksam wenn admin_password_enabled aktiviert ist.
+  admin_ingress_only:
+    name: Admin-Oberflaeche nur ueber Home Assistant
+    description: "Wenn an, antwortet die Admin-Oberflaeche nur noch ueber den Oeffnen-Knopf in Home Assistant (Ingress). Direkter Zugriff ueber http://HA-IP:8100 sowie ueber Nginx Proxy Manager / Cloudflare wird abgewiesen. Nicht einschalten, wenn du die Admin-Oberflaeche ueber eine eigene Domain nutzt."
   smb_port:
     name: SMB-Port
     description: SMB-Port (Standard 445). Ändere auf z.B. 4445 falls das offizielle Samba-Add-on parallel läuft.

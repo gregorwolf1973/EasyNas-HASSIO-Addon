@@ -2,8 +2,10 @@
 """Simple NAS - Flask Web GUI v2.0"""
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
+import random
 import secrets
 import subprocess
 import re
@@ -25,7 +27,16 @@ import sharesandbox
 import share_worker
 import fileicons
 import wopi
-from ratelimit import LIMITER, AUTHFAIL_IP, AUTHFAIL_LINK
+from ratelimit import LIMITER, AUTHFAIL_IP, AUTHFAIL_LINK, LOCK_BASE, LOCK_CAP, Limiter
+
+# ── Admin-Login: Brute-Force-Schutz ─────────────────────────────────────────
+# Eigener Limiter, damit Admin-Sperren nie mit denen der Freigabe-Seite
+# vermischt werden (die laeuft ggf. abgeschottet in einem eigenen Prozess).
+ADMIN_LIMITER = Limiter()
+ADMIN_FAIL_IP = (10, 15 * 60)       # Fehlversuche je Besucher-IP
+ADMIN_FAIL_USER = (20, 15 * 60)     # je Benutzername, ueber alle IPs (verteilte Angriffe)
+INGRESS_IP = "172.30.32.2"          # Supervisor: HA-Ingress kommt immer von hier
+DEFAULT_TRUSTED_PROXIES = ["127.0.0.1", "::1", "172.30.32.0/23"]
 
 app = Flask(__name__)
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024  # 4 GB per request; bodies are buffered to TMPDIR first
@@ -111,9 +122,63 @@ def _base():
     """Return the HA Ingress base path (e.g. /api/hassio_ingress/TOKEN) or '' for direct access."""
     return request.headers.get("X-Ingress-Path", "").rstrip("/")
 
+def _trusted_nets():
+    nets = []
+    for n in _opt("share_trusted_proxies", DEFAULT_TRUSTED_PROXIES) or []:
+        try:
+            nets.append(ipaddress.ip_network(str(n), strict=False))
+        except ValueError:
+            pass
+    return nets
+
+
+def _from_trusted_proxy():
+    try:
+        ip = ipaddress.ip_address(request.remote_addr or "")
+    except ValueError:
+        return False
+    return any(ip in n for n in _trusted_nets())
+
+
+def _via_ingress():
+    """Request came through the HA Ingress (user already logged in to HA).
+    The address cannot be forged from the LAN: TCP needs the reply."""
+    return (request.remote_addr or "") == INGRESS_IP
+
+
 def _client_ip():
-    """Return the real client IP, looking through proxy headers."""
-    return request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
+    """The real visitor address. Proxy headers count only when the request
+    really came from a trusted proxy (share_trusted_proxies) - otherwise
+    anyone could dodge a lockout with a made-up X-Forwarded-For.
+    Behind a Cloudflare tunnel (cloudflared -> Nginx Proxy Manager -> here)
+    X-Forwarded-For only names the tunnel; the visitor is in CF-Connecting-IP."""
+    if _from_trusted_proxy():
+        cf = request.headers.get("CF-Connecting-IP", "").strip()
+        if cf:
+            return cf
+        xff = request.headers.get("X-Forwarded-For", "")
+        if xff:
+            return xff.split(",")[-1].strip() or request.remote_addr or "?"
+    return request.remote_addr or "?"
+
+
+def _admin_lock_keys(username):
+    keys = [(f"ip:{_client_ip()}", ADMIN_FAIL_IP)]
+    if username:
+        keys.append((f"user:{username.lower()}", ADMIN_FAIL_USER))
+    return keys
+
+
+def _admin_lock_remaining(keys):
+    return max([ADMIN_LIMITER.ban_remaining(k) for k, _ in keys if ADMIN_LIMITER.banned(k)] or [0])
+
+
+def _admin_login_failed(keys):
+    for key, (limit, window) in keys:
+        ADMIN_LIMITER.record(key)
+        if ADMIN_LIMITER.count(key, window) >= limit:
+            dur = ADMIN_LIMITER.lock(key, LOCK_BASE, LOCK_CAP)
+            print(f"[AUTH LOCK] Admin-Login gesperrt fuer {key} ({dur // 60} min)", flush=True)
 
 
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
@@ -130,6 +195,15 @@ def csrf_token():
 
 @app.before_request
 def check_auth():
+    # 0. Optional: admin UI only through the HA Ingress. Direct LAN access
+    #    (http://HA-IP:8100) and any reverse proxy / Cloudflare get 403.
+    if _opt("admin_ingress_only", False) and not _via_ingress():
+        ip = _client_ip()
+        if ADMIN_LIMITER.hit(f"denylog:{ip}", 1, 300)[0]:
+            print(f"[AUTH] Direktzugriff abgewiesen (admin_ingress_only): ip={ip}", flush=True)
+        return ("Nur ueber Home Assistant erreichbar / Only available through Home Assistant.",
+                403, {"Content-Type": "text/plain; charset=utf-8"})
+
     # 1. Locked down: protection is on but no password is configured.
     if _admin_auth.get("setup_required"):
         if request.path.startswith("/api/"):
@@ -187,8 +261,26 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "").strip()
+        # Ingress users are already logged in to HA and cannot be an outside
+        # attacker, so they are never locked out - the way back in if an
+        # attack has locked the account on the direct/Cloudflare route.
+        keys = [] if _via_ingress() else _admin_lock_keys(username)
+        wait = _admin_lock_remaining(keys)
+        if wait:
+            mins = max(1, (wait + 59) // 60)
+            print(f"[AUTH LOCK] Login abgewiesen (gesperrt, noch {mins} min): "
+                  f"user='{username}' ip={_client_ip()}", flush=True)
+            resp = app.make_response((render_template(
+                "login.html",
+                error=f"Zu viele Fehlversuche - bitte in {mins} Min. erneut versuchen "
+                      f"(ueber Home Assistant geht es sofort) / Too many failed attempts - "
+                      f"try again in {mins} min (or open it through Home Assistant)"), 429))
+            resp.headers["Retry-After"] = str(wait)
+            return resp
         if (username == _admin_auth.get("username") and
                 check_password_hash(_admin_auth.get("password_hash", ""), password)):
+            if keys:
+                ADMIN_LIMITER.clear(key=keys[0][0])     # own IP counter only
             session.clear()                      # fresh session id after login
             session.permanent = True
             session["authenticated"] = True
@@ -198,6 +290,8 @@ def login():
             print(f"[AUTH] Login successful: user='{username}' ip={_client_ip()}", flush=True)
             return redirect(_base() + "/")
         print(f"[AUTH FAIL] Login failed: user='{username}' ip={_client_ip()}", flush=True)
+        _admin_login_failed(keys)
+        time.sleep(random.uniform(0.3, 0.7))       # slows scripts, not people
         error = "Ungültige Anmeldedaten / Invalid credentials"
     return render_template("login.html", error=error)
 

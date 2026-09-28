@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Simple NAS with Samba shares and web GUI for drive management"
-version: "3.9.6"
+version: "3.9.7"
 url: "https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon"
 slug: "simple_nas"
 init: false
@@ -33,6 +33,7 @@ options:
   admin_password_enabled: false
   admin_username: "admin"
   admin_password: ""
+  admin_ingress_only: false
   smb_port: 445
   web_gui_enabled: true
   hdd_idle_seconds: 0
@@ -113,6 +114,7 @@ schema:
   admin_password_enabled: bool
   admin_username: str
   admin_password: str
+  admin_ingress_only: bool?
   smb_port: port
   web_gui_enabled: bool
   hdd_idle_seconds: int(0,)

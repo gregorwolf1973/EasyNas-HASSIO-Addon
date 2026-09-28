@@ -325,6 +325,10 @@ The sandbox needs `unshare` and `setpriv` (both present in the image) and Protec
 
 The reverse proxy being the only way in and, where the proxy runs on the same host, `share_bind: 127.0.0.1`, remain good extra measures.
 
+### Admin login protection
+
+The admin interface (port 8100) locks a visitor out after 10 failed logins per IP, or a username after 20 failed logins across all IPs, within 15 minutes (15 min, doubling on repeat, max. 24 h). Access through the Home Assistant **Open** button (Ingress) is never locked. Behind Cloudflare / Nginx Proxy Manager the real visitor IP is taken from `CF-Connecting-IP` / `X-Forwarded-For`, but only from addresses in `share_trusted_proxies`. With `admin_ingress_only: true` the admin interface answers only through Ingress.
+
 ## Reinstall-safe backup
 
 Every time you save a setting (share, user, group, mount) the add-on writes a backup to `/config/.simplenas/auto/`. This directory survives an add-on uninstall/reinstall because it lives in the persistent `/config` volume.

@@ -20,6 +20,9 @@ configuration:
   admin_password:
     name: Admin Password
     description: Password for accessing the web interface. Stored only as a hash. Only active when admin_password_enabled is true.
+  admin_ingress_only:
+    name: Admin interface only through Home Assistant
+    description: "When on, the admin interface only answers through the Open button in Home Assistant (Ingress). Direct access via http://HA-IP:8100 and via Nginx Proxy Manager / Cloudflare is refused. Leave off if you reach the admin interface through your own domain."
   smb_port:
     name: SMB Port
     description: SMB port (default 445). Change to e.g. 4445 if the official Samba add-on is also running.
