@@ -301,6 +301,14 @@ The Nginx Proxy Manager settings from above (`client_max_body_size 0;` in partic
 - *Collabora cannot reach the share site's public address*: set `collabora_wopi_url`, e.g. `http://homeassistant:8101`, and allow that host (and add `--o:net.frame_ancestors=files.example.com`) in Collabora.
 - The access log records `edit_open`, `edit_save` and `wopi_denied` events.
 
+### Install as an app (Android home screen icon)
+
+The share site is an installable web app. Open a link (or the portal `/`) in Chrome on Android and choose **Install app** or **Add to home screen** from the menu. You get an icon that opens the share full screen without the browser bar.
+
+- A link installs on its own, named after the link and starting on it; the portal installs as "Simple NAS" and starts on "My shares".
+- Only works over **HTTPS** (e.g. through Nginx Proxy Manager / Cloudflare); Chrome does not offer installing on plain `http://`.
+- Nothing is cached offline: files, lists and logins always come fresh from the server. Password and account links still ask for the login once the session (`share_session_hours`) has expired.
+
 ### Access log
 
 Every view, login, failed login, download and lock-out is written to `/data/share_access.log` (JSON lines, rotated at `share_log_max_mb`). The Sharing tab shows the last entries with filters. The log records link ids and paths relative to the link, never tokens or absolute paths.

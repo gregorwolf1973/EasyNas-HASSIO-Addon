@@ -30,6 +30,10 @@ import safepath
 import sharing_store
 import wopi
 import zipstream
+
+PWA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static_share")
+PWA_ROOT_ENDPOINTS = ("share_manifest_root", "share_sw_root", "share_app_icon")
+PWA_LINK_ENDPOINTS = ("share_manifest", "share_sw")
 from ratelimit import (AUTHFAIL_IP, AUTHFAIL_LINK, AUTHFAIL_USER, LIMITER, REQ_PER_IP, UPLOAD_PER_IP,
                        SCAN_PER_IP, LOCK_BASE, LOCK_CAP)
 
@@ -41,6 +45,8 @@ PUBLIC_ENDPOINTS = frozenset({
     "share_browse", "share_download", "share_view", "share_lang", "share_zip",
     "share_root_login", "share_home", "share_home_logout", "share_upload", "share_upload_form",
     "share_edit", "wopi_file", "wopi_contents", "share_delete",
+    # installable app (PWA): manifest, service worker, icon
+    "share_manifest_root", "share_sw_root", "share_app_icon", "share_manifest", "share_sw",
 })
 
 DELETE_PER_IP = (120, 60 * 60)     # a person tidying up, not a script emptying the share
@@ -301,7 +307,7 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
             resp.headers["Retry-After"] = str(retry)
             return resp
         if request.endpoint in ("healthz", "share_root", "share_lang", "share_root_login",
-                                "share_home", "share_home_logout", None) + WOPI_ENDPOINTS:
+                                "share_home", "share_home_logout", None) + WOPI_ENDPOINTS + PWA_ROOT_ENDPOINTS:
             return
         token = (request.view_args or {}).get("token", "")
         if not sharing_store.token_shape_ok(token):
@@ -316,7 +322,7 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
                 accesslog.log("rate_limited", ip=g.ip, detail=f"scanner ban {dur // 60} min")
             return not_found()
         g.link = link
-        if request.endpoint in ("share_landing", "share_auth", "share_logout"):
+        if request.endpoint in ("share_landing", "share_auth", "share_logout") + PWA_LINK_ENDPOINTS:
             return
         if not authed(link):
             return redirect(url_for("share_landing", token=token))
@@ -369,6 +375,65 @@ def create_share_app(opt, load_shares, share_roots, data_dir):
     @app.route("/healthz")
     def healthz():
         return "ok", 200, {"Content-Type": "text/plain"}
+
+    # ── installable app (PWA) ───────────────────────────────────────────────
+    # Chrome/Android offers "Install app" once a page links a manifest and
+    # registers a service worker. The portal ("/") installs as "Simple NAS";
+    # every link installs on its own, named after the link, starting on it.
+    # Chrome fetches the manifest without cookies, so manifest and worker
+    # are outside the login check - they only reveal the link name, which
+    # the unlock page shows anyway, and only for a valid token.
+    def pwa_manifest(name, short, start):
+        body = {
+            "name": name,
+            "short_name": short,
+            "id": start,
+            "start_url": start,
+            "scope": start,
+            "display": "standalone",
+            "background_color": "#03a9f4",
+            "theme_color": "#03a9f4",
+            "icons": [
+                {"src": url_for("share_app_icon", size=192), "sizes": "192x192",
+                 "type": "image/png", "purpose": "any maskable"},
+                {"src": url_for("share_app_icon", size=512), "sizes": "512x512",
+                 "type": "image/png", "purpose": "any maskable"},
+            ],
+        }
+        resp = jsonify(body)
+        resp.mimetype = "application/manifest+json"
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+    def pwa_worker():
+        resp = make_response(send_file(os.path.join(PWA_DIR, "sw.js"), mimetype="application/javascript"))
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+    @app.route("/manifest.webmanifest")
+    def share_manifest_root():
+        return pwa_manifest("Simple NAS", "Simple NAS", "/")
+
+    @app.route("/sw.js")
+    def share_sw_root():
+        return pwa_worker()
+
+    @app.route("/app-icon-<int:size>.png")
+    def share_app_icon(size):
+        if size not in (192, 512):
+            abort(404)
+        resp = make_response(send_file(os.path.join(PWA_DIR, f"app-icon-{size}.png"), mimetype="image/png"))
+        resp.headers["Cache-Control"] = "public, max-age=604800"
+        return resp
+
+    @app.route("/s/<token>/manifest.webmanifest")
+    def share_manifest(token):
+        name = (g.link.get("name") or "Simple NAS").strip() or "Simple NAS"
+        return pwa_manifest(name, name[:12], url_for("share_landing", token=token))
+
+    @app.route("/s/<token>/sw.js")
+    def share_sw(token):
+        return pwa_worker()
 
     def fail(key, limit_window):
         """Record an auth failure; when the window is full, lock the key with

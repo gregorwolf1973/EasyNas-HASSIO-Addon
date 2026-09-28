@@ -450,3 +450,51 @@ class CloudflareIpTest(Base):
         for _ in range(ratelimit.REQ_PER_IP[0]):
             self.c.get("/healthz", headers={"CF-Connecting-IP": "1.1.1.1"}, environ_base={"REMOTE_ADDR": "192.168.1.50"})
         self.assertEqual(self.c.get("/healthz", headers={"CF-Connecting-IP": "9.9.9.9"}, environ_base={"REMOTE_ADDR": "192.168.1.50"}).status_code, 429)
+
+
+class PwaTest(Base):
+    """Die Freigabe-Seite ist als App installierbar (Android: Icon auf dem Startbildschirm)."""
+
+    def test_portal_manifest_worker_and_icons(self):
+        r = self.c.get("/manifest.webmanifest")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.mimetype, "application/manifest+json")
+        m = r.get_json(force=True)
+        self.assertEqual((m["start_url"], m["scope"], m["display"]), ("/", "/", "standalone"))
+        self.assertEqual({i["sizes"] for i in m["icons"]}, {"192x192", "512x512"})
+        for icon in m["icons"]:
+            ir = self.c.get(icon["src"])
+            self.assertEqual((ir.status_code, ir.mimetype), (200, "image/png"))
+            self.assertTrue(ir.get_data().startswith(b"\x89PNG"))
+        sw = self.c.get("/sw.js")
+        self.assertEqual((sw.status_code, sw.mimetype), (200, "application/javascript"))
+        self.assertEqual(self.c.get("/app-icon-64.png").status_code, 404)
+        html = self.c.get("/").get_data(as_text=True)
+        self.assertIn('rel="manifest" href="/manifest.webmanifest"', html)
+        self.assertIn("serviceWorker", html)
+
+    def test_link_manifest_named_after_link_and_scoped_to_it(self):
+        l = self.link(name="Urlaub 2026")
+        tok = l["token"]
+        m = self.c.get(f"/s/{tok}/manifest.webmanifest").get_json(force=True)
+        self.assertEqual(m["name"], "Urlaub 2026")
+        self.assertEqual(m["start_url"], f"/s/{tok}/")
+        self.assertEqual(m["scope"], f"/s/{tok}/")
+        self.assertEqual(self.c.get(f"/s/{tok}/sw.js").status_code, 200)
+        html = self.c.get(f"/s/{tok}/").get_data(as_text=True)
+        self.assertIn(f'href="/s/{tok}/manifest.webmanifest"', html)
+
+    def test_manifest_of_protected_link_works_without_login(self):
+        # Chrome laedt das Manifest ohne Cookies - es muss trotzdem kommen,
+        # die Dateien selbst bleiben gesperrt.
+        l = self.link(access="password", password="geheim123")
+        tok = l["token"]
+        self.assertEqual(self.c.get(f"/s/{tok}/manifest.webmanifest").status_code, 200)
+        self.assertEqual(self.c.get(f"/s/{tok}/sw.js").status_code, 200)
+        self.assertEqual(self.c.get(f"/s/{tok}/d/a.jpg").status_code, 302)
+
+    def test_unknown_or_disabled_link_gets_no_manifest(self):
+        self.assertEqual(self.c.get(f"/s/{ss.new_token()}/manifest.webmanifest").status_code, 404)
+        dead = self.link(enabled=False)
+        self.assertEqual(self.c.get(f"/s/{dead['token']}/manifest.webmanifest").status_code, 404)
+        self.assertEqual(self.c.get(f"/s/{dead['token']}/sw.js").status_code, 404)

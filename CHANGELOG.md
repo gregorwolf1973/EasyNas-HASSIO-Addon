@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.9.6
+- **Freigabe-Seite als App installierbar (Icon auf dem Android-Startbildschirm).** Die Freigabe-Seite ist jetzt eine installierbare Web-App: In Chrome auf Android erscheint im Menue **App installieren** bzw. **Zum Startbildschirm hinzufuegen**. Jeder Link wird als eigene App mit seinem Namen installiert und startet direkt auf dem Link; die Portal-Seite `/` wird als "Simple NAS" installiert und fuehrt zu "Meine Freigaben". Die App oeffnet ohne Browserleiste.
+- Neue Endpunkte: `/manifest.webmanifest`, `/sw.js`, `/app-icon-192.png`, `/app-icon-512.png` sowie je Link `/s/<token>/manifest.webmanifest` und `/s/<token>/sw.js`. Manifest und Service Worker sind ohne Anmeldung abrufbar (Chrome laedt das Manifest ohne Cookies), liefern aber nur den Link-Namen, den die Entsperrseite ohnehin zeigt - und nur fuer gueltige Links; alles andere bleibt 404. Die Dateien selbst bleiben hinter der Anmeldung.
+- Der Service Worker speichert nichts zwischen. Er faengt nur Seitenaufrufe ab, um ohne Verbindung eine Meldung statt der Browser-Fehlerseite zu zeigen; Uploads, Downloads, ZIP, Vorschau und Editor laufen unberuehrt am Service Worker vorbei.
+- Funktioniert nur ueber HTTPS.
+
 ## 3.9.5
 - **Fix: Grosse Dateien liessen sich im Dateimanager nicht hochladen.** Jede Datei ging in einer einzigen Anfrage hoch. Hinter Cloudflare (kostenloser Tarif) wird eine Anfrage ueber 100 MB abgewiesen, bevor sie Home Assistant erreicht - im Addon-Log stand nichts, und die Seite zeigte waehrend des Hochladens nichts an, auch keinen Fehler. Jetzt geht jede Datei in Stuecken zu 8 MB hoch, mit Fortschrittsbalken (Prozent und MB) und Wiederholung bei kurzen Verbindungsabbruechen. Die Teile sammeln sich als `.upload-*.part` im Zielordner und werden am Ende umbenannt; eine vorhandene Datei wird nie ueberschrieben. Fehler bleiben 10 Sekunden stehen und nennen bei einer Proxy-Fehlerseite den HTTP-Status statt eines JSON-Fehlers. Waehrend ein Upload laeuft, fragt der Browser beim Verlassen der Seite nach.
 - **Fix: Ordnerauswahl mit einer Datei als Pfad.** `/api/browse` antwortete mit einem Absturz (500, Traceback im Log), wenn der Pfad auf eine Datei zeigte. Jetzt kommt eine klare Meldung (400).

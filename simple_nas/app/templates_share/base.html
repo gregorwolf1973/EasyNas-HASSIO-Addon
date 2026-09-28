@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>{% block title %}{{ L.title }}{% endblock %} · Simple NAS</title>
+{% set pwa_base = url_for('share_landing', token=token) if token is defined and token else '/' %}
+<link rel="manifest" href="{{ pwa_base }}manifest.webmanifest">
+<meta name="theme-color" content="#03a9f4">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="{{ link.name if link is defined and link else 'Simple NAS' }}">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('share_app_icon', size=192) }}">
+<link rel="apple-touch-icon" href="{{ url_for('share_app_icon', size=192) }}">
 <script>
   // Before the first paint, so a chosen theme never flashes the other one.
   try { var th = localStorage.getItem('nas-share-theme'); if (th === 'dark' || th === 'light') document.documentElement.setAttribute('data-theme', th); } catch (e) {}
@@ -84,6 +92,12 @@
   })();
 </script>
 {% block body %}{% endblock %}
+<script>
+  // Installierbar als App (Android: Menue -> "App installieren" / "Zum Startbildschirm").
+  if ('serviceWorker' in navigator && window.isSecureContext) {
+    navigator.serviceWorker.register('{{ pwa_base }}sw.js', { scope: '{{ pwa_base }}' }).catch(function(){});
+  }
+</script>
 <div class="foot">
   <span>{{ L.shared_by }}</span>
   <span><a href="{{ url_for('share_lang', code='de') }}">DE</a> · <a href="{{ url_for('share_lang', code='en') }}">EN</a></span>
