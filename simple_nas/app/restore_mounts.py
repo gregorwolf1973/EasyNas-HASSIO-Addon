@@ -7,8 +7,8 @@ MOUNT_FIFO   = "/tmp/mount_cmd"
 MOUNT_RESULT = "/tmp/mount_result"
 
 # Retry settings for USB devices that aren't ready immediately at boot
-MOUNT_RETRIES   = 5
-MOUNT_RETRY_DELAY = 3  # seconds between retries
+MOUNT_RETRIES   = 24
+MOUNT_RETRY_DELAY = 5  # seconds between retries (USB disks: up to ~2 min)
 
 def helper_call(action, arg1="", arg2="", arg3="", timeout=15):
     try:
@@ -59,7 +59,9 @@ for m in mounts:
         if rc == 0:
             break
         # USB devices may not be ready immediately at boot — retry
-        if "Can't open blockdev" in out or "No such file or directory" in out:
+        # (the helper reports a missing device in German: "kein Block-Device")
+        if ("Can't open blockdev" in out or "No such file or directory" in out
+                or "kein Block-Device" in out):
             if attempt < MOUNT_RETRIES:
                 print(f"Mount attempt {attempt}/{MOUNT_RETRIES} failed for {device} "
                       f"(device not ready yet), retrying in {MOUNT_RETRY_DELAY}s…")

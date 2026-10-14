@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.10.3
+- **SMART nur noch auf Anforderung.** Die Uebersicht fragt SMART nicht mehr beim Laden und alle 5 Minuten fuer alle Platten ab, sondern nur noch per Knopf **Aktualisieren** bzw. beim Oeffnen des SMART-Dialogs. Ergebnisse werden 30 Minuten zwischengespeichert, es laeuft immer nur eine Abfrage gleichzeitig, und eine Platte, die gerade arbeitet, wird nicht abgefragt (Meldung "Platte arbeitet gerade"). Hintergrund: ATA-Pass-Through-Befehle waehrend Schreiblast koennen USB-SATA-Bridges (z. B. ASMedia) haengen lassen und USB-Resets ausloesen.
+- **Keine herstellerspezifischen USB-Bridge-Modi mehr.** smartctl versucht nur noch die automatische Erkennung und `-d sat`. Die Modi `scsi`, `usbjmicron`, `usbprolific` und `usbsunplus` senden auf nicht passenden Bridges Fremdbefehle und wurden entfernt. Bei einem Timeout wird die Platte nicht weiter befragt. Der Exit-Status wird jetzt als Bitmaske ausgewertet (nur Aufruf- oder Oeffnen-Fehler zaehlen als Fehlschlag). zram, loop und ram werden nicht mehr abgefragt.
+- **"Samba neu starten" bricht keine laufenden Uebertragungen mehr ungefragt ab.** Sind Dateien geoeffnet (z. B. ein laufendes HA-Backup auf die Freigabe), fragt die Oberflaeche erst nach. Samba wird sanft beendet (SIGTERM, bis zu 10 s warten) statt mit `kill -9`.
+- **ext4 wird mit `noatime,errors=remount-ro` eingehaengt.** Kein Schreibzugriff mehr bei jedem Lesen; bei einem Dateisystemfehler wird das Dateisystem schreibgeschuetzt, statt still weiterzuschreiben (ext4-Standard war `errors=continue`). Gilt ab dem naechsten Einhaengen.
+- **Statusdatei der Freigabe-Sperren** (`share_locks.json`) wird nur noch bei Aenderungen (spaetestens jede Minute) und ohne `fsync` geschrieben statt alle 2 Sekunden mit erzwungenem Schreiben auf die Systemplatte.
+- **Einhaengen beim Start wartet laenger auf USB-Platten.** Der Wiederholversuch erkennt jetzt auch die Meldung "kein Block-Device" und wartet bis zu ca. 2 Minuten (24 x 5 s) statt 15 Sekunden; bisher war der erste Fehlschlag endgueltig.
+
 ## 3.10.2
 - **Unterbrochene externe Backups laufen nach einem Neustart weiter.** Wird ein Backup durch einen Neustart von Home Assistant oder ein Update des Add-ons abgeschnitten, reiht Simple NAS es beim naechsten Start (nach 2 Minuten) automatisch wieder ein. restic und rclone ueberspringen dabei, was schon beim Anbieter liegt. Bisher galt der geplante Termin als erledigt - ein woechentlicher Job waere erst eine Woche spaeter weitergelaufen. Selbst abgebrochene Laeufe werden nicht wieder aufgenommen.
 

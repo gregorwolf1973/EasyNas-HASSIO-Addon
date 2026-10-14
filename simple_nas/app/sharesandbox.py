@@ -77,12 +77,13 @@ SANDBOX_OPT_KEYS = (
 )
 
 
-def _atomic_write(path, obj):
+def _atomic_write(path, obj, fsync=True):
     tmp = f"{path}.tmp.{os.getpid()}"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(obj, f)
-        f.flush()
-        os.fsync(f.fileno())
+        if fsync:
+            f.flush()
+            os.fsync(f.fileno())
     os.replace(tmp, path)
 
 
@@ -98,12 +99,24 @@ def read_options(data_dir):
         return {}
 
 
+_last_snapshot = {"body": None, "ts": 0.0}
+SNAPSHOT_REFRESH_S = 60    # rewrite unchanged state at most this often
+
+
 def write_snapshot(data_dir, snap):
-    """Worker: publish {ts, locks, counters, link_locked} for the admin card."""
+    """Worker: publish {ts, locks, counters, link_locked} for the admin card.
+    Called every 2 s, but only written when the state changed (or once a
+    minute) and without fsync: the state is volatile and rebuilt on restart,
+    so it is not worth a forced disk write every 2 seconds."""
+    body = json.dumps(snap, sort_keys=True, default=str)
+    now = time.time()
+    if body == _last_snapshot["body"] and now - _last_snapshot["ts"] < SNAPSHOT_REFRESH_S:
+        return
     snap = dict(snap)
-    snap["ts"] = round(time.time(), 3)
+    snap["ts"] = round(now, 3)
     try:
-        _atomic_write(_p(data_dir, SNAPSHOT_FILE), snap)
+        _atomic_write(_p(data_dir, SNAPSHOT_FILE), snap, fsync=False)
+        _last_snapshot["body"], _last_snapshot["ts"] = body, now
     except OSError:
         pass
 

@@ -506,9 +506,9 @@
         </div>
         <div class="stat-foot"><button class="btn btn-ghost btn-sm" style="width:100%;" onclick="restartSamba()" data-i18n="samba_restart">Samba neu starten</button></div>
       </div>
-      <div class="stat-card" id="smart-card" style="display:none">
+      <div class="stat-card" id="smart-card">
         <div class="stat-label" data-i18n="stat_smart">Laufwerks-Gesundheit (SMART)</div>
-        <div class="stat-body" id="smart-card-body"></div>
+        <div class="stat-body" id="smart-card-body"><div style="color:var(--text-dim);font-size:12px;padding:4px" data-i18n="smart_on_demand">SMART-Werte werden nur auf Anforderung abgefragt.</div></div>
         <div class="stat-foot"><button class="btn btn-ghost btn-sm" style="width:100%;" onclick="loadOverviewSmart(true)" data-i18n="smart_refresh">Aktualisieren</button></div>
       </div>
     </div>
@@ -1292,13 +1292,13 @@ const T={
     err_label:'Fehler: ',btn_start:'▶ Starten',btn_running:'Läuft…',keep_label:'Behalten: ',
     err_fill_all:'Alle Felder ausfüllen',backup_updated:'Backup-Job aktualisiert',backup_created:'Backup-Job erstellt',
     backup_started:'Backup gestartet',confirm_del_backup:'Backup-Job löschen?',
-    samba_restarted:'Samba neu gestartet',mounted_ok:'Eingehängt: {m}',unmounted_ok:'Ausgehängt',
+    samba_restarted:'Samba neu gestartet',samba_restart_open_files:'Es sind Dateien geöffnet (z. B. ein laufendes Backup). Ein Neustart bricht diese Übertragungen ab. Trotzdem neu starten?',mounted_ok:'Eingehängt: {m}',unmounted_ok:'Ausgehängt',
     deleted:'Gelöscht',title_edit:'Bearbeiten',title_delete:'Löschen',title_rename:'Umbenennen',
     title_copy:'Kopieren',title_move:'Verschieben',date_locale:'de-DE',logout_title:'Abmelden',
     dblclick_open:'Doppelklick zum Öffnen',
     // SMART
     btn_smart_title:'SMART-Werte anzeigen',modal_smart_title:'SMART-Status',modal_close:'Schließen',
-    stat_smart:'Laufwerks-Gesundheit',smart_refresh:'Aktualisieren',
+    stat_smart:'Laufwerks-Gesundheit',smart_refresh:'Aktualisieren',smart_on_demand:'SMART-Werte werden nur auf Anforderung abgefragt.',
     smart_passed_short:'OK',smart_failed_short:'FEHLER',smart_n_a:'k. A.',
     protection_title:'⚠ Gesicherter Modus aktiv',
     protection_body:'Der Schutzmodus des Add-ons ist in Home Assistant aktiviert. Ohne erweiterte Rechte können keine Laufwerke gemountet, formatiert oder verwaltet werden. Bitte in den Add-on-Informationen den „Schutzmodus" deaktivieren und das Add-on neu starten.',
@@ -1451,7 +1451,7 @@ const T={
     err_label:'Error: ',btn_start:'▶ Start',btn_running:'Running…',keep_label:'Keep: ',
     err_fill_all:'Please fill in all fields',backup_updated:'Backup job updated',backup_created:'Backup job created',
     backup_started:'Backup started',confirm_del_backup:'Delete backup job?',
-    samba_restarted:'Samba restarted',mounted_ok:'Mounted: {m}',unmounted_ok:'Unmounted',
+    samba_restarted:'Samba restarted',samba_restart_open_files:'Files are open (e.g. a running backup). A restart aborts these transfers. Restart anyway?',mounted_ok:'Mounted: {m}',unmounted_ok:'Unmounted',
     deleted:'Deleted',title_edit:'Edit',title_delete:'Delete',title_rename:'Rename',
     title_copy:'Copy',title_move:'Move',date_locale:'en-US',logout_title:'Logout',
     dblclick_open:'Double-click to open',
@@ -1460,7 +1460,7 @@ const T={
     smart_unavailable:'SMART data not available',
     smart_unavailable_hint:'Some USB enclosures do not forward SMART commands. Internal drives work reliably.',
     smart_passed:'PASSED',smart_failed:'FAILED',
-    stat_smart:'Drive health',smart_refresh:'Refresh',
+    stat_smart:'Drive health',smart_refresh:'Refresh',smart_on_demand:'SMART values are only queried on request.',
     smart_passed_short:'OK',smart_failed_short:'FAILED',smart_n_a:'n/a',
     protection_title:'⚠ Protection mode is active',
     protection_body:'The add-on protection mode is enabled in Home Assistant. Without elevated privileges, drives cannot be mounted, formatted or managed. Please disable "Protection mode" on the add-on info page and restart the add-on.',
@@ -1506,7 +1506,7 @@ function toggleLang(){
   // Re-render dynamic JS-built content so it picks up the new language
   const active=document.querySelector('nav button.active');
   const tab=active?active.id.replace('tab-',''):'overview';
-  if(tab==='overview'){loadStatus();loadDrives();loadOverviewSmart();}
+  if(tab==='overview'){loadStatus();loadDrives();}
   else if(tab==='drives')loadDrives();
   else if(tab==='shares')loadShares();
   else if(tab==='sharing')loadSharing();
@@ -1574,7 +1574,7 @@ try{
   const bd=document.getElementById('bar-disk');bd.style.width=d.percent+'%';bd.className='progress-bar-fill'+(d.percent>85?' danger':d.percent>65?' warn':'');
   const pb=document.getElementById('protection-banner');if(pb)pb.style.display=s.protection_mode?'block':'none';
 }catch(e){console.error(e);}}
-async function restartSamba(){try{await api('POST','/samba/restart');toast(t('samba_restarted'));setTimeout(loadStatus,2000);}catch(e){toast(e.message,true);}}
+async function restartSamba(force){try{await api('POST','/samba/restart'+(force?'?force=1':''));toast(t('samba_restarted'));setTimeout(loadStatus,2000);}catch(e){if(e.status===409&&e.data&&e.data.error==='open_files'&&!force){if(confirm(tRaw('samba_restart_open_files')))return restartSamba(true);return;}toast(e.message,true);}}
 
 // ── Overview SMART summary ──
 let _overviewSmartCache = null;       // {ts, html} — 5 min TTL
@@ -1595,11 +1595,11 @@ async function loadOverviewSmart(forceRefresh){
     const drives = await api('GET','/drives');
     // Only physical disks (not partitions)
     const disks = drives.filter(d => d.type==='disk');
-    if(!disks.length){ card.style.display='none'; return; }
+    if(!disks.length){ body.innerHTML='<div style="color:var(--text-dim);font-size:12px;padding:4px">'+t('smart_n_a')+'</div>'; return; }
     const results = [];
     for(const d of disks){
       try{
-        const s = await api('GET','/drives/'+encodeURIComponent(d.name)+'/smart');
+        const s = await api('GET','/drives/'+encodeURIComponent(d.name)+'/smart'+(forceRefresh?'?force=1':''));
         results.push({disk:d, smart:s});
       }catch(e){
         results.push({disk:d, smart:{error:e.message}});
@@ -1608,7 +1608,7 @@ async function loadOverviewSmart(forceRefresh){
     // Only show card if at least one disk returned SMART data
     const usable = results.filter(r => r.smart && (r.smart.passed!==undefined || r.smart.attributes?.length));
     if(!usable.length){
-      card.style.display='none';
+      body.innerHTML='<div style="color:var(--text-dim);font-size:12px;padding:4px">'+(results.map(r=>r.smart&&r.smart.error).filter(Boolean)[0]||t('smart_n_a'))+'</div>';
       _overviewSmartCache = {ts:Date.now(), html:''};
       return;
     }
@@ -3234,7 +3234,7 @@ async function rbDoRestore(){
 // ── Init ──
 window.addEventListener('click',e=>{if(e.target.classList.contains('modal-overlay')){e.target.classList.remove('open');_browserSelected=null;}});
 applyLang();
-(async()=>{await loadStatus();loadOverviewSmart();try{const s=await api('GET','/shares');renderOverviewShares(s);}catch(e){}setInterval(loadStatus,10000);setInterval(()=>loadOverviewSmart(),5*60*1000);})();
+(async()=>{await loadStatus();try{const s=await api('GET','/shares');renderOverviewShares(s);}catch(e){}setInterval(loadStatus,10000);})();
 </script>
 </body>
 </html>

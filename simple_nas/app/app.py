@@ -648,34 +648,54 @@ def api_drives():
 
 
 def _run_smartctl(dev_path):
-    """Run smartctl with several fallback modes for USB bridges.
+    """Run smartctl: auto-detection first, then plain SAT.
+    Vendor modes (usbjmicron/usbprolific/usbsunplus) are deliberately not
+    tried: on a non-matching bridge (e.g. ASMedia) their vendor commands can
+    wedge the bridge and trigger UAS resets. smartctl auto-detects the
+    common bridges as SAT anyway.
     Returns the parsed JSON dict (smartctl --json always emits valid JSON
     even on error, with smartctl.exit_status describing the issue)."""
     attempts = [
         ["smartctl", "--json", "-a", dev_path],
         ["smartctl", "--json", "-a", "-d", "sat", dev_path],
-        ["smartctl", "--json", "-a", "-d", "scsi", dev_path],
-        ["smartctl", "--json", "-a", "-d", "usbjmicron", dev_path],
-        ["smartctl", "--json", "-a", "-d", "usbprolific", dev_path],
-        ["smartctl", "--json", "-a", "-d", "usbsunplus", dev_path],
     ]
     last = None
     for cmd in attempts:
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             data = json.loads(r.stdout) if r.stdout else {}
             last = data
-            # exit_status bits: 0=ok, 1=cmdline err, 2=device open failed,
-            # 3=some smart cmd failed, etc. 0,4,64,128 are "device responded".
+            # exit_status is a bit mask: bit 0 = command line error,
+            # bit 1 = device open failed / not responding. All higher bits
+            # (SMART threshold exceeded, error log entries ...) still mean
+            # the device answered, so the data is valid.
             status = data.get("smartctl", {}).get("exit_status", -1)
-            if status in (0, 4, 64, 128):
+            if isinstance(status, int) and status >= 0 and (status & 0x03) == 0:
                 data["_smartctl_cmd"] = " ".join(cmd)
                 return data
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError) as e:
+        except subprocess.TimeoutExpired:
+            # The drive does not answer - do not hammer it with more commands
+            return {"error": "smartctl timeout", "_smartctl_cmd": " ".join(cmd)}
+        except (json.JSONDecodeError, FileNotFoundError) as e:
             last = {"error": str(e)}
     if isinstance(last, dict):
         last["_smartctl_cmd"] = "(all attempts failed)"
     return last or {"error": "smartctl failed"}
+
+
+# One smartctl at a time, results cached per disk (SMART only on request)
+_SMART_LOCK = threading.Lock()
+_SMART_CACHE = {}          # disk name -> (timestamp, summary)
+_SMART_CACHE_TTL = 1800    # seconds
+
+
+def _disk_busy(disk):
+    """True if the block device has requests in flight right now."""
+    try:
+        with open(f"/sys/block/{disk}/inflight") as f:
+            return sum(int(x) for x in f.read().split()) > 0
+    except (OSError, ValueError):
+        return False
 
 
 def _smart_summary(data):
@@ -748,10 +768,26 @@ def api_drive_smart(name):
         # strip trailing digits (sdb1 -> sdb, nvme0n1p1 -> nvme0n1)
         import re
         parent = re.sub(r"(p?\d+)$", "", name)
-    dev_path = f"/dev/{parent}"
-    raw = _run_smartctl(dev_path)
+    if parent.startswith(("zram", "loop", "ram")):
+        return jsonify({"error": "kein SMART für virtuelle Geräte"}), 400
+    hit = _SMART_CACHE.get(parent)
+    if hit and time.time() - hit[0] < _SMART_CACHE_TTL and not request.args.get("force"):
+        return jsonify(hit[1])
+    # ATA pass-through while the bridge is busy writing is what wedges
+    # USB bridges - wait until the disk is idle.
+    if _disk_busy(parent):
+        return jsonify({"error": "Platte arbeitet gerade – SMART später erneut abfragen"}), 409
+    if not _SMART_LOCK.acquire(blocking=False):
+        return jsonify({"error": "SMART-Abfrage läuft bereits"}), 429
+    try:
+        dev_path = f"/dev/{parent}"
+        raw = _run_smartctl(dev_path)
+    finally:
+        _SMART_LOCK.release()
     summary = _smart_summary(raw)
     summary["queried_device"] = dev_path
+    if "error" not in raw:
+        _SMART_CACHE[parent] = (time.time(), summary)
     return jsonify(summary)
 
 
@@ -1423,13 +1459,30 @@ def api_status():
 @app.route("/api/samba/restart", methods=["POST"])
 def api_restart_samba():
     import time
+    import psutil
     try:
+        # Open files (e.g. a running HA backup written via the share) would be
+        # cut off by the restart - ask the user first unless forced.
+        if not request.args.get("force"):
+            r = subprocess.run(["smbstatus", "-L"], capture_output=True, text=True, timeout=10)
+            if r.returncode == 0 and "No locked files" not in r.stdout:
+                return jsonify({"error": "open_files",
+                                "detail": "Dateien sind geöffnet (z. B. laufendes Backup)"}), 409
+
         # Regenerate smb.conf
         reload_samba()
 
-        # Kill existing
-        subprocess.run(["pkill", "-9", "smbd"], check=False)
-        subprocess.run(["pkill", "-9", "nmbd"], check=False)
+        # Stop gracefully so clients get a clean disconnect; SIGKILL only
+        # for processes that are still there after 10 s.
+        subprocess.run(["pkill", "-TERM", "smbd"], check=False)
+        subprocess.run(["pkill", "-TERM", "nmbd"], check=False)
+        deadline = time.time() + 10
+        while time.time() < deadline and any(
+                (p.info["name"] or "") in ("smbd", "nmbd")
+                for p in psutil.process_iter(["name"])):
+            time.sleep(0.5)
+        subprocess.run(["pkill", "-KILL", "smbd"], check=False)
+        subprocess.run(["pkill", "-KILL", "nmbd"], check=False)
         time.sleep(1)
 
         # Start fresh - use simple flags, redirect output to log
@@ -1442,7 +1495,6 @@ def api_restart_samba():
         time.sleep(2)
 
         # Verify
-        import psutil
         smbd_ok = any("smbd" in (p.name() or "") for p in psutil.process_iter(["name"]))
         nmbd_ok = any("nmbd" in (p.name() or "") for p in psutil.process_iter(["name"]))
 

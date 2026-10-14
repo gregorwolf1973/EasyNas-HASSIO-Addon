@@ -54,6 +54,13 @@ mount_fs() {
                 _RC=$?
             fi
             ;;
+        ext2|ext3|ext4)
+            # noatime: no metadata write on every read.
+            # errors=remount-ro: on a filesystem error go read-only instead
+            # of silently writing on (the ext4 default is errors=continue).
+            _OUT=$(do_mount -t "$_FS" -o noatime,errors=remount-ro "$@" 2>&1)
+            _RC=$?
+            ;;
         *)
             _OUT=$(do_mount -t "$_FS" "$@" 2>&1)
             _RC=$?
