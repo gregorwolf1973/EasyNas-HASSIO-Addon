@@ -490,6 +490,28 @@ class RunTest(_Base):
             self.assertEqual(rb._resume_interrupted(), ["abcd1234"])
         enq.assert_called_once_with("abcd1234", "backup", {"resumed": True})
 
+    def test_check_removes_stale_locks_first(self):
+        # A backup killed by an add-on update left its lock on the box;
+        # without unlock every check failed with exit 11 until the next backup.
+        rb._update_job("abcd1234", initialized=True)
+        order = []
+        results = {"rclone obscure -": (0, "OBSC\n", "")}
+        run = self.fake_run(results)
+
+        def run_logged(cmd, **kw):
+            order.append(cmd[:2])
+            return run(cmd, **kw)
+
+        def popen(cmd, **kw):
+            order.append(cmd[:2])
+            return _FakeProc(["no errors were found"])
+
+        with mock.patch.object(rb.subprocess, "run", side_effect=run_logged), \
+                mock.patch.object(rb.subprocess, "Popen", side_effect=popen):
+            rb._execute("abcd1234", "check", {})
+        self.assertIn(["restic", "unlock"], order)
+        self.assertLess(order.index(["restic", "unlock"]), order.index(["restic", "check"]))
+
     def test_marker_survives_an_edit(self):
         rb._update_job("abcd1234", running_since="2026-10-14T23:10:00")
         job = rb.normalize(self.hetzner(name="Neu", password=""), rb.get_job("abcd1234"))

@@ -992,6 +992,10 @@ def _do_check(job, log):
     jid = job["id"]
     env = _prepare(job)
     _set(jid, phase="repo")
+    # A backup cut off by a restart leaves its lock behind and `restic check`
+    # needs an exclusive lock - it would fail with exit 11 until the next
+    # backup. `unlock` removes stale locks only, never those of a live run.
+    _quiet(["restic", "unlock"], env)
     rc = _run_proc(jid, ["restic", "check"], env, log)
     _check_cancel(jid)
     if rc != 0:

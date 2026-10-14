@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.10.4
+- **Pruefung eines restic-Archivs scheitert nicht mehr an einer verwaisten Sperre.** Wurde ein Backup durch einen Neustart oder ein Update des Add-ons abgebrochen, blieb seine Sperre im Archiv liegen, und jede Pruefung endete mit "Exit 11: lock was created at ..." - bis zum naechsten Backup. Vor `restic check` laeuft jetzt wie vor jedem Backup `restic unlock`. Das entfernt nur verwaiste Sperren, nie die eines laufenden Backups.
+
 ## 3.10.3
 - **SMART nur noch auf Anforderung.** Die Uebersicht fragt SMART nicht mehr beim Laden und alle 5 Minuten fuer alle Platten ab, sondern nur noch per Knopf **Aktualisieren** bzw. beim Oeffnen des SMART-Dialogs. Ergebnisse werden 30 Minuten zwischengespeichert, es laeuft immer nur eine Abfrage gleichzeitig, und eine Platte, die gerade arbeitet, wird nicht abgefragt (Meldung "Platte arbeitet gerade"). Hintergrund: ATA-Pass-Through-Befehle waehrend Schreiblast koennen USB-SATA-Bridges (z. B. ASMedia) haengen lassen und USB-Resets ausloesen.
 - **Keine herstellerspezifischen USB-Bridge-Modi mehr.** smartctl versucht nur noch die automatische Erkennung und `-d sat`. Die Modi `scsi`, `usbjmicron`, `usbprolific` und `usbsunplus` senden auf nicht passenden Bridges Fremdbefehle und wurden entfernt. Bei einem Timeout wird die Platte nicht weiter befragt. Der Exit-Status wird jetzt als Bitmaske ausgewertet (nur Aufruf- oder Oeffnen-Fehler zaehlen als Fehlschlag). zram, loop und ram werden nicht mehr abgefragt.
