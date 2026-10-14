@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.10.1
+- **Fix: Hetzner Storage Box meldete "unable to authenticate, attempted methods [none]".** Das Add-on nutzte fest Port 23, der bei Hetzner nur mit eingeschaltetem "SSH-Support" antwortet. Jetzt ist Port 22 (reines SFTP, funktioniert immer) der Standard; Port 23 ist im Job waehlbar. Bestehende Hetzner-Jobs nutzen automatisch Port 22.
+- **Verstaendliche Fehlermeldungen.** Statt der rohen rclone/restic-Ausgabe steht vorne ein Hinweis in Klartext (Anmeldung abgelehnt, Server nicht gefunden, Zeitueberschreitung, Bucket fehlt, falsches Archiv-Passwort ...), die Details dahinter. Der rclone-Hinweis zur Host-Key-Pruefung wird nicht mehr mit ausgegeben.
+- **"Pruefen" erst nach dem ersten Backup.** Der Knopf erscheint erst, wenn ein Archiv existiert; vorher sagt der Server, dass zuerst gesichert werden muss.
+
 ## 3.10.0
 - **Externe Backups mit restic oder rclone.** Neuer Bereich im Backup-Tab: `/share`, `/media` oder beliebige Ordner werden auf eine Hetzner Storage Box, zu S3 (Hetzner Object Storage, Wasabi, AWS, MinIO, Cloudflare R2 ...), Backblaze B2, auf einen SFTP-Server, in eine WebDAV-Cloud (Nextcloud, ownCloud), auf ein anderes NAS per SMB oder auf eine zweite Platte gesichert - oder zu jedem anderen rclone-Anbieter (OneDrive, Google Drive, Dropbox ...) ueber eine eingefuegte rclone-Konfiguration.
 - **Pro Job waehlbar:** restic (verschluesseltes Archiv mit Staenden, ohne Dubletten; Aufbewahrung je Tag/Woche/Monat) oder rclone (Dateien 1:1 beim Anbieter, optional verschluesselt; ersetzte und geloeschte Dateien landen in `.versions/<Datum>/` und werden nach N Tagen geloescht).

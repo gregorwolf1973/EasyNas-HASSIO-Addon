@@ -191,6 +191,24 @@ class ValidationTest(_Base):
         self.assertEqual(job["target"]["password"], " box ")
         self.assertEqual(job["target"]["host"], "u123.your-storagebox.de")
 
+    def test_hetzner_port_choice(self):
+        body = self.hetzner()
+        body["target"]["port"] = "23"
+        self.assertEqual(rb.normalize(body)["target"]["port"], 23)
+        body["target"]["port"] = "2222"
+        with self.assertRaises(rb.JobError):
+            rb.normalize(body)
+
+    def test_error_text_explains_and_drops_noise(self):
+        out = ("NOTICE: t_x: No host key validation is being performed. Set known_hosts_file to enable it.\n"
+               "See: https://rclone.org/sftp/#host-key-validation\n"
+               "CRITICAL: couldn't connect SSH: ssh: handshake failed: ssh: unable to authenticate, "
+               "attempted methods [none], no supported methods remain")
+        msg = rb._tail(out)
+        self.assertTrue(msg.startswith("Anmeldung abgelehnt"), msg)
+        self.assertIn("Port 22", msg)
+        self.assertNotIn("known_hosts", msg)
+
     def test_public_hides_secrets(self):
         job = rb.normalize(self.hetzner())
         job["id"] = "abcd1234"
@@ -213,7 +231,7 @@ class ConfigAndCommandTest(_Base):
         conf = rb.build_rclone_conf(self.job(), obscure=fake_obscure)
         self.assertIn("[t_abcd1234]", conf)
         self.assertIn("type = sftp", conf)
-        self.assertIn("port = 23", conf)
+        self.assertIn("port = 22", conf)          # plain SFTP, works without "SSH support"
         self.assertIn("pass = OBSC(boxpass)", conf)
         self.assertNotIn("crypt", conf)
 

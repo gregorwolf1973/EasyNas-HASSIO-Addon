@@ -348,10 +348,10 @@ Both reach the provider through rclone; a local folder is handed to them directl
 
 ### Example: Hetzner Storage Box
 
-1. In the Hetzner Console open the Storage Box and enable **SSH support**. Note server (`u123456.your-storagebox.de`) and user (`u123456`, or a sub-account like `u123456-sub1`).
+1. In the Hetzner Console open the Storage Box and note server (`u123456.your-storagebox.de`) and user (`u123456`, or a sub-account like `u123456-sub1`).
 2. In Simple NAS: **Backup → + New external backup**.
 3. Name, tool **restic**, sources `/share` and `/media` (folder button or type the path).
-4. Provider **Hetzner Storage Box**, server, user, password. Port 23 is used automatically.
+4. Provider **Hetzner Storage Box**, server, user, password. Port 22 (plain SFTP) always works; port 23 only when **SSH support** is switched on for the box.
 5. **Generate** an encryption password and store it in your password manager.
 6. Schedule e.g. daily at 03:00 → **Test connection** → **Save**.
 

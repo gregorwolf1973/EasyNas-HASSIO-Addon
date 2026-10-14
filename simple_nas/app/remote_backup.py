@@ -40,7 +40,7 @@ bp = Blueprint("remote_backup", __name__)
 ENGINES = ("restic", "rclone")
 PROVIDERS = ("hetzner", "sftp", "s3", "b2", "webdav", "smb", "local", "rclone")
 TARGET_FIELDS = {
-    "hetzner": ("host", "user", "password"),
+    "hetzner": ("host", "port", "user", "password"),
     "sftp":    ("host", "port", "user", "password", "key_pem"),
     "s3":      ("s3_provider", "endpoint", "region", "access_key", "secret_key", "bucket"),
     "b2":      ("b2_account", "b2_key", "bucket"),
@@ -270,8 +270,13 @@ def _normalize_target(t, ex_t, sources):
             raise JobError("Server: nur Name oder IP-Adresse, ohne Protokoll und Pfad")
         if not out["user"]:
             raise JobError("Benutzer fehlt")
-    if prov == "hetzner" and not out["password"]:
-        raise JobError("Passwort fehlt")
+    if prov == "hetzner":
+        if not out["password"]:
+            raise JobError("Passwort fehlt")
+        # 22 = plain SFTP, always on; 23 = only with "SSH support" switched on
+        out["port"] = _int(out["port"], "Port", 22, 23, 22)
+        if out["port"] not in (22, 23):
+            raise JobError("Port: 22 oder 23")
     if prov == "sftp":
         out["port"] = _int(out["port"], "Port", 1, 65535, 22)
         if not out["password"] and not out["key_pem"]:
@@ -571,7 +576,7 @@ def build_rclone_conf(job, obscure=_obscure):
     sections = []
     if prov == "hetzner":
         sections.append((name, [("type", "sftp"), ("host", t["host"]), ("user", t["user"]),
-                                ("port", "23"), ("pass", obscure(t["password"]))]))
+                                ("port", str(t.get("port") or 22)), ("pass", obscure(t["password"]))]))
     elif prov == "sftp":
         opts = [("type", "sftp"), ("host", t["host"]), ("user", t["user"]), ("port", str(t.get("port") or 22))]
         if t.get("password"):
@@ -694,9 +699,41 @@ def rclone_sync_cmds(job, ts):
 
 # ─────────────────────────── running ────────────────────────────
 
+# rclone prints this NOTICE on every SFTP connect; it only buries the real error.
+_NOISE_RE = re.compile(r"host key validation|known_hosts_file|#host-key-validation", re.I)
+_EXPLAIN = (
+    (re.compile(r"unable to authenticate|permission denied|auth(entication)? failed|401 unauthorized", re.I),
+     "Anmeldung abgelehnt - Benutzer und Passwort prüfen. Hetzner Storage Box: Port 22 nehmen "
+     "oder für Port 23 in der Hetzner Console \"SSH-Support\" einschalten."),
+    (re.compile(r"connection refused", re.I),
+     "Verbindung abgelehnt - Server oder Port falsch, oder der Zugang ist beim Anbieter nicht freigeschaltet."),
+    (re.compile(r"no such host|name resolution|server misbehaving", re.I),
+     "Server-Name nicht gefunden - Schreibweise prüfen."),
+    (re.compile(r"i/o timeout|timed out|deadline exceeded", re.I),
+     "Zeitüberschreitung - Server, Port oder Firewall prüfen."),
+    (re.compile(r"wrong password or no key found", re.I),
+     "Falsches Archiv-Passwort für das vorhandene Archiv."),
+    (re.compile(r"InvalidAccessKeyId|SignatureDoesNotMatch|AccessDenied|bad_auth_token|unauthorized", re.I),
+     "Zugangsdaten vom Anbieter abgelehnt - Key und Secret prüfen."),
+    (re.compile(r"NoSuchBucket|bucket.{0,40}(not found|does not exist)", re.I),
+     "Bucket nicht gefunden - bitte beim Anbieter anlegen."),
+)
+
+
+def _explain(text):
+    for rx, hint in _EXPLAIN:
+        if rx.search(text or ""):
+            return hint
+    return ""
+
+
 def _tail(text, n=4):
-    lines = [l.strip() for l in (text or "").splitlines() if l.strip()]
-    return " | ".join(lines[-n:])[:600]
+    """Short error text for the UI: a plain-language hint when we know the
+    cause, plus the last meaningful lines of the tool output."""
+    lines = [l.strip() for l in (text or "").splitlines() if l.strip() and not _NOISE_RE.search(l)]
+    detail = " | ".join(lines[-n:])[:500]
+    hint = _explain(text)
+    return f"{hint} (Details: {detail})" if hint and detail else (hint or detail)
 
 
 def _fmt_bytes(n):
@@ -734,7 +771,7 @@ class _Log:
             self.f.flush()
 
     def last(self):
-        return " | ".join(list(self.tail)[-3:])[:600]
+        return _tail("\n".join(self.tail), 3)
 
     def close(self):
         try:
@@ -929,6 +966,8 @@ def _prune_versions(job, env, log):
 def _do_check(job, log):
     if job["engine"] != "restic":
         raise RunError("Prüfen gibt es nur für restic")
+    if not job.get("initialized"):
+        raise RunError("Noch kein Backup vorhanden - erst \"Jetzt sichern\", dann prüfen")
     jid = job["id"]
     env = _prepare(job)
     _set(jid, phase="repo")

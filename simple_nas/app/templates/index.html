@@ -1179,7 +1179,8 @@ const T={
     rb_p_hetzner:'Hetzner Storage Box',rb_p_sftp:'SFTP / eigener Server',rb_p_s3:'S3-kompatibel (Hetzner Object Storage, Wasabi, AWS, MinIO …)',rb_p_b2:'Backblaze B2',
     rb_p_webdav:'WebDAV (Nextcloud, ownCloud …)',rb_p_smb:'SMB / anderes NAS',rb_p_local:'Lokaler Ordner (z. B. zweite USB-Platte)',rb_p_rclone:'Andere: OneDrive, Google Drive, Dropbox … (rclone-Konfiguration)',
     rb_ps_hetzner:'Hetzner',rb_ps_sftp:'SFTP',rb_ps_s3:'S3',rb_ps_b2:'B2',rb_ps_webdav:'WebDAV',rb_ps_smb:'SMB',rb_ps_local:'Lokal',rb_ps_rclone:'rclone',
-    rb_h_hetzner:'In der Hetzner Console bei der Storage Box <b>SSH-Support</b> einschalten. Server und Benutzer stehen dort, z. B. <code>u123456.your-storagebox.de</code> und <code>u123456</code> (oder ein Unterkonto wie <code>u123456-sub1</code>). Port 23 wird automatisch verwendet.',
+    rb_h_hetzner:'Server und Benutzer stehen in der Hetzner Console bei der Storage Box, z. B. <code>u123456.your-storagebox.de</code> und <code>u123456</code> (oder ein Unterkonto wie <code>u123456-sub1</code>). Port 22 funktioniert immer; Port 23 nur, wenn dort <b>SSH-Support</b> eingeschaltet ist.',
+    rb_hport22:'22 – SFTP (funktioniert immer)',rb_hport23:'23 – SSH (nur mit SSH-Support)',
     rb_h_sftp:'Jeder Server mit SSH/SFTP: eigener Server, VPS, Synology/QNAP, Raspberry Pi, rsync.net. Passwort oder privater Schlüssel (OpenSSH/PEM, ohne Passphrase).',
     rb_h_s3:'Den Bucket vorher beim Anbieter anlegen. Endpoint z. B. <code>fsn1.your-objectstorage.com</code> (Hetzner), <code>s3.eu-central-1.wasabisys.com</code> (Wasabi) oder die Adresse deines MinIO-Servers.',
     rb_h_b2:'Bei Backblaze unter <i>Application Keys</i> einen Schlüssel für den Bucket anlegen und Key-ID und Application Key hier eintragen.',
@@ -1337,7 +1338,8 @@ const T={
     rb_p_hetzner:'Hetzner Storage Box',rb_p_sftp:'SFTP / own server',rb_p_s3:'S3-compatible (Hetzner Object Storage, Wasabi, AWS, MinIO …)',rb_p_b2:'Backblaze B2',
     rb_p_webdav:'WebDAV (Nextcloud, ownCloud …)',rb_p_smb:'SMB / another NAS',rb_p_local:'Local folder (e.g. a second USB disk)',rb_p_rclone:'Other: OneDrive, Google Drive, Dropbox … (rclone config)',
     rb_ps_hetzner:'Hetzner',rb_ps_sftp:'SFTP',rb_ps_s3:'S3',rb_ps_b2:'B2',rb_ps_webdav:'WebDAV',rb_ps_smb:'SMB',rb_ps_local:'Local',rb_ps_rclone:'rclone',
-    rb_h_hetzner:'In the Hetzner Console, enable <b>SSH support</b> for the Storage Box. Server and user are shown there, e.g. <code>u123456.your-storagebox.de</code> and <code>u123456</code> (or a sub-account like <code>u123456-sub1</code>). Port 23 is used automatically.',
+    rb_h_hetzner:'Server and user are shown in the Hetzner Console for the Storage Box, e.g. <code>u123456.your-storagebox.de</code> and <code>u123456</code> (or a sub-account like <code>u123456-sub1</code>). Port 22 always works; port 23 only with <b>SSH support</b> switched on.',
+    rb_hport22:'22 – SFTP (always works)',rb_hport23:'23 – SSH (needs SSH support)',
     rb_h_sftp:'Any server with SSH/SFTP: own server, VPS, Synology/QNAP, Raspberry Pi, rsync.net. Password or private key (OpenSSH/PEM, without passphrase).',
     rb_h_s3:'Create the bucket at the provider first. Endpoint e.g. <code>fsn1.your-objectstorage.com</code> (Hetzner), <code>s3.eu-central-1.wasabisys.com</code> (Wasabi) or your MinIO server.',
     rb_h_b2:'In Backblaze, create an <i>Application Key</i> for the bucket and enter key ID and application key here.',
@@ -2955,7 +2957,7 @@ let _rbJobs=[],_rbMeta={},_rbTimer=null,_rbEdit=null,_rbEngine='restic',_rbSrcSe
 const RB_PROVIDERS=['hetzner','sftp','s3','b2','webdav','smb','local','rclone'];
 const RB_SECRET=['password','key_pem','secret_key','b2_key','rclone_conf'];
 const RB_FIELDS={
-  hetzner:[['host','text','u123456.your-storagebox.de'],['user','text','u123456'],['password','password','']],
+  hetzner:[['host','text','u123456.your-storagebox.de'],['port','hport'],['user','text','u123456'],['password','password','']],
   sftp:[['host','text','backup.example.org'],['port','number','22'],['user','text',''],['password','password',''],['key_pem','textarea','-----BEGIN OPENSSH PRIVATE KEY-----']],
   s3:[['s3_provider','select'],['endpoint','text','fsn1.your-objectstorage.com'],['region','text',''],['bucket','text','nas-backup'],['access_key','text',''],['secret_key','password','']],
   b2:[['bucket','text','nas-backup'],['b2_account','text',''],['b2_key','password','']],
@@ -3031,7 +3033,7 @@ async function loadRb(){
                 :'<button class="btn btn-primary btn-sm" onclick="rbRun(\''+id+'\')">'+t('rb_btn_run')+'</button>')
           +'<button class="btn btn-ghost btn-sm" onclick="openRbRestore(\''+id+'\')" '+(busy?'disabled style="opacity:.4"':'')+'>'+t('rb_btn_restore')+'</button>'
           +'<button class="btn btn-ghost btn-sm" onclick="openRbLog(\''+id+'\')">'+t('rb_btn_log')+'</button>'
-          +(j.engine==='restic'?'<button class="btn btn-ghost btn-sm" onclick="rbCheck(\''+id+'\')" '+(busy?'disabled style="opacity:.4"':'')+'>'+t('rb_btn_check')+'</button>':'')
+          +(j.engine==='restic'&&j.initialized?'<button class="btn btn-ghost btn-sm" onclick="rbCheck(\''+id+'\')" '+(busy?'disabled style="opacity:.4"':'')+'>'+t('rb_btn_check')+'</button>':'')
         +'</div></div>';
     }).join('');
     if(_rbLogId&&document.getElementById('modal-rb-log').classList.contains('open')&&_rbJobs.some(j=>j.id===_rbLogId&&j.state))rbLoadLog();
@@ -3065,7 +3067,10 @@ function rbRenderFields(){
     const id='rb-f-'+k,secret=RB_SECRET.includes(k),val=secret?'':(tg[k]!=null?tg[k]:'');
     const pholder=secret&&tg['has_'+k]?t('rb_secret_saved'):(ph||'');
     h+='<div class="form-group"><label>'+t('rb_f_'+k)+'</label>';
-    if(type==='select'){
+    if(type==='hport'){
+      const cur=String(val||22);
+      h+='<select id="'+id+'"><option value="22"'+(cur==='22'?' selected':'')+'>'+t('rb_hport22')+'</option><option value="23"'+(cur==='23'?' selected':'')+'>'+t('rb_hport23')+'</option></select>';
+    }else if(type==='select'){
       const opts=k==='s3_provider'?(_rbMeta.s3_providers||['Other']):(_rbMeta.webdav_vendors||['other']);
       const cur=val||opts[0];
       h+='<select id="'+id+'">'+opts.map(o=>'<option value="'+esc(o)+'"'+(o===cur?' selected':'')+'>'+esc(o==='Other'?t('rb_s3_other'):o)+'</option>').join('')+'</select>';
