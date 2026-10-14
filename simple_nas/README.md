@@ -3,7 +3,7 @@
 A lightweight NAS add-on for Home Assistant OS. Turns your Raspberry Pi (or other HA hardware) into a full-featured network storage with web interface.
 
 ![Architectures](https://img.shields.io/badge/arch-aarch64%20|%20amd64%20|%20armv7-blue)
-![Version](https://img.shields.io/badge/version-3.9.x-green)
+![Version](https://img.shields.io/badge/version-3.10.x-green)
 
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/gregorwolf1973)
 
@@ -20,7 +20,8 @@ A lightweight NAS add-on for Home Assistant OS. Turns your Raspberry Pi (or othe
 - **Protection** against accidental unmounting of system partitions
 - **File manager** – browse, upload, download, copy, move, rename and delete files
 - **Web sharing with Collabora Online** – share links and accounts on a separate, sandboxed site; office files open and (where allowed) save in the browser via Collabora
-- **Backup jobs** – configure source/destination, run manually, auto-clean old backups
+- **External backups** – `/share`, `/media` & co. to a Hetzner Storage Box, S3, Backblaze B2, SFTP, WebDAV, SMB, a second disk or any rclone provider (OneDrive, Google Drive …); choose restic (encrypted, versioned) or rclone (files 1:1); scheduled, with restore in the browser
+- **Backup jobs** – local copies from folder to folder, run manually, auto-clean old backups
 - **Reinstall-safe backup** – settings auto-backed up to `/config/.simplenas/auto`, restored on fresh install
 - **Persistent configuration** – shares, users, groups, mounts and passwords survive restarts
 - **Admin password protection** – optional login screen for the web interface
@@ -145,7 +146,7 @@ Both add-ons use `host_network: true` and bind to the same SMB ports. Set `smb_p
 | **Users & Groups** | Create Samba users, change passwords, manage groups |
 | **Files** | File browser with upload, download, copy, move, rename, delete |
 | **Sharing** | Share links and share accounts for the public sharing site, access log, CrowdSec/ClamAV/Collabora status |
-| **Backup** | Create backup jobs, run manually, auto-delete old backups |
+| **Backup** | External backups (restic / rclone) with schedule and restore, local backup jobs, settings snapshots |
 
 ### Dark/Light Theme
 

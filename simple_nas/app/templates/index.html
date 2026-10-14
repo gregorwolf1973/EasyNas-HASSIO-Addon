@@ -331,6 +331,37 @@
   .chip.active { background: var(--tag-accent-bg); border-color: var(--accent); color: var(--accent); }
   .chip:hover { border-color: var(--accent); }
 
+  /* ── Externe Backups ── */
+  input[type=number], input[type=time] {
+    width: 100%; background: var(--input-bg); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font: inherit; font-size: 13px;
+    padding: 9px 12px; outline: none; transition: border-color .15s;
+  }
+  textarea:focus { border-color: var(--accent); }
+  .rb-engines { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+  .rb-engine { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; cursor: pointer; background: var(--surface2); text-align: left; font: inherit; color: var(--text); }
+  .rb-engine.active { border-color: var(--accent); background: var(--tag-accent-bg); }
+  .rb-engine b { display: block; font-size: 13px; color: var(--text-bright); margin-bottom: 2px; }
+  .rb-engine span { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+  .rb-hint { font-size: 12px; color: var(--text-dim); margin: -4px 0 12px; line-height: 1.45; }
+  .rb-hint code { font-family: monospace; background: var(--surface2); padding: 0 4px; border-radius: 4px; }
+  .rb-hint a { color: var(--accent); }
+  .rb-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .rb-row > .form-group { flex: 1 1 120px; min-width: 0; }
+  .rb-status { font-size: 12px; margin-top: 10px; word-break: break-word; }
+  .rb-ok { color: var(--success); } .rb-warn { color: var(--warn); } .rb-err { color: var(--danger); }
+  .rb-log { white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 11px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; max-height: 60vh; overflow: auto; color: var(--text); }
+  .rb-list { border: 1px solid var(--border); border-radius: 8px; max-height: 280px; overflow-y: auto; }
+  .rb-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--border); }
+  .rb-item:last-child { border-bottom: none; }
+  .rb-item:hover { background: var(--surface2); }
+  .rb-item.selected { background: var(--tag-accent-bg); }
+  .rb-item svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--text-dim); }
+  .rb-item .rb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rb-item .rb-size { font-size: 11px; color: var(--text-dim); }
+  details.rb-adv summary { cursor: pointer; font-size: 12px; color: var(--text-dim); margin: 6px 0 10px; }
+  .rb-section { font-size: 12px; font-weight: 700; color: var(--text-bright); margin: 18px 0 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+
   /* ── File list ── */
   .file-row { display:flex; align-items:center; gap:10px; padding:9px 14px; border-bottom:1px solid var(--border); font-size:13px; color:var(--text); transition:background .1s; }
   .file-row:last-child { border-bottom:none; }
@@ -633,6 +664,13 @@
     <div id="manual-backups-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">
       <div class="empty"><span class="spinner"></span></div>
     </div>
+    <!-- Externe Backups (restic / rclone) -->
+    <div class="section-header" style="margin-top:0">
+      <div><div class="page-title" data-i18n="rb_title">Externe Backups</div><div class="page-sub" data-i18n="rb_sub">Cloud, Server oder zweites Laufwerk – mit restic oder rclone</div></div>
+      <button class="btn btn-primary" onclick="openRbModal()" data-i18n="rb_btn_new">+ Neues externes Backup</button>
+    </div>
+    <div id="rb-tools-warn"></div>
+    <div class="grid" id="rb-grid" style="margin-bottom:24px"><div class="empty" style="grid-column:1/-1"><span class="spinner"></span></div></div>
     <!-- Datei-Backup-Jobs -->
     <div class="section-header" style="margin-top:0">
       <div><div class="page-title" data-i18n="file_backup_title">Datei-Backup-Jobs</div><div class="page-sub" data-i18n="file_backup_sub">Backup-Jobs erstellen und verwalten</div></div>
@@ -781,6 +819,100 @@
     <button class="btn btn-ghost" onclick="closeModal('modal-shareaccount')" data-i18n="modal_cancel">Abbrechen</button>
     <button class="btn btn-primary" onclick="saveShareAccount()" data-i18n="modal_save">Speichern</button>
   </div>
+</div></div>
+
+<!-- ══ MODAL: Externes Backup ══ -->
+<div class="modal-overlay" id="modal-rb"><div class="modal" style="max-width:640px;max-height:92vh;overflow-y:auto;">
+  <div class="modal-title" id="rb-modal-title" data-i18n="rb_modal_new">Neues externes Backup</div>
+  <div class="form-group"><label data-i18n="lbl_name">Name</label><input type="text" id="rb-name" placeholder="Hetzner"></div>
+  <div class="form-group"><label data-i18n="rb_engine">Backup-Programm</label>
+    <div class="rb-engines">
+      <button type="button" class="rb-engine" id="rb-engine-restic" onclick="rbSetEngine('restic')"><b>restic</b><span data-i18n="rb_engine_restic_d">Verschlüsselt, mit Versionen, ohne Dubletten</span></button>
+      <button type="button" class="rb-engine" id="rb-engine-rclone" onclick="rbSetEngine('rclone')"><b>rclone</b><span data-i18n="rb_engine_rclone_d">Dateien 1:1 beim Anbieter</span></button>
+    </div>
+  </div>
+  <div class="form-group"><label data-i18n="rb_sources">Quellen</label>
+    <div id="rb-sources"></div>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="rbAddSource('')" data-i18n="rb_add_source">+ Quelle hinzufügen</button>
+  </div>
+
+  <div class="rb-section" data-i18n="rb_target">Ziel</div>
+  <div class="form-group"><label data-i18n="rb_provider">Anbieter</label><select id="rb-provider" onchange="rbRenderFields()"></select></div>
+  <div id="rb-fields"></div>
+  <div class="form-group"><label data-i18n="rb_remote_path">Ordner auf dem Ziel</label><input type="text" id="rb-remote-path" placeholder="simplenas"></div>
+  <div class="rb-hint" data-i18n="rb_remote_path_hint">Wird angelegt, falls er fehlt.</div>
+
+  <div class="rb-section" data-i18n="rb_security">Verschlüsselung &amp; Aufbewahrung</div>
+  <div id="rb-encrypt-row" class="toggle-row"><div><div class="toggle-label" data-i18n="rb_encrypt">Verschlüsseln</div><div class="toggle-sub" data-i18n="rb_encrypt_sub">Dateinamen und Inhalte werden vor dem Hochladen verschlüsselt</div></div>
+    <label class="toggle" id="rb-encrypt-t"><input type="checkbox" id="rb-encrypt" onchange="updateToggle('rb-encrypt-t',this);rbPwVis()"><div class="toggle-knob"></div></label></div>
+  <div id="rb-pw-block">
+    <div class="form-group"><label data-i18n="rb_password">Verschlüsselungs-Passwort</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><input type="password" id="rb-password" autocomplete="new-password" style="flex:1 1 180px">
+        <button type="button" class="btn btn-ghost" id="rb-pw-gen" onclick="rbGenPw()" data-i18n="rb_pw_gen">Erzeugen</button>
+        <button type="button" class="btn btn-ghost" onclick="rbShowPw()" data-i18n="rb_pw_show">Anzeigen</button></div>
+    </div>
+    <div class="rb-hint" id="rb-pw-locked" style="display:none" data-i18n="rb_pw_locked">Kann nach dem ersten Backup nicht mehr geändert werden.</div>
+    <div class="warn-box"><p data-i18n-html="rb_pw_warn">Ohne dieses Passwort sind die gesicherten Daten verloren.</p></div>
+  </div>
+  <div id="rb-restic-opts">
+    <label data-i18n="rb_retention">Alte Stände behalten</label>
+    <div class="rb-row">
+      <div class="form-group"><label data-i18n="rb_keep_d">Tägliche</label><input type="number" id="rb-keep-d" min="0" max="9999"></div>
+      <div class="form-group"><label data-i18n="rb_keep_w">Wöchentliche</label><input type="number" id="rb-keep-w" min="0" max="9999"></div>
+      <div class="form-group"><label data-i18n="rb_keep_m">Monatliche</label><input type="number" id="rb-keep-m" min="0" max="9999"></div>
+    </div>
+    <div class="rb-hint" data-i18n="rb_retention_hint">Alles 0 = nie löschen.</div>
+  </div>
+  <div id="rb-rclone-opts">
+    <div class="form-group"><label data-i18n="rb_keep_days">Ältere Versionen behalten (Tage)</label><input type="number" id="rb-keep-days" min="0" max="36500"></div>
+    <div class="rb-hint" data-i18n="rb_keep_days_hint">0 = nie löschen.</div>
+  </div>
+
+  <div class="rb-section" data-i18n="rb_schedule">Zeitplan</div>
+  <div class="rb-row">
+    <div class="form-group"><label data-i18n="rb_schedule">Zeitplan</label><select id="rb-sched" onchange="rbSchedVis()">
+      <option value="manual" data-i18n="rb_sched_manual">Nur von Hand</option><option value="daily" data-i18n="rb_sched_daily">Täglich</option><option value="weekly" data-i18n="rb_sched_weekly">Wöchentlich</option></select></div>
+    <div class="form-group" id="rb-wd-g"><label data-i18n="rb_weekday">Wochentag</label><select id="rb-weekday">
+      <option value="0" data-i18n="rb_wd0">Montag</option><option value="1" data-i18n="rb_wd1">Dienstag</option><option value="2" data-i18n="rb_wd2">Mittwoch</option><option value="3" data-i18n="rb_wd3">Donnerstag</option><option value="4" data-i18n="rb_wd4">Freitag</option><option value="5" data-i18n="rb_wd5">Samstag</option><option value="6" data-i18n="rb_wd6">Sonntag</option></select></div>
+    <div class="form-group" id="rb-time-g"><label data-i18n="rb_time">Uhrzeit</label><input type="time" id="rb-time" value="03:00"></div>
+  </div>
+
+  <details class="rb-adv"><summary data-i18n="rb_advanced">Erweitert</summary>
+    <div class="form-group"><label data-i18n="rb_excludes">Ausschließen</label><textarea id="rb-excludes" rows="3" spellcheck="false" style="font-family:monospace;font-size:12px"></textarea></div>
+    <div class="rb-hint" data-i18n-html="rb_excludes_hint">Ein Muster pro Zeile.</div>
+    <div class="form-group"><label data-i18n="rb_bw">Upload-Limit (Mbit/s, 0 = ohne)</label><input type="number" id="rb-bw" min="0" step="0.5"></div>
+    <div class="toggle-row"><div><div class="toggle-label" data-i18n="rb_notify">Bei Fehler benachrichtigen</div><div class="toggle-sub" data-i18n="rb_notify_sub">Meldung in Home Assistant, wenn ein Backup fehlschlägt</div></div>
+      <label class="toggle" id="rb-notify-t"><input type="checkbox" id="rb-notify" onchange="updateToggle('rb-notify-t',this)"><div class="toggle-knob"></div></label></div>
+  </details>
+
+  <div class="modal-footer" style="flex-wrap:wrap">
+    <button class="btn btn-ghost" id="rb-test-btn" onclick="rbTest()" style="margin-right:auto" data-i18n="rb_btn_test">Verbindung testen</button>
+    <button class="btn btn-ghost" onclick="closeModal('modal-rb')" data-i18n="modal_cancel">Abbrechen</button>
+    <button class="btn btn-primary" onclick="rbSave()" data-i18n="modal_save">Speichern</button>
+  </div>
+</div></div>
+
+<!-- ══ MODAL: Externes Backup wiederherstellen ══ -->
+<div class="modal-overlay" id="modal-rb-restore"><div class="modal" style="max-width:640px;max-height:92vh;overflow-y:auto;">
+  <div class="modal-title" data-i18n="rb_restore_title">Wiederherstellen</div>
+  <div class="form-group"><label data-i18n="rb_snapshot">Stand</label><select id="rb-snap" onchange="rbBrowse('')"></select></div>
+  <label data-i18n="rb_restore_what">Was wiederherstellen?</label>
+  <div id="rb-bc" style="font-size:12px;margin-bottom:6px"></div>
+  <div class="rb-list" id="rb-ls"></div>
+  <div class="mount-path-preview" id="rb-restore-sel"></div>
+  <div class="form-group" style="margin-top:12px"><label data-i18n="rb_restore_target">Zielordner</label>
+    <div style="display:flex;gap:6px"><input type="text" id="rb-restore-target" placeholder="/share/wiederhergestellt" style="flex:1">
+      <button class="btn btn-ghost" type="button" onclick="openBrowser('rb-restore-target')" style="padding:9px 10px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button></div>
+  </div>
+  <div class="rb-hint" data-i18n-html="rb_restore_hint">Am besten in einen neuen Ordner wiederherstellen.</div>
+  <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-rb-restore')" data-i18n="modal_cancel">Abbrechen</button><button class="btn btn-primary" onclick="rbDoRestore()" data-i18n="rb_btn_restore">Wiederherstellen</button></div>
+</div></div>
+
+<!-- ══ MODAL: Protokoll ══ -->
+<div class="modal-overlay" id="modal-rb-log"><div class="modal" style="max-width:820px;">
+  <div class="modal-title" id="rb-log-title" data-i18n="rb_log_title">Protokoll</div>
+  <div class="rb-log" id="rb-log-text"></div>
+  <div class="modal-footer"><button class="btn btn-ghost" onclick="rbLoadLog()" data-i18n="rb_refresh">Aktualisieren</button><button class="btn btn-primary" onclick="closeModal('modal-rb-log')" data-i18n="rb_close">Schließen</button></div>
 </div></div>
 
 <!-- ══ MODAL: Backup Job ══ -->
@@ -1037,6 +1169,52 @@ const T={
     files_title:'Dateien',files_sub:'Dateien durchsuchen, hochladen, kopieren, verschieben und löschen',
     btn_upload:'↑ Hochladen',btn_new_folder:'+ Ordner',tag_locked:'Gesperrt',btn_cs_install:'CrowdSec einrichten',cs_not_found:'Addon nicht gefunden',cs_not_installed:'nicht eingerichtet',cs_no_export:'Dateien da, Export fehlt – „CrowdSec einrichten“ erneut klicken',cs_ready:'aktiv',cs_restart:'CrowdSec-Addon neu starten',cs_blind_option:'share_log_export_path zeigt auf einen Ordner, den das CrowdSec-Addon nicht sieht. CrowdSec liest deshalb {p}. Die Option kann leer bleiben.',lbl_upload_subdir:'Ablage hochgeladener Dateien',subdir_none:'Direkt im Ordner',subdir_date:'Unterordner je Tag',subdir_user:'Unterordner je Konto',clamav_title:'Virenprüfung:',clamav_on:'aktiv',clamav_off:'aus',clamav_unreachable:'an, aber nicht erreichbar',btn_clamav_test:'Test',warn_clamav_down:'Die Virenprüfung ist eingeschaltet, aber clamd antwortet nicht. Bei „Bei Fehler: ablehnen“ wird damit jeder Upload über einen Freigabe-Link abgelehnt. Im ClamAV-Addon daemon_mode auf always stellen (Version 1.0.12 oder neuer) oder share_clamav_enabled ausschalten.',locks_title:'Sperren:',locks_none:'keine · Sperre greift ab {n} Fehlversuchen in {m} Minuten',btn_unlock:'Sperre aufheben',unlocked:'Sperre aufgehoben.',log_title:'Zugriffsprotokoll',btn_clear_log:'Leeren',confirm_clear_log:'Zugriffsprotokoll leeren?',log_empty:'Noch keine Einträge.',log_all:'Alle',log_ev_view:'Aufruf',log_ev_auth_ok:'Anmeldung',log_ev_auth_fail:'Fehlanmeldung',log_ev_download:'Download',log_ev_zip:'ZIP',log_ev_upload:'Upload',log_ev_upload_reject:'Upload abgelehnt',log_ev_rate_limited:'Gesperrt',log_ev_link_404:'Unbekannter Link',log_ev_edit_open:'Dokument geöffnet',log_ev_edit_save:'Dokument gespeichert',log_ev_wopi_denied:'Editor abgewiesen',nav_sharing:'Teilen',sharing_title:'Teilen',sharing_sub:'Ordner und Dateien per Link ins Internet freigeben',sharing_status_title:'Öffentliche Freigabe-Seite',sharing_active:'Läuft',sharing_inactive:'Aus',sharing_sub_enabled:'Aktiviert, Port {p}',sharing_sub_disabled:'In der Addon-Konfiguration ausgeschaltet (sharing_enabled)',sharing_not_running_yet:'Die öffentliche Seite läuft nicht. Prüfe sharing_enabled und das Admin-Passwort in der Addon-Konfiguration, dann Addon neu starten.',sharing_base_url:'Basis-Adresse der Links:',sharing_no_url:'share_public_url ist nicht gesetzt, die Links zeigen auf die LAN-Adresse.',warn_no_admin_password:'Kein Admin-Passwort gesetzt. Die Freigabe-Seite startet erst, wenn eines konfiguriert ist.',links_title:'Links',btn_new_link:'+ Neuer Link',no_links:'Noch keine Links. Lege einen an oder nutze das Teilen-Symbol im Dateien-Reiter.',modal_new_link:'Neuer Link',modal_edit_link:'Link bearbeiten',lbl_link_name:'Name',lbl_link_path:'Ordner',lbl_link_file:'Einzelne Datei (optional)',ph_link_file:'Dateiname im Ordner, leer = ganzer Ordner',lbl_link_mode:'Modus',mode_download:'Herunterladen',mode_upload:'Hochladen (Ablage)',mode_both:'Beides',lbl_link_access:'Zugriff',access_password:'Link + Passwort',access_users:'Nur bestimmte Konten',access_public:'Jeder mit dem Link',lbl_link_password:'Passwort',ph_password_unchanged:'unverändert lassen',lbl_link_users:'Konten (leer = alle Konten)',lbl_expiry:'Ablauf',lbl_max_downloads:'Max. Downloads (0 = unbegrenzt)',lbl_upload_quota:'Upload-Kontingent MB (0 = unbegrenzt)',lbl_max_filesize:'Max. Dateigröße MB (0 = Vorgabe)',lbl_allow_subdirs:'Unterordner erlauben',lbl_allow_zip:'Ordner als ZIP erlauben',lbl_allow_edit:'Bearbeiten mit Collabora erlauben',lbl_allow_edit_sub:'Office-Dateien werden direkt im Ordner überschrieben (braucht collabora_enabled)',tag_editable:'Bearbeitbar',lbl_allow_delete:'Löschen erlauben',lbl_allow_delete_sub:'Besucher können Dateien und Ordner löschen (mit Rückfrage; nicht bei Ablage- und Einzeldatei-Links)',tag_deletable:'Löschen erlaubt',log_ev_delete:'Gelöscht',collabora_no_url:'an, aber collabora_url fehlt',collabora_links:'{n} Links bearbeitbar',lbl_enabled:'Aktiv',tag_single_file:'Einzeldatei',tag_disabled:'Deaktiviert',tag_expired:'Abgelaufen',tag_limit_reached:'Limit erreicht',downloads:'Downloads',btn_copy_link:'Link kopieren',link_copied:'Link kopiert.',btn_rotate_token:'Neuen Link erzeugen (alter wird ungültig)',confirm_rotate_token:'Neuen Link für „{n}“ erzeugen? Der bisherige Link funktioniert danach nicht mehr.',confirm_del_link:'Link „{n}“ löschen?',link_created:'Link angelegt.',link_updated:'Link gespeichert.',accounts_title:'Freigabe-Konten',btn_new_account:'+ Neues Konto',no_accounts:'Noch keine Konten.',accounts_note_samba:'Unabhängig von den Samba-Benutzern. Diese Konten gelten nur für die Freigabe-Seite.',modal_new_account:'Neues Konto',modal_edit_account:'Konto bearbeiten',lbl_display_name:'Anzeigename',last_login:'Letzte Anmeldung',never:'nie',confirm_del_account:'Konto „{n}“ löschen?',account_created:'Konto angelegt.',account_updated:'Konto gespeichert.',title_share:'Teilen',title_zip:'Ordner als ZIP herunterladen',fa_title:'Dateizugriff',fa_sub:'Welche Ordner der Dateimanager öffnen darf',fa_add:'Hinzufügen',fa_add_ph:'/pfad/zum/ordner',fa_browse:'Durchsuchen…',fa_remove:'Entfernen',fa_none:'Kein Ordner freigegeben — der Dateimanager ist gesperrt.',fa_full_label:'Zugriff auf alle Dateien',fa_full_sub:'Gibt das gesamte Dateisystem frei und entsperrt auch die Systemordner. Nur einschalten, wenn du Dateien außerhalb der Standardordner brauchst.',fa_warn:'Der Dateimanager erreicht gerade das gesamte Dateisystem. Die Oberfläche ist über das Heimnetz erreichbar — setze ein Admin-Passwort, wenn noch keines gesetzt ist.',fa_blocked:'Immer gesperrt:',fa_reset:'Auf Standard zurücksetzen',fa_saved:'Gespeichert.',fa_full_on:'Voller Dateizugriff ist aktiv.',fa_reset_done:'Auf Standardordner zurückgesetzt.',fa_abs_only:'Bitte einen absoluten Pfad angeben, beginnend mit /',fa_need_one:'Mindestens ein Ordner muss freigegeben bleiben.',fa_confirm_full:'Damit darf der Dateimanager jede Datei des Systems lesen und schreiben, auch die Systemordner. Fortfahren?',fa_confirm_reset:'Zugriff wieder auf die Standardordner beschränken?',go_to:'Gehe zu:',all_roots:'Alle erlaubten Ordner',path_placeholder:'Pfad eingeben…',
     btn_restore:'Wiederherstellen',
+    rb_title:'Externe Backups',rb_sub:'Cloud, Server oder zweites Laufwerk – mit restic oder rclone',rb_btn_new:'+ Neues externes Backup',
+    rb_none:'Noch keine externen Backups. Sichere /share und /media z. B. auf eine Hetzner Storage Box, zu Backblaze B2 oder auf einen eigenen Server.',
+    rb_tools_missing:'Im Add-on fehlt: {t}. Externe Backups funktionieren erst nach einem Update bzw. einer Neuinstallation des Add-ons.',
+    rb_modal_new:'Neues externes Backup',rb_modal_edit:'Externes Backup bearbeiten',rb_engine:'Backup-Programm',
+    rb_engine_restic_d:'Verschlüsselt, mit Versionen und ohne Dubletten. Beim Anbieter liegt ein Archiv – wiederherstellen über Simple NAS oder restic.',
+    rb_engine_rclone_d:'Dateien liegen 1:1 beim Anbieter und sind dort direkt lesbar. Verschlüsselung optional; ersetzte und gelöschte Dateien kommen in einen Versionsordner.',
+    rb_sources:'Quellen',rb_add_source:'+ Quelle hinzufügen',rb_target:'Ziel',rb_provider:'Anbieter',
+    rb_p_hetzner:'Hetzner Storage Box',rb_p_sftp:'SFTP / eigener Server',rb_p_s3:'S3-kompatibel (Hetzner Object Storage, Wasabi, AWS, MinIO …)',rb_p_b2:'Backblaze B2',
+    rb_p_webdav:'WebDAV (Nextcloud, ownCloud …)',rb_p_smb:'SMB / anderes NAS',rb_p_local:'Lokaler Ordner (z. B. zweite USB-Platte)',rb_p_rclone:'Andere: OneDrive, Google Drive, Dropbox … (rclone-Konfiguration)',
+    rb_ps_hetzner:'Hetzner',rb_ps_sftp:'SFTP',rb_ps_s3:'S3',rb_ps_b2:'B2',rb_ps_webdav:'WebDAV',rb_ps_smb:'SMB',rb_ps_local:'Lokal',rb_ps_rclone:'rclone',
+    rb_h_hetzner:'In der Hetzner Console bei der Storage Box <b>SSH-Support</b> einschalten. Server und Benutzer stehen dort, z. B. <code>u123456.your-storagebox.de</code> und <code>u123456</code> (oder ein Unterkonto wie <code>u123456-sub1</code>). Port 23 wird automatisch verwendet.',
+    rb_h_sftp:'Jeder Server mit SSH/SFTP: eigener Server, VPS, Synology/QNAP, Raspberry Pi, rsync.net. Passwort oder privater Schlüssel (OpenSSH/PEM, ohne Passphrase).',
+    rb_h_s3:'Den Bucket vorher beim Anbieter anlegen. Endpoint z. B. <code>fsn1.your-objectstorage.com</code> (Hetzner), <code>s3.eu-central-1.wasabisys.com</code> (Wasabi) oder die Adresse deines MinIO-Servers.',
+    rb_h_b2:'Bei Backblaze unter <i>Application Keys</i> einen Schlüssel für den Bucket anlegen und Key-ID und Application Key hier eintragen.',
+    rb_h_webdav:'Nextcloud: <code>https://cloud.example.org/remote.php/dav/files/BENUTZER/</code> – am besten mit einem App-Passwort.',
+    rb_h_smb:'Ein anderes NAS oder ein Windows-PC im Netzwerk. Freigabe = Name der Freigabe, z. B. <code>backup</code>.',
+    rb_h_local:'Ein Ordner auf einem anderen Laufwerk, z. B. eine zweite USB-Platte unter <code>/media</code>. Er darf nicht in einer Quelle liegen.',
+    rb_h_rclone:'Für OneDrive, Google Drive, Dropbox, pCloud, Mega und alle anderen <a href="https://rclone.org/overview/" target="_blank" rel="noopener">rclone-Anbieter</a>: auf einem PC <code>rclone config</code> ausführen, den Anbieter einrichten und den Abschnitt aus <code>rclone config show</code> hier einfügen. Bucket oder Unterordner gehören ins Feld „Ordner auf dem Ziel“.',
+    rb_f_host:'Server',rb_f_port:'Port',rb_f_user:'Benutzer',rb_f_password:'Passwort',rb_f_key_pem:'Privater Schlüssel (optional)',rb_f_s3_provider:'S3-Anbieter',
+    rb_f_endpoint:'Endpoint',rb_f_region:'Region (optional)',rb_f_bucket:'Bucket',rb_f_access_key:'Access Key',rb_f_secret_key:'Secret Key',rb_f_b2_account:'Key-ID',
+    rb_f_b2_key:'Application Key',rb_f_url:'URL',rb_f_vendor:'Anbieter',rb_f_domain:'Domäne (optional)',rb_f_share:'Freigabe',rb_f_path:'Zielordner',rb_f_rclone_conf:'rclone-Konfiguration',
+    rb_s3_other:'Andere / S3-kompatibel',rb_secret_saved:'gespeichert – leer lassen zum Behalten',
+    rb_remote_path:'Ordner auf dem Ziel',rb_remote_path_hint:'Wird angelegt, falls er fehlt. Bei S3/B2 liegt er im Bucket, bei SMB in der Freigabe.',
+    rb_security:'Verschlüsselung & Aufbewahrung',rb_encrypt:'Verschlüsseln',rb_encrypt_sub:'Dateinamen und Inhalte werden vor dem Hochladen verschlüsselt',
+    rb_password:'Verschlüsselungs-Passwort',rb_pw_gen:'Erzeugen',rb_pw_show:'Anzeigen',rb_pw_locked:'Das Passwort kann nach dem ersten Backup nicht mehr geändert werden.',
+    rb_pw_warn:'<b>Ohne dieses Passwort sind die gesicherten Daten verloren</b> – auch für dich. Bewahre es zusätzlich außerhalb von Home Assistant auf, z. B. im Passwort-Manager.',
+    rb_retention:'Alte Stände behalten',rb_keep_d:'Tägliche',rb_keep_w:'Wöchentliche',rb_keep_m:'Monatliche',
+    rb_retention_hint:'Je Tag, Woche und Monat bleibt der letzte Stand erhalten, ältere werden gelöscht. Alles 0 = nie löschen.',
+    rb_keep_days:'Ältere Versionen behalten (Tage)',rb_keep_days_hint:'Ersetzte und gelöschte Dateien liegen im Ordner .versions. 0 = nie löschen.',
+    rb_schedule:'Zeitplan',rb_sched_manual:'Nur von Hand',rb_sched_daily:'Täglich',rb_sched_weekly:'Wöchentlich',rb_weekday:'Wochentag',rb_time:'Uhrzeit',
+    rb_wd0:'Montag',rb_wd1:'Dienstag',rb_wd2:'Mittwoch',rb_wd3:'Donnerstag',rb_wd4:'Freitag',rb_wd5:'Samstag',rb_wd6:'Sonntag',
+    rb_sched_daily_at:'Täglich {t}',rb_sched_weekly_at:'{d}, {t}',
+    rb_advanced:'Erweitert',rb_excludes:'Ausschließen',rb_excludes_hint:'Ein Muster pro Zeile, z. B. <code>*.tmp</code>, <code>.Trash-*</code> oder <code>@Recycle</code>.',
+    rb_bw:'Upload-Limit (Mbit/s, 0 = ohne)',rb_notify:'Bei Fehler benachrichtigen',rb_notify_sub:'Meldung in Home Assistant, wenn ein Backup fehlschlägt',
+    rb_btn_test:'Verbindung testen',rb_testing:'Teste Verbindung …',rb_created:'Externes Backup angelegt',rb_saved:'Externes Backup gespeichert',
+    rb_btn_run:'Jetzt sichern',rb_btn_cancel:'Abbrechen',rb_btn_restore:'Wiederherstellen',rb_btn_log:'Protokoll',rb_btn_check:'Prüfen',
+    rb_queued:'Wartet …',rb_eta:'noch ca. {m} min',rb_never:'Noch nie gelaufen',rb_next:'Nächster Lauf: {d}',
+    rb_kind_backup:'Backup',rb_kind_restore:'Wiederherstellung',rb_kind_check:'Prüfung',
+    rb_confirm_del:'Externes Backup „{n}“ löschen?\nDie Daten beim Anbieter bleiben erhalten.',rb_confirm_cancel:'Laufenden Vorgang abbrechen?',
+    rb_restore_title:'Wiederherstellen',rb_snapshot:'Stand',rb_snap_latest:'Aktueller Stand',rb_restore_what:'Was wiederherstellen?',rb_restore_all:'Alles',
+    rb_selected:'Ausgewählt: {p}',rb_restore_target:'Zielordner',
+    rb_restore_hint:'Am besten in einen neuen Ordner wiederherstellen, z. B. <code>/share/wiederhergestellt</code>. Die Ordnerstruktur (z. B. <code>share/…</code>) bleibt erhalten; gleichnamige Dateien im Zielordner werden überschrieben.',
+    rb_confirm_restore:'„{p}“ nach {t} wiederherstellen?',rb_restore_started:'Wiederherstellung gestartet',rb_pick_target:'Bitte einen Zielordner wählen',
+    rb_log_title:'Protokoll',rb_log_empty:'Noch kein Protokoll',rb_refresh:'Aktualisieren',rb_close:'Schließen',rb_versions_label:'ältere Versionen',
+    rb_ph_start:'Start …',rb_ph_queued:'Wartet …',rb_ph_repo:'Archiv prüfen',rb_ph_backup:'Sichern',rb_ph_prune:'Alte Stände aufräumen',rb_ph_sync:'Abgleich',rb_ph_prune_versions:'Alte Versionen aufräumen',rb_ph_restore:'Wiederherstellen nach',rb_ph_check:'Archiv prüfen',
+    rb_started:'Backup gestartet',rb_check_started:'Prüfung gestartet',rb_no_snapshots:'Noch keine Stände vorhanden',rb_empty_dir:'Leer',
     file_backup_title:'Datei-Backup-Jobs',file_backup_sub:'Backup-Jobs erstellen und verwalten',btn_new_backup:'+ Neuer Backup-Job',
     modal_cancel:'Abbrechen',modal_save:'Speichern',modal_ok:'OK',modal_select:'Auswählen',
     modal_mount:'Laufwerk einhängen',modal_unmount:'Laufwerk aushängen',
@@ -1149,6 +1327,52 @@ const T={
     files_title:'Files',files_sub:'Browse, upload, copy, move and delete files',
     btn_upload:'↑ Upload',btn_new_folder:'+ Folder',tag_locked:'Locked',btn_cs_install:'Set up CrowdSec',cs_not_found:'add-on not found',cs_not_installed:'not set up',cs_no_export:'files present, export missing – click "Set up CrowdSec" again',cs_ready:'active',cs_restart:'restart the CrowdSec add-on',cs_blind_option:'share_log_export_path points at a folder the CrowdSec add-on cannot see, so CrowdSec reads {p} instead. The option can stay empty.',lbl_upload_subdir:'Where uploads are stored',subdir_none:'Directly in the folder',subdir_date:'Subfolder per day',subdir_user:'Subfolder per account',clamav_title:'Virus scan:',clamav_on:'on',clamav_off:'off',clamav_unreachable:'on, but unreachable',btn_clamav_test:'Test',warn_clamav_down:'Virus scanning is switched on but clamd does not answer. With "on error: reject" every upload through a share link is refused. Set daemon_mode to always in the ClamAV add-on (version 1.0.12 or newer) or turn share_clamav_enabled off.',locks_title:'Locks:',locks_none:'none · a lockout starts at {n} failed attempts within {m} minutes',btn_unlock:'Lift lock',unlocked:'Lock lifted.',log_title:'Access log',btn_clear_log:'Clear',confirm_clear_log:'Clear the access log?',log_empty:'No entries yet.',log_all:'All',log_ev_view:'View',log_ev_auth_ok:'Login',log_ev_auth_fail:'Failed login',log_ev_download:'Download',log_ev_zip:'ZIP',log_ev_upload:'Upload',log_ev_upload_reject:'Upload rejected',log_ev_rate_limited:'Locked',log_ev_link_404:'Unknown link',log_ev_edit_open:'Document opened',log_ev_edit_save:'Document saved',log_ev_wopi_denied:'Editor refused',nav_sharing:'Sharing',sharing_title:'Sharing',sharing_sub:'Share folders and files on the internet via link',sharing_status_title:'Public sharing site',sharing_active:'Running',sharing_inactive:'Off',sharing_sub_enabled:'Enabled, port {p}',sharing_sub_disabled:'Switched off in the add-on configuration (sharing_enabled)',sharing_not_running_yet:'The public site is not running. Check sharing_enabled and the admin password in the add-on configuration, then restart the add-on.',sharing_base_url:'Base address of the links:',sharing_no_url:'share_public_url is not set, links point at the LAN address.',warn_no_admin_password:'No admin password set. The sharing site only starts once one is configured.',links_title:'Links',btn_new_link:'+ New link',no_links:'No links yet. Create one or use the share icon in the Files tab.',modal_new_link:'New link',modal_edit_link:'Edit link',lbl_link_name:'Name',lbl_link_path:'Folder',lbl_link_file:'Single file (optional)',ph_link_file:'File name inside the folder, empty = whole folder',lbl_link_mode:'Mode',mode_download:'Download',mode_upload:'Upload (drop box)',mode_both:'Both',lbl_link_access:'Access',access_password:'Link + password',access_users:'Specific accounts only',access_public:'Anyone with the link',lbl_link_password:'Password',ph_password_unchanged:'leave unchanged',lbl_link_users:'Accounts (empty = all accounts)',lbl_expiry:'Expires',lbl_max_downloads:'Max. downloads (0 = unlimited)',lbl_upload_quota:'Upload quota MB (0 = unlimited)',lbl_max_filesize:'Max. file size MB (0 = default)',lbl_allow_subdirs:'Allow subfolders',lbl_allow_zip:'Allow folder as ZIP',lbl_allow_edit:'Allow editing with Collabora',lbl_allow_edit_sub:'Office files are overwritten in place (needs collabora_enabled)',tag_editable:'Editable',lbl_allow_delete:'Allow deleting',lbl_allow_delete_sub:'Visitors can delete files and folders (after a confirmation; not on drop-box or single-file links)',tag_deletable:'Delete allowed',log_ev_delete:'Deleted',collabora_no_url:'on, but collabora_url is missing',collabora_links:'{n} links editable',lbl_enabled:'Enabled',tag_single_file:'Single file',tag_disabled:'Disabled',tag_expired:'Expired',tag_limit_reached:'Limit reached',downloads:'downloads',btn_copy_link:'Copy link',link_copied:'Link copied.',btn_rotate_token:'Generate new link (old one stops working)',confirm_rotate_token:'Generate a new link for "{n}"? The current link will stop working.',confirm_del_link:'Delete link "{n}"?',link_created:'Link created.',link_updated:'Link saved.',accounts_title:'Share accounts',btn_new_account:'+ New account',no_accounts:'No accounts yet.',accounts_note_samba:'Independent of the Samba users. These accounts only apply to the sharing site.',modal_new_account:'New account',modal_edit_account:'Edit account',lbl_display_name:'Display name',last_login:'Last login',never:'never',confirm_del_account:'Delete account "{n}"?',account_created:'Account created.',account_updated:'Account saved.',title_share:'Share',title_zip:'Download folder as ZIP',fa_title:'File access',fa_sub:'Which folders the file manager may open',fa_add:'Add',fa_add_ph:'/path/to/folder',fa_browse:'Browse…',fa_remove:'Remove',fa_none:'No folder allowed — the file manager is locked.',fa_full_label:'Access to all files',fa_full_sub:'Opens the whole filesystem and unlocks the system folders too. Only turn this on if you need files outside the default folders.',fa_warn:'The file manager can currently reach the whole filesystem. The interface is reachable from your LAN — set an admin password if you have not already.',fa_blocked:'Always blocked:',fa_reset:'Reset to defaults',fa_saved:'Saved.',fa_full_on:'Full file access is on.',fa_reset_done:'Reset to the default folders.',fa_abs_only:'Please give an absolute path starting with /',fa_need_one:'At least one folder must stay allowed.',fa_confirm_full:'This lets the file manager read and write every file on the system, including the system folders. Continue?',fa_confirm_reset:'Limit access back to the default folders?',go_to:'Go to:',all_roots:'All allowed folders',path_placeholder:'Enter path…',
     btn_restore:'Restore',
+    rb_title:'External Backups',rb_sub:'Cloud, server or a second drive – with restic or rclone',rb_btn_new:'+ New external backup',
+    rb_none:'No external backups yet. Back up /share and /media to e.g. a Hetzner Storage Box, Backblaze B2 or your own server.',
+    rb_tools_missing:'Missing in the add-on: {t}. External backups work after updating or reinstalling the add-on.',
+    rb_modal_new:'New external backup',rb_modal_edit:'Edit external backup',rb_engine:'Backup tool',
+    rb_engine_restic_d:'Encrypted, versioned and deduplicated. The provider stores an archive – restore through Simple NAS or restic.',
+    rb_engine_rclone_d:'Files are stored 1:1 at the provider and can be read there directly. Optional encryption; replaced and deleted files go to a versions folder.',
+    rb_sources:'Sources',rb_add_source:'+ Add source',rb_target:'Destination',rb_provider:'Provider',
+    rb_p_hetzner:'Hetzner Storage Box',rb_p_sftp:'SFTP / own server',rb_p_s3:'S3-compatible (Hetzner Object Storage, Wasabi, AWS, MinIO …)',rb_p_b2:'Backblaze B2',
+    rb_p_webdav:'WebDAV (Nextcloud, ownCloud …)',rb_p_smb:'SMB / another NAS',rb_p_local:'Local folder (e.g. a second USB disk)',rb_p_rclone:'Other: OneDrive, Google Drive, Dropbox … (rclone config)',
+    rb_ps_hetzner:'Hetzner',rb_ps_sftp:'SFTP',rb_ps_s3:'S3',rb_ps_b2:'B2',rb_ps_webdav:'WebDAV',rb_ps_smb:'SMB',rb_ps_local:'Local',rb_ps_rclone:'rclone',
+    rb_h_hetzner:'In the Hetzner Console, enable <b>SSH support</b> for the Storage Box. Server and user are shown there, e.g. <code>u123456.your-storagebox.de</code> and <code>u123456</code> (or a sub-account like <code>u123456-sub1</code>). Port 23 is used automatically.',
+    rb_h_sftp:'Any server with SSH/SFTP: own server, VPS, Synology/QNAP, Raspberry Pi, rsync.net. Password or private key (OpenSSH/PEM, without passphrase).',
+    rb_h_s3:'Create the bucket at the provider first. Endpoint e.g. <code>fsn1.your-objectstorage.com</code> (Hetzner), <code>s3.eu-central-1.wasabisys.com</code> (Wasabi) or your MinIO server.',
+    rb_h_b2:'In Backblaze, create an <i>Application Key</i> for the bucket and enter key ID and application key here.',
+    rb_h_webdav:'Nextcloud: <code>https://cloud.example.org/remote.php/dav/files/USER/</code> – preferably with an app password.',
+    rb_h_smb:'Another NAS or a Windows PC on the network. Share = name of the share, e.g. <code>backup</code>.',
+    rb_h_local:'A folder on another drive, e.g. a second USB disk under <code>/media</code>. It must not be inside a source.',
+    rb_h_rclone:'For OneDrive, Google Drive, Dropbox, pCloud, Mega and all other <a href="https://rclone.org/overview/" target="_blank" rel="noopener">rclone providers</a>: run <code>rclone config</code> on a PC, set up the provider and paste the section from <code>rclone config show</code> here. Bucket or subfolder go into “Folder on the destination”.',
+    rb_f_host:'Server',rb_f_port:'Port',rb_f_user:'User',rb_f_password:'Password',rb_f_key_pem:'Private key (optional)',rb_f_s3_provider:'S3 provider',
+    rb_f_endpoint:'Endpoint',rb_f_region:'Region (optional)',rb_f_bucket:'Bucket',rb_f_access_key:'Access key',rb_f_secret_key:'Secret key',rb_f_b2_account:'Key ID',
+    rb_f_b2_key:'Application key',rb_f_url:'URL',rb_f_vendor:'Vendor',rb_f_domain:'Domain (optional)',rb_f_share:'Share',rb_f_path:'Destination folder',rb_f_rclone_conf:'rclone config',
+    rb_s3_other:'Other / S3-compatible',rb_secret_saved:'saved – leave empty to keep',
+    rb_remote_path:'Folder on the destination',rb_remote_path_hint:'Created if missing. For S3/B2 it lives in the bucket, for SMB in the share.',
+    rb_security:'Encryption & retention',rb_encrypt:'Encrypt',rb_encrypt_sub:'File names and contents are encrypted before upload',
+    rb_password:'Encryption password',rb_pw_gen:'Generate',rb_pw_show:'Show',rb_pw_locked:'The password cannot be changed after the first backup.',
+    rb_pw_warn:'<b>Without this password the backed-up data is lost</b> – for you too. Keep a copy outside Home Assistant, e.g. in a password manager.',
+    rb_retention:'Keep old versions',rb_keep_d:'Daily',rb_keep_w:'Weekly',rb_keep_m:'Monthly',
+    rb_retention_hint:'The last version of each day, week and month is kept, older ones are deleted. All 0 = never delete.',
+    rb_keep_days:'Keep older versions (days)',rb_keep_days_hint:'Replaced and deleted files are kept in the .versions folder. 0 = never delete.',
+    rb_schedule:'Schedule',rb_sched_manual:'Manual only',rb_sched_daily:'Daily',rb_sched_weekly:'Weekly',rb_weekday:'Weekday',rb_time:'Time',
+    rb_wd0:'Monday',rb_wd1:'Tuesday',rb_wd2:'Wednesday',rb_wd3:'Thursday',rb_wd4:'Friday',rb_wd5:'Saturday',rb_wd6:'Sunday',
+    rb_sched_daily_at:'Daily {t}',rb_sched_weekly_at:'{d}, {t}',
+    rb_advanced:'Advanced',rb_excludes:'Exclude',rb_excludes_hint:'One pattern per line, e.g. <code>*.tmp</code>, <code>.Trash-*</code> or <code>@Recycle</code>.',
+    rb_bw:'Upload limit (Mbit/s, 0 = none)',rb_notify:'Notify on failure',rb_notify_sub:'Notification in Home Assistant when a backup fails',
+    rb_btn_test:'Test connection',rb_testing:'Testing connection …',rb_created:'External backup created',rb_saved:'External backup saved',
+    rb_btn_run:'Back up now',rb_btn_cancel:'Cancel',rb_btn_restore:'Restore',rb_btn_log:'Log',rb_btn_check:'Check',
+    rb_queued:'Waiting …',rb_eta:'about {m} min left',rb_never:'Never run',rb_next:'Next run: {d}',
+    rb_kind_backup:'Backup',rb_kind_restore:'Restore',rb_kind_check:'Check',
+    rb_confirm_del:'Delete external backup “{n}”?\nThe data at the provider is kept.',rb_confirm_cancel:'Cancel the running job?',
+    rb_restore_title:'Restore',rb_snapshot:'Version',rb_snap_latest:'Current state',rb_restore_what:'What to restore?',rb_restore_all:'Everything',
+    rb_selected:'Selected: {p}',rb_restore_target:'Destination folder',
+    rb_restore_hint:'Best restore into a new folder, e.g. <code>/share/restored</code>. The folder structure (e.g. <code>share/…</code>) is kept; files with the same name in the destination are overwritten.',
+    rb_confirm_restore:'Restore “{p}” to {t}?',rb_restore_started:'Restore started',rb_pick_target:'Please choose a destination folder',
+    rb_log_title:'Log',rb_log_empty:'No log yet',rb_refresh:'Refresh',rb_close:'Close',rb_versions_label:'older versions',
+    rb_ph_start:'Starting …',rb_ph_queued:'Waiting …',rb_ph_repo:'Checking archive',rb_ph_backup:'Backing up',rb_ph_prune:'Removing old versions',rb_ph_sync:'Syncing',rb_ph_prune_versions:'Removing old versions',rb_ph_restore:'Restoring to',rb_ph_check:'Checking archive',
+    rb_started:'Backup started',rb_check_started:'Check started',rb_no_snapshots:'No versions yet',rb_empty_dir:'Empty',
     file_backup_title:'File Backup Jobs',file_backup_sub:'Create and manage backup jobs',btn_new_backup:'+ New Backup Job',
     modal_cancel:'Cancel',modal_save:'Save',modal_ok:'OK',modal_select:'Select',
     modal_mount:'Mount Drive',modal_unmount:'Unmount Drive',
@@ -1261,6 +1485,10 @@ function applyLang(){
     const k=el.getAttribute('data-i18n');
     if(T[_lang][k]!==undefined)el.textContent=T[_lang][k];
   });
+  document.querySelectorAll('[data-i18n-html]').forEach(el=>{
+    const k=el.getAttribute('data-i18n-html');
+    if(T[_lang][k]!==undefined)el.innerHTML=T[_lang][k];
+  });
   document.querySelectorAll('[data-i18n-ph]').forEach(el=>{
     const k=el.getAttribute('data-i18n-ph');
     if(T[_lang][k]!==undefined)el.placeholder=T[_lang][k];
@@ -1281,7 +1509,7 @@ function toggleLang(){
   else if(tab==='shares')loadShares();
   else if(tab==='sharing')loadSharing();
   else if(tab==='users'){loadUsers();loadGroups();}
-  else if(tab==='backup'){loadBackups();loadSettingsBackupStatus();loadManualBackups();}
+  else if(tab==='backup'){loadBackups();loadRb();loadSettingsBackupStatus();loadManualBackups();}
   else if(tab==='settings')loadSettings();
 }
 
@@ -1325,7 +1553,7 @@ function switchTab(n){
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
   document.getElementById('panel-'+n).classList.add('active');
   document.getElementById('tab-'+n).classList.add('active');
-  if(n==='drives')loadDrives();if(n==='shares')loadShares();if(n==='users'){loadUsers();loadGroups();}if(n==='files')loadFiles();if(n==='sharing')loadSharing();if(n==='backup'){loadBackups();loadSettingsBackupStatus();loadManualBackups();}if(n==='settings')loadSettings();
+  if(n==='drives')loadDrives();if(n==='shares')loadShares();if(n==='users'){loadUsers();loadGroups();}if(n==='files')loadFiles();if(n==='sharing')loadSharing();if(n==='backup'){loadBackups();loadRb();loadSettingsBackupStatus();loadManualBackups();}if(n==='settings')loadSettings();
 }
 
 // ── Status ──
@@ -2721,6 +2949,282 @@ async function runBackup(id){
   try{await api('POST','/backups/'+id+'/run');toast(t('backup_started'));setTimeout(loadBackups,1000);setTimeout(loadBackups,5000);}catch(e){toast(e.message,true);}
 }
 async function deleteBackup(id){if(!confirm(t('confirm_del_backup')))return;try{await api('DELETE','/backups/'+id);toast(t('deleted'));loadBackups();}catch(e){toast(e.message,true);}}
+
+// ── Externe Backups (restic / rclone) ──
+let _rbJobs=[],_rbMeta={},_rbTimer=null,_rbEdit=null,_rbEngine='restic',_rbSrcSeq=0,_rbRestore=null,_rbLogId=null;
+const RB_PROVIDERS=['hetzner','sftp','s3','b2','webdav','smb','local','rclone'];
+const RB_SECRET=['password','key_pem','secret_key','b2_key','rclone_conf'];
+const RB_FIELDS={
+  hetzner:[['host','text','u123456.your-storagebox.de'],['user','text','u123456'],['password','password','']],
+  sftp:[['host','text','backup.example.org'],['port','number','22'],['user','text',''],['password','password',''],['key_pem','textarea','-----BEGIN OPENSSH PRIVATE KEY-----']],
+  s3:[['s3_provider','select'],['endpoint','text','fsn1.your-objectstorage.com'],['region','text',''],['bucket','text','nas-backup'],['access_key','text',''],['secret_key','password','']],
+  b2:[['bucket','text','nas-backup'],['b2_account','text',''],['b2_key','password','']],
+  webdav:[['url','text','https://cloud.example.org/remote.php/dav/files/USER/'],['vendor','select'],['user','text',''],['password','password','']],
+  smb:[['host','text','192.168.1.20'],['share','text','backup'],['user','text',''],['password','password',''],['domain','text','WORKGROUP']],
+  local:[['path','path','/media/usb2']],
+  rclone:[['rclone_conf','textarea','[onedrive]\ntype = onedrive\ntoken = {"access_token":"…"}\ndrive_id = …\ndrive_type = personal']],
+};
+const RB_FOLDER_SVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+const RB_FILE_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+const RB_X_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+const RB_EDIT_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+const RB_DEL_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+function rbPlain(k,v){const d=document.createElement('textarea');d.innerHTML=t(k,v);return d.value;}
+function rbVal(id){const el=document.getElementById(id);return el?el.value:'';}
+function rbFmtDate(iso){if(!iso)return'';const d=new Date(iso);return isNaN(d)?iso:d.toLocaleString(t('date_locale'),{dateStyle:'short',timeStyle:'short'});}
+function rbSchedText(s){if(!s||s.type==='manual')return t('rb_sched_manual');if(s.type==='daily')return t('rb_sched_daily_at',{t:s.time});return t('rb_sched_weekly_at',{d:t('rb_wd'+s.weekday),t:s.time});}
+function rbTargetText(j){
+  const g=j.target||{},rp=j.remote_path||'';
+  switch(g.provider){
+    case 'hetzner':case 'sftp':return (g.user?g.user+'@':'')+g.host+':'+rp;
+    case 'smb':return '//'+g.host+'/'+g.share+(rp?'/'+rp:'');
+    case 's3':case 'b2':return g.provider+'://'+g.bucket+(rp?'/'+rp:'');
+    case 'webdav':return g.url+rp;
+    case 'local':return g.path+(rp?'/'+rp:'');
+    default:return 'rclone:'+rp;
+  }
+}
+function rbStatusHtml(j){
+  const s=j.state;
+  if(s&&s.queued)return '<div class="rb-status"><span class="tag accent">'+t('rb_queued')+'</span></div>';
+  if(s&&s.running){
+    const pct=s.percent!=null?Math.max(0,Math.min(100,Math.round(s.percent*100))):null;
+    let info=t('rb_ph_'+(s.phase||'start'))+(s.phase_arg?' '+esc(s.phase_arg):'');
+    if(s.bytes_total)info+=' · '+fmtSize(s.bytes_done||0)+' / '+fmtSize(s.bytes_total);
+    if(s.eta)info+=' · '+t('rb_eta',{m:Math.ceil(s.eta/60)});
+    return '<div class="rb-status"><div class="progress-label"><span>'+info+'</span><span>'+(pct!=null?pct+' %':'')+'</span></div>'
+      +'<div class="progress-bar-bg"><div class="progress-bar-fill" style="width:'+(pct!=null?pct:4)+'%"></div></div></div>';
+  }
+  let h='';const l=j.last;
+  if(l){
+    const cls={ok:'rb-ok',warning:'rb-warn',error:'rb-err',cancelled:'rb-warn'}[l.status]||'';
+    const icon={ok:'✓',warning:'⚠',error:'✗',cancelled:'■'}[l.status]||'';
+    h+='<div class="rb-status '+cls+'">'+icon+' '+t('rb_kind_'+l.kind)+' '+esc(rbFmtDate(l.at))+': '+esc(l.message)+'</div>';
+  }else h+='<div class="rb-status" style="color:var(--text-dim)">'+t('rb_never')+'</div>';
+  if(j.next_run)h+='<div style="font-size:11px;color:var(--text-dim);margin-top:3px">'+t('rb_next',{d:rbFmtDate(j.next_run)})+'</div>';
+  return h;
+}
+async function loadRb(){
+  const grid=document.getElementById('rb-grid');if(!grid)return;
+  clearTimeout(_rbTimer);
+  try{
+    const d=await api('GET','/remote-backups');_rbMeta=d;_rbJobs=d.jobs||[];
+    const miss=Object.keys(d.tools||{}).filter(k=>!d.tools[k]);
+    document.getElementById('rb-tools-warn').innerHTML=miss.length?'<div class="warn-box"><p>'+t('rb_tools_missing',{t:miss.join(', ')})+'</p></div>':'';
+    if(!_rbJobs.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1"><p>'+t('rb_none')+'</p></div>';}
+    else grid.innerHTML=_rbJobs.map(j=>{
+      const busy=!!j.state,id=escJs(j.id);
+      return '<div class="card">'
+        +'<div class="card-header"><div style="min-width:0;flex:1">'
+          +'<div class="card-title">'+esc(j.name)+'</div>'
+          +'<div class="card-sub" style="word-break:break-all;white-space:normal">'+(j.sources||[]).map(esc).join(', ')+'</div>'
+          +'<div class="card-sub" style="word-break:break-all;white-space:normal">&#8627; '+esc(rbTargetText(j))+'</div>'
+        +'</div><div class="card-actions">'
+          +'<button class="btn btn-ghost btn-sm btn-icon" title="'+t('title_edit')+'" onclick="openRbModal(\''+id+'\')">'+RB_EDIT_SVG+'</button>'
+          +'<button class="btn btn-danger btn-sm btn-icon" title="'+t('title_delete')+'" onclick="rbDelete(\''+id+'\')" '+(busy?'disabled style="opacity:.4"':'')+'>'+RB_DEL_SVG+'</button>'
+        +'</div></div>'
+        +'<div style="display:flex;gap:6px;flex-wrap:wrap"><span class="tag accent">'+esc(j.engine)+(j.encrypt?' 🔒':'')+'</span>'
+          +'<span class="tag">'+t('rb_ps_'+j.target.provider)+'</span><span class="tag">'+rbSchedText(j.schedule)+'</span></div>'
+        +rbStatusHtml(j)
+        +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">'
+          +(busy?'<button class="btn btn-danger btn-sm" onclick="rbCancel(\''+id+'\')">'+t('rb_btn_cancel')+'</button>'
+                :'<button class="btn btn-primary btn-sm" onclick="rbRun(\''+id+'\')">'+t('rb_btn_run')+'</button>')
+          +'<button class="btn btn-ghost btn-sm" onclick="openRbRestore(\''+id+'\')" '+(busy?'disabled style="opacity:.4"':'')+'>'+t('rb_btn_restore')+'</button>'
+          +'<button class="btn btn-ghost btn-sm" onclick="openRbLog(\''+id+'\')">'+t('rb_btn_log')+'</button>'
+          +(j.engine==='restic'?'<button class="btn btn-ghost btn-sm" onclick="rbCheck(\''+id+'\')" '+(busy?'disabled style="opacity:.4"':'')+'>'+t('rb_btn_check')+'</button>':'')
+        +'</div></div>';
+    }).join('');
+    if(_rbLogId&&document.getElementById('modal-rb-log').classList.contains('open')&&_rbJobs.some(j=>j.id===_rbLogId&&j.state))rbLoadLog();
+  }catch(e){grid.innerHTML='<div class="empty" style="grid-column:1/-1;color:var(--danger)">'+esc(e.message)+'</div>';}
+  if(_rbJobs.some(j=>j.state)&&document.getElementById('panel-backup').classList.contains('active'))_rbTimer=setTimeout(loadRb,3000);
+}
+function rbSetEngine(e){
+  _rbEngine=e;
+  document.getElementById('rb-engine-restic').classList.toggle('active',e==='restic');
+  document.getElementById('rb-engine-rclone').classList.toggle('active',e==='rclone');
+  document.getElementById('rb-restic-opts').style.display=e==='restic'?'':'none';
+  document.getElementById('rb-rclone-opts').style.display=e==='rclone'?'':'none';
+  document.getElementById('rb-encrypt-row').style.display=e==='rclone'?'':'none';
+  rbPwVis();
+}
+function rbPwVis(){document.getElementById('rb-pw-block').style.display=(_rbEngine==='restic'||document.getElementById('rb-encrypt').checked)?'':'none';}
+function rbSchedVis(){const v=rbVal('rb-sched');document.getElementById('rb-wd-g').style.display=v==='weekly'?'':'none';document.getElementById('rb-time-g').style.display=v==='manual'?'none':'';}
+function rbAddSource(v){
+  const box=document.getElementById('rb-sources'),id='rb-src-'+(++_rbSrcSeq);
+  const row=document.createElement('div');row.style.cssText='display:flex;gap:6px;margin-bottom:6px';
+  row.innerHTML='<input type="text" id="'+id+'" class="rb-src" placeholder="/share" style="flex:1">'
+    +'<button class="btn btn-ghost" type="button" onclick="openBrowser(\''+id+'\')" style="padding:9px 10px;">'+RB_FOLDER_SVG+'</button>'
+    +'<button class="btn btn-ghost btn-icon" type="button" title="'+t('title_delete')+'" onclick="this.parentNode.remove()">'+RB_X_SVG+'</button>';
+  row.querySelector('input').value=v||'';box.appendChild(row);
+}
+function rbRenderFields(){
+  const prov=rbVal('rb-provider');
+  const tg=(_rbEdit&&_rbEdit.target&&_rbEdit.target.provider===prov)?_rbEdit.target:{};
+  let h='<div class="rb-hint">'+t('rb_h_'+prov)+'</div>';
+  for(const [k,type,ph] of RB_FIELDS[prov]){
+    const id='rb-f-'+k,secret=RB_SECRET.includes(k),val=secret?'':(tg[k]!=null?tg[k]:'');
+    const pholder=secret&&tg['has_'+k]?t('rb_secret_saved'):(ph||'');
+    h+='<div class="form-group"><label>'+t('rb_f_'+k)+'</label>';
+    if(type==='select'){
+      const opts=k==='s3_provider'?(_rbMeta.s3_providers||['Other']):(_rbMeta.webdav_vendors||['other']);
+      const cur=val||opts[0];
+      h+='<select id="'+id+'">'+opts.map(o=>'<option value="'+esc(o)+'"'+(o===cur?' selected':'')+'>'+esc(o==='Other'?t('rb_s3_other'):o)+'</option>').join('')+'</select>';
+    }else if(type==='textarea'){
+      h+='<textarea id="'+id+'" rows="5" spellcheck="false" style="font-family:monospace;font-size:12px" placeholder="'+esc(pholder)+'"></textarea>';
+    }else if(type==='path'){
+      h+='<div style="display:flex;gap:6px"><input type="text" id="'+id+'" value="'+esc(val)+'" placeholder="'+esc(ph)+'" style="flex:1">'
+        +'<button class="btn btn-ghost" type="button" onclick="openBrowser(\''+id+'\')" style="padding:9px 10px;">'+RB_FOLDER_SVG+'</button></div>';
+    }else{
+      h+='<input type="'+type+'" id="'+id+'" value="'+esc(val)+'" placeholder="'+esc(pholder)+'" autocomplete="'+(type==='password'?'new-password':'off')+'">';
+    }
+    h+='</div>';
+  }
+  document.getElementById('rb-fields').innerHTML=h;
+}
+function openRbModal(id){
+  const j=id?_rbJobs.find(x=>x.id===id):null;_rbEdit=j||null;
+  document.getElementById('rb-modal-title').textContent=t(j?'rb_modal_edit':'rb_modal_new');
+  document.getElementById('rb-name').value=j?j.name:'';
+  const sel=document.getElementById('rb-provider');
+  sel.innerHTML=RB_PROVIDERS.map(p=>'<option value="'+p+'">'+esc(t('rb_p_'+p))+'</option>').join('');
+  sel.value=j?j.target.provider:'hetzner';
+  document.getElementById('rb-sources').innerHTML='';
+  (j&&j.sources.length?j.sources:['']).forEach(rbAddSource);
+  rbRenderFields();
+  document.getElementById('rb-remote-path').value=j?j.remote_path:'simplenas';
+  const enc=document.getElementById('rb-encrypt');enc.checked=j?(j.engine==='rclone'&&j.encrypt):false;updateToggle('rb-encrypt-t',enc);
+  const pw=document.getElementById('rb-password');pw.value='';pw.type='password';
+  pw.placeholder=j&&j.has_password?t('rb_secret_saved'):'';
+  const locked=!!(j&&j.initialized&&j.has_password);
+  pw.disabled=locked;document.getElementById('rb-pw-gen').disabled=locked;
+  document.getElementById('rb-pw-locked').style.display=locked?'':'none';
+  const r=(j&&j.retention)||{daily:7,weekly:4,monthly:12};
+  document.getElementById('rb-keep-d').value=r.daily;document.getElementById('rb-keep-w').value=r.weekly;document.getElementById('rb-keep-m').value=r.monthly;
+  document.getElementById('rb-keep-days').value=j?j.keep_versions_days:30;
+  const s=(j&&j.schedule)||{type:'daily',time:'03:00',weekday:6};
+  document.getElementById('rb-sched').value=s.type;document.getElementById('rb-time').value=s.time;document.getElementById('rb-weekday').value=String(s.weekday);
+  document.getElementById('rb-excludes').value=j?(j.excludes||[]).join('\n'):'.upload-*.part';
+  document.getElementById('rb-bw').value=j?(j.bwlimit_mbit||0):0;
+  const nt=document.getElementById('rb-notify');nt.checked=j?j.notify!==false:true;updateToggle('rb-notify-t',nt);
+  rbSetEngine(j?j.engine:'restic');rbSchedVis();
+  openModal('modal-rb');
+}
+function rbCollect(){
+  const prov=rbVal('rb-provider'),target={provider:prov};
+  for(const [k] of RB_FIELDS[prov]){const el=document.getElementById('rb-f-'+k);if(el)target[k]=el.value;}
+  const pw=document.getElementById('rb-password');
+  return {id:_rbEdit?_rbEdit.id:undefined,name:rbVal('rb-name').trim(),engine:_rbEngine,
+    sources:[...document.querySelectorAll('.rb-src')].map(i=>i.value.trim()).filter(Boolean),
+    target,remote_path:rbVal('rb-remote-path').trim(),
+    encrypt:_rbEngine==='restic'||document.getElementById('rb-encrypt').checked,
+    password:pw.disabled?'':pw.value,
+    retention:{daily:rbVal('rb-keep-d'),weekly:rbVal('rb-keep-w'),monthly:rbVal('rb-keep-m')},
+    keep_versions_days:rbVal('rb-keep-days'),
+    schedule:{type:rbVal('rb-sched'),time:rbVal('rb-time')||'03:00',weekday:rbVal('rb-weekday')},
+    excludes:rbVal('rb-excludes'),bwlimit_mbit:parseFloat(rbVal('rb-bw'))||0,
+    notify:document.getElementById('rb-notify').checked};
+}
+async function rbSave(){
+  const body=rbCollect();
+  try{
+    if(_rbEdit){await api('PUT','/remote-backups/'+_rbEdit.id,body);toast(t('rb_saved'));}
+    else{await api('POST','/remote-backups',body);toast(t('rb_created'));}
+    closeModal('modal-rb');loadRb();
+  }catch(e){toast(e.message,true,6000);}
+}
+async function rbTest(){
+  const btn=document.getElementById('rb-test-btn');btn.disabled=true;const old=btn.textContent;btn.textContent=t('rb_testing');
+  try{const d=await api('POST','/remote-backups/test',rbCollect());toast(d.message,false,6000);}
+  catch(e){toast(e.message,true,9000);}
+  finally{btn.disabled=false;btn.textContent=old;}
+}
+function rbGenPw(){
+  const a='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789',b=new Uint32Array(24);crypto.getRandomValues(b);
+  const pw=document.getElementById('rb-password');pw.value=Array.from(b,x=>a[x%a.length]).join('');pw.type='text';
+}
+async function rbShowPw(){
+  const pw=document.getElementById('rb-password');
+  if(!pw.value&&_rbEdit&&_rbEdit.has_password){
+    try{const d=await api('GET','/remote-backups/'+_rbEdit.id+'/password');pw.value=d.password;}catch(e){toast(e.message,true);return;}
+    pw.type='text';return;
+  }
+  pw.type=pw.type==='password'?'text':'password';
+}
+async function rbRun(id){try{await api('POST','/remote-backups/'+id+'/run');toast(t('rb_started'));loadRb();}catch(e){toast(e.message,true);}}
+async function rbCheck(id){try{await api('POST','/remote-backups/'+id+'/check');toast(t('rb_check_started'));loadRb();}catch(e){toast(e.message,true);}}
+async function rbCancel(id){if(!confirm(t('rb_confirm_cancel')))return;try{await api('POST','/remote-backups/'+id+'/cancel');loadRb();}catch(e){toast(e.message,true);}}
+async function rbDelete(id){
+  const j=_rbJobs.find(x=>x.id===id);if(!j||!confirm(rbPlain('rb_confirm_del',{n:j.name})))return;
+  try{await api('DELETE','/remote-backups/'+id);toast(t('deleted'));loadRb();}catch(e){toast(e.message,true);}
+}
+async function openRbLog(id){
+  _rbLogId=id;const j=_rbJobs.find(x=>x.id===id);
+  document.getElementById('rb-log-title').textContent=t('rb_log_title')+(j?' – '+j.name:'');
+  document.getElementById('rb-log-text').textContent='';openModal('modal-rb-log');rbLoadLog();
+}
+async function rbLoadLog(){
+  const el=document.getElementById('rb-log-text');
+  try{const d=await api('GET','/remote-backups/'+_rbLogId+'/log');const atEnd=el.scrollTop+el.clientHeight>=el.scrollHeight-20;
+    el.textContent=d.text||t('rb_log_empty');if(atEnd)el.scrollTop=el.scrollHeight;}
+  catch(e){el.textContent=e.message;}
+}
+async function openRbRestore(id){
+  const j=_rbJobs.find(x=>x.id===id);if(!j)return;
+  _rbRestore={id,engine:j.engine,path:'',sel:{path:'',is_dir:true}};
+  document.getElementById('rb-restore-target').value='';
+  const snap=document.getElementById('rb-snap');
+  snap.innerHTML='<option>…</option>';document.getElementById('rb-ls').innerHTML='<div style="padding:20px;text-align:center"><span class="spinner"></span></div>';
+  document.getElementById('rb-bc').innerHTML='';document.getElementById('rb-restore-sel').textContent='';
+  openModal('modal-rb-restore');
+  try{
+    const list=await api('GET','/remote-backups/'+id+'/snapshots');
+    if(!list.length){snap.innerHTML='';document.getElementById('rb-ls').innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim)">'+t('rb_no_snapshots')+'</div>';return;}
+    snap.innerHTML=list.map(s=>'<option value="'+esc(s.id)+'">'+(s.id==='latest'?t('rb_snap_latest')+(s.time?' ('+esc(rbFmtDate(s.time))+')':''):esc(rbFmtDate(s.time))+' · '+esc(s.short_id)+(s.size?' · '+fmtSize(s.size):''))+'</option>').join('');
+    rbBrowse('');
+  }catch(e){snap.innerHTML='';document.getElementById('rb-ls').innerHTML='<div style="padding:20px;text-align:center;color:var(--danger)">'+esc(e.message)+'</div>';}
+}
+function rbShowSel(){
+  const s=_rbRestore.sel;
+  document.getElementById('rb-restore-sel').textContent=rbPlain('rb_selected',{p:s.path?s.path+(s.is_dir?'/':''):t('rb_restore_all')});
+  document.querySelectorAll('#rb-ls .rb-item[data-p]').forEach(el=>el.classList.toggle('selected',el.getAttribute('data-p')===s.path));
+}
+function rbSelect(el){_rbRestore.sel={path:el.getAttribute('data-p'),is_dir:el.getAttribute('data-d')==='1'};rbShowSel();}
+async function rbBrowse(path){
+  const R=_rbRestore,restic=R.engine==='restic';
+  if(restic&&!path)path='/';
+  R.path=path;R.sel={path:(restic&&path==='/')?'':path,is_dir:true};
+  const ls=document.getElementById('rb-ls');ls.innerHTML='<div style="padding:20px;text-align:center"><span class="spinner"></span></div>';
+  const parts=path.split('/').filter(Boolean);
+  let bc='<span class="bc-part" onclick="rbBrowse(\'\')">⌂</span>';
+  parts.forEach((p,i)=>{const sub=(restic?'/':'')+parts.slice(0,i+1).join('/');bc+='<span class="bc-sep"> / </span><span class="bc-part" onclick="rbBrowse(\''+escJs(sub)+'\')">'+esc(p)+'</span>';});
+  document.getElementById('rb-bc').innerHTML=bc;rbShowSel();
+  try{
+    const list=await api('GET','/remote-backups/'+R.id+'/ls?snapshot='+encodeURIComponent(rbVal('rb-snap'))+'&path='+encodeURIComponent(path));
+    if(R!==_rbRestore||R.path!==path)return;
+    const rows=[];
+    if(parts.length){const up=(restic?'/':'')+parts.slice(0,-1).join('/');rows.push('<div class="rb-item" onclick="rbBrowse(\''+escJs(up)+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg><span class="rb-name" style="color:var(--text-dim)">'+t('up')+'</span></div>');}
+    if(!list.length)rows.push('<div style="padding:16px;text-align:center;color:var(--text-dim);font-size:13px">'+t('rb_empty_dir')+'</div>');
+    for(const e of list){
+      const label=esc(e.name)+(e.name==='.versions'&&!parts.length?' <span style="color:var(--text-dim);font-size:11px">('+t('rb_versions_label')+')</span>':'');
+      rows.push('<div class="rb-item" data-p="'+esc(e.path)+'" data-d="'+(e.is_dir?1:0)+'" onclick="rbSelect(this)"'+(e.is_dir?' ondblclick="rbBrowse(\''+escJs(e.path)+'\')"':'')+'>'
+        +(e.is_dir?RB_FOLDER_SVG:RB_FILE_SVG)+'<span class="rb-name">'+label+'</span>'
+        +(e.is_dir?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="cursor:pointer" onclick="event.stopPropagation();rbBrowse(\''+escJs(e.path)+'\')"><polyline points="9 18 15 12 9 6"/></svg>'
+                  :'<span class="rb-size">'+fmtSize(e.size)+'</span>')
+        +'</div>');
+    }
+    ls.innerHTML=rows.join('');rbShowSel();
+  }catch(e){ls.innerHTML='<div style="padding:20px;text-align:center;color:var(--danger)">'+esc(e.message)+'</div>';}
+}
+async function rbDoRestore(){
+  const R=_rbRestore,target=rbVal('rb-restore-target').trim();
+  if(!target){toast(t('rb_pick_target'),true);return;}
+  const p=R.sel.path||t('rb_restore_all');
+  if(!confirm(rbPlain('rb_confirm_restore',{p,t:target})))return;
+  try{
+    await api('POST','/remote-backups/'+R.id+'/restore',{snapshot:rbVal('rb-snap')||'latest',path:R.sel.path,is_dir:R.sel.is_dir,target});
+    toast(t('rb_restore_started'));closeModal('modal-rb-restore');loadRb();
+  }catch(e){toast(e.message,true,6000);}
+}
 
 // ── Init ──
 window.addEventListener('click',e=>{if(e.target.classList.contains('modal-overlay')){e.target.classList.remove('open');_browserSelected=null;}});

@@ -35,6 +35,12 @@ RUN apk add --no-cache hd-idle \
     || apk add --no-cache hd-idle --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community \
     || echo "WARNING: hd-idle unavailable in repos — HDD spindown will be disabled at runtime"
 
+# restic + rclone for external backups (Hetzner, S3, B2, SFTP, WebDAV, ...).
+# Non-fatal like hd-idle: without them the add-on still works, the Backup tab
+# then says which tool is missing.
+RUN apk add --no-cache restic rclone \
+    || echo "WARNING: restic/rclone unavailable - external backups will be disabled at runtime"
+
 # Install Python packages
 RUN pip3 install --break-system-packages flask psutil waitress
 

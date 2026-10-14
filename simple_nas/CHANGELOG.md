@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.10.0
+- **Externe Backups mit restic oder rclone.** Neuer Bereich im Backup-Tab: `/share`, `/media` oder beliebige Ordner werden auf eine Hetzner Storage Box, zu S3 (Hetzner Object Storage, Wasabi, AWS, MinIO, Cloudflare R2 ...), Backblaze B2, auf einen SFTP-Server, in eine WebDAV-Cloud (Nextcloud, ownCloud), auf ein anderes NAS per SMB oder auf eine zweite Platte gesichert - oder zu jedem anderen rclone-Anbieter (OneDrive, Google Drive, Dropbox ...) ueber eine eingefuegte rclone-Konfiguration.
+- **Pro Job waehlbar:** restic (verschluesseltes Archiv mit Staenden, ohne Dubletten; Aufbewahrung je Tag/Woche/Monat) oder rclone (Dateien 1:1 beim Anbieter, optional verschluesselt; ersetzte und geloeschte Dateien landen in `.versions/<Datum>/` und werden nach N Tagen geloescht).
+- **Zeitplan** taeglich oder woechentlich zu einer festen Uhrzeit; ein verpasster Lauf (HA war aus) wird beim naechsten Start einmal nachgeholt. Es laeuft immer nur ein Job, die anderen warten.
+- **Fortschritt, Abbrechen, Protokoll, Verbindung testen, Pruefen (restic)** und **Wiederherstellen** im Browser: Stand waehlen, Datei oder Ordner auswaehlen, Zielordner angeben.
+- **Leere Quellen stoppen den Lauf.** Fehlt ein Quellordner oder ist er leer (z. B. abgezogene USB-Platte), wird nichts gesichert - sonst wuerde rclone die Kopie loeschen und restic die guten Staende nach und nach aussortieren.
+- **Benachrichtigung in Home Assistant**, wenn ein Backup fehlschlaegt (neu: `homeassistant_api`); der naechste erfolgreiche Lauf entfernt sie.
+- Zugangsdaten liegen in `/data/remote_backup/` (Modus 600) und sind Teil der reinstall-sicheren Kopie unter `/config/.simplenas/auto` - ohne das Archiv-Passwort waere ein restic-Backup nach einer Neuinstallation wertlos. Die abgeschottete Freigabe-Seite sieht den Ordner nicht (Sandbox-Maske, wird jetzt auch angelegt, wenn er beim Start noch fehlt). Der restic-Cache (`/data/cache`) bleibt aus HA-Backups heraus.
+- Das Image enthaelt jetzt `restic` und `rclone`.
+
 ## 3.9.7
 - **Brute-Force-Schutz fuer den Admin-Login.** Bisher liess `/login` der Admin-Oberflaeche beliebig viele Versuche zu. Jetzt: nach 10 Fehlversuchen je Besucher-IP oder 20 je Benutzername (ueber alle IPs, gegen verteilte Angriffe) in 15 Minuten wird gesperrt - erst 15 Minuten, bei Wiederholung doppelt so lange, hoechstens 24 Stunden. Waehrend der Sperre wird auch das richtige Passwort abgewiesen (HTTP 429 mit `Retry-After`). Jeder Fehlversuch dauert zusaetzlich 0,3-0,7 s. Sperren stehen im Addon-Log (`[AUTH LOCK]`).
 - **Ueber Home Assistant (Ingress) wird nie gesperrt.** Wer dort angemeldet ist, ist kein Angreifer von aussen - so kommst du immer hinein, auch wenn ein Angriff das Konto auf dem Weg ueber die eigene Domain gesperrt hat.

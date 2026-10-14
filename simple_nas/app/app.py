@@ -27,6 +27,7 @@ import sharesandbox
 import share_worker
 import fileicons
 import wopi
+import remote_backup
 from ratelimit import LIMITER, AUTHFAIL_IP, AUTHFAIL_LINK, LOCK_BASE, LOCK_CAP, Limiter
 
 # ── Admin-Login: Brute-Force-Schutz ─────────────────────────────────────────
@@ -326,6 +327,12 @@ def _copy_data_to(dest_dir):
         src = os.path.join(DATA_DIR, fname)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(dest_dir, fname))
+    # External backup jobs: without them (and the archive password in them)
+    # a reinstall would leave the restic archive unreadable.
+    rb_src = os.path.join(DATA_DIR, "remote_backup", "jobs.json")
+    if os.path.exists(rb_src):
+        os.makedirs(os.path.join(dest_dir, "remote_backup"), mode=0o700, exist_ok=True)
+        shutil.copy2(rb_src, os.path.join(dest_dir, "remote_backup", "jobs.json"))
     samba_src = os.path.join(DATA_DIR, "samba")
     if os.path.isdir(samba_src):
         samba_dst = os.path.join(dest_dir, "samba")
@@ -342,6 +349,10 @@ def _restore_from(src_dir):
         src = os.path.join(src_dir, fname)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(DATA_DIR, fname))
+    rb_src = os.path.join(src_dir, "remote_backup", "jobs.json")
+    if os.path.exists(rb_src):
+        os.makedirs(os.path.join(DATA_DIR, "remote_backup"), mode=0o700, exist_ok=True)
+        shutil.copy2(rb_src, os.path.join(DATA_DIR, "remote_backup", "jobs.json"))
     samba_src = os.path.join(src_dir, "samba")
     if os.path.isdir(samba_src):
         samba_dst = os.path.join(DATA_DIR, "samba")
@@ -2706,6 +2717,13 @@ def api_run_backup(job_id):
     threading.Thread(target=run_backup, args=(job,), daemon=True).start()
     return jsonify({"ok": True, "message": "Backup gestartet"})
 
+# ─────────────────────────── external backups (restic / rclone) ─
+
+remote_backup.init(
+    DATA_DIR, lambda p: _safe(p),
+    on_change=lambda: _auto_backup() if _mirroring_enabled() else None)
+app.register_blueprint(remote_backup.bp, url_prefix="/api/remote-backups")
+
 # ─────────────────────────── frontend ───────────────────────────
 
 @app.route("/")
@@ -3013,5 +3031,6 @@ if __name__ == "__main__":
             raise
         except Exception as e:
             print(f"[SHARE] Start der oeffentlichen Seite fehlgeschlagen: {e}", flush=True)
+    remote_backup.start()
     port = int(os.environ.get("WEB_PORT", 8100))
     serve(app, port)

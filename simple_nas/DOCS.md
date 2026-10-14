@@ -12,6 +12,7 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 - **Web GUI** – manage shares, users, groups, drives, and file browser via HA Ingress
 - **USB / external drives** – mount and unmount drives at runtime; mounts survive reboots using stable `/dev/disk/by-id/` identifiers
 - **Network discovery** – mDNS (Avahi) for macOS Finder / Linux Nautilus, WS-Discovery (wsdd) for Windows 10/11
+- **External backups** – back up `/share`, `/media` or any folder to a Hetzner Storage Box, S3, Backblaze B2, SFTP, WebDAV, SMB, a second disk or any rclone provider; with restic (encrypted, versioned) or rclone (files 1:1), on a schedule, with restore in the browser
 - **Reinstall-safe backup** – settings are automatically backed up to `/config/.simplenas/auto` and restored on fresh install; manual snapshots (up to 10) are also supported
 - **Password protection** – optional web GUI login (username + password via add-on config)
 - **macOS junk suppression** – `.DS_Store`, `._*`, `.TemporaryItems` etc. are hidden and deleted automatically on all shares
@@ -328,6 +329,47 @@ The reverse proxy being the only way in and, where the proxy runs on the same ho
 ### Admin login protection
 
 The admin interface (port 8100) locks a visitor out after 10 failed logins per IP, or a username after 20 failed logins across all IPs, within 15 minutes (15 min, doubling on repeat, max. 24 h). Access through the Home Assistant **Open** button (Ingress) is never locked. Behind Cloudflare / Nginx Proxy Manager the real visitor IP is taken from `CF-Connecting-IP` / `X-Forwarded-For`, but only from addresses in `share_trusted_proxies`. With `admin_ingress_only: true` the admin interface answers only through Ingress.
+
+## External backups (restic / rclone)
+
+**Backup → External Backups** copies folders such as `/share` and `/media` off the machine: to a Hetzner Storage Box, an S3 bucket (Hetzner Object Storage, Wasabi, AWS, MinIO, Cloudflare R2 …), Backblaze B2, any SFTP server, a WebDAV cloud (Nextcloud, ownCloud), another NAS over SMB, a second USB disk – or any of the 70+ providers rclone supports (OneDrive, Google Drive, Dropbox, pCloud …).
+
+Each job picks one of two tools:
+
+| | **restic** | **rclone** |
+|---|---|---|
+| What lands at the provider | an encrypted archive | the files 1:1, readable there |
+| Encryption | always (client-side) | optional (rclone crypt) |
+| Older versions | snapshots, kept per day / week / month | replaced and deleted files go to `.versions/<date>/`, purged after N days |
+| Duplicates | stored once | stored as often as they occur |
+| Restore | in Simple NAS, or with restic on any computer | in Simple NAS, or download the files directly |
+
+Both reach the provider through rclone; a local folder is handed to them directly.
+
+### Example: Hetzner Storage Box
+
+1. In the Hetzner Console open the Storage Box and enable **SSH support**. Note server (`u123456.your-storagebox.de`) and user (`u123456`, or a sub-account like `u123456-sub1`).
+2. In Simple NAS: **Backup → + New external backup**.
+3. Name, tool **restic**, sources `/share` and `/media` (folder button or type the path).
+4. Provider **Hetzner Storage Box**, server, user, password. Port 23 is used automatically.
+5. **Generate** an encryption password and store it in your password manager.
+6. Schedule e.g. daily at 03:00 → **Test connection** → **Save**.
+
+The first run uploads everything; after that only changes are transferred.
+
+### Good to know
+
+- **The encryption password cannot be recovered.** Without it the backup is useless – also for you. It is stored with the job (and in the reinstall-safe copy under `/config/.simplenas/auto`), but keep a copy outside Home Assistant. After the first backup it can no longer be changed.
+- **Schedule**: daily or weekly at a fixed time (Home Assistant time zone). A run missed while Home Assistant was off is caught up once at the next start. Only one job runs at a time; others wait in a queue.
+- **Empty sources stop the run.** If a source folder is missing or empty – typically an unplugged USB disk leaving its empty mount point behind – nothing is backed up and the job fails. Otherwise rclone would delete the copy and restic's retention would eventually rotate the good snapshots away.
+- **Failure notification**: with *Notify on failure* (default on) a failed backup creates a persistent notification in Home Assistant; the next successful run removes it.
+- **Restore** opens the backed-up folders: pick a version (restic) and a file or folder, and a destination folder. The folder structure is kept (`<destination>/share/...`). Restoring never deletes anything; files with the same name are overwritten. With rclone you can also browse `.versions` to get an older copy back.
+- **Check** (restic only) verifies the archive structure.
+- **Other providers (rclone config)**: run `rclone config` on a PC, set up the provider (this is where the browser login for OneDrive/Google Drive happens), then paste that section from `rclone config show` into the job. Bucket or subfolder go into *Folder on the destination*.
+- **Exclude** patterns, one per line (`*.tmp`, `.Trash-*`, `@Recycle`). `.upload-*.part` – half-finished uploads – is excluded by default. An **upload limit** in Mbit/s keeps the internet line usable.
+- Credentials live in `/data/remote_backup/` (mode 600); the sandboxed public share site cannot see that folder. The restic cache (`/data/cache`) is left out of Home Assistant backups.
+- Deleting a job in Simple NAS does **not** delete the data at the provider.
+- To restore without Simple NAS (restic): `restic -r rclone:<remote>:<path> restore latest --target ./restore` with the rclone remote set up like in the job. For a Hetzner Storage Box restic can also go over SFTP directly: `restic -r sftp://u123456@u123456.your-storagebox.de:23/simplenas snapshots`.
 
 ## Reinstall-safe backup
 

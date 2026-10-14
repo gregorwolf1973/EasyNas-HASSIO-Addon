@@ -30,10 +30,11 @@ for f in admin_auth.json options.json; do
         mount --bind "$EMPTY_FILE" "/data/$f"
     fi
 done
-for d in samba; do
-    if [ -d "/data/$d" ]; then
-        mount -t tmpfs -o mode=0000 tmpfs "/data/$d"
-    fi
+# Created first if missing: the admin may add the first backup job while the
+# worker runs, and a directory made after this point would not be masked.
+for d in samba remote_backup; do
+    [ -d "/data/$d" ] || mkdir -m 0700 "/data/$d"
+    mount -t tmpfs -o mode=0000 tmpfs "/data/$d"
 done
 
 # 3. drop privileges and exec the worker. nobody keeps only the file caps an

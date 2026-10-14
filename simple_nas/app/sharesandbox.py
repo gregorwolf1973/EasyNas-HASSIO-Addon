@@ -38,7 +38,7 @@ LOG_FILE = "share_access.log"
 # these secret files/dirs in it are masked with an empty file / empty tmpfs, so
 # leaking the log or a link never leaks the admin password or the Samba db.
 JAIL_MASK_FILES = ("admin_auth.json", "options.json")
-JAIL_MASK_DIRS = ("samba",)
+JAIL_MASK_DIRS = ("samba", "remote_backup")
 # Top-level trees blanked with an empty tmpfs inside the jail.
 JAIL_HIDE_TREES = ("/config", "/ssl", "/addon_configs", "/backup")
 
