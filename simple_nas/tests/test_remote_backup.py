@@ -469,6 +469,32 @@ class RunTest(_Base):
         purged = [c for c in self.calls if c[:2] == ["rclone", "purge"]]
         self.assertEqual(purged, [["rclone", "purge", f"t_abcd1234:simplenas/.versions/{old}"]])
 
+    def test_interrupted_backup_is_resumed_at_start(self):
+        seen = {}
+
+        def popen(cmd, **kw):
+            seen["marker"] = rb.get_job("abcd1234").get("running_since")
+            return _FakeProc([])
+
+        results = {"rclone obscure -": (0, "OBSC\n", "")}
+        with mock.patch.object(rb.subprocess, "run", side_effect=self.fake_run(results)), \
+                mock.patch.object(rb.subprocess, "Popen", side_effect=popen):
+            rb._execute("abcd1234", "backup", {})
+        self.assertTrue(seen["marker"])                          # set while running
+        self.assertEqual(rb.get_job("abcd1234")["running_since"], "")   # cleared at the end
+
+        # the add-on died mid-run: the marker survives into the next start
+        rb._update_job("abcd1234", running_since="2026-10-14T23:10:00")
+        rb.save_jobs(rb.load_jobs() + [dict(self.job, id="ffff0000", running_since="")])
+        with mock.patch.object(rb, "enqueue") as enq:
+            self.assertEqual(rb._resume_interrupted(), ["abcd1234"])
+        enq.assert_called_once_with("abcd1234", "backup", {"resumed": True})
+
+    def test_marker_survives_an_edit(self):
+        rb._update_job("abcd1234", running_since="2026-10-14T23:10:00")
+        job = rb.normalize(self.hetzner(name="Neu", password=""), rb.get_job("abcd1234"))
+        self.assertEqual(job["running_since"], "2026-10-14T23:10:00")
+
     def test_queue_refuses_double_start(self):
         rb._state["abcd1234"] = {"running": True}
         with self.assertRaises(rb.RunError):

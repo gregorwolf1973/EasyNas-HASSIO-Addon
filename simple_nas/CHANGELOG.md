@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.10.2
+- **Unterbrochene externe Backups laufen nach einem Neustart weiter.** Wird ein Backup durch einen Neustart von Home Assistant oder ein Update des Add-ons abgeschnitten, reiht Simple NAS es beim naechsten Start (nach 2 Minuten) automatisch wieder ein. restic und rclone ueberspringen dabei, was schon beim Anbieter liegt. Bisher galt der geplante Termin als erledigt - ein woechentlicher Job waere erst eine Woche spaeter weitergelaufen. Selbst abgebrochene Laeufe werden nicht wieder aufgenommen.
+
 ## 3.10.1
 - **Fix: Hetzner Storage Box meldete "unable to authenticate, attempted methods [none]".** Das Add-on nutzte fest Port 23, der bei Hetzner nur mit eingeschaltetem "SSH-Support" antwortet. Jetzt ist Port 22 (reines SFTP, funktioniert immer) der Standard; Port 23 ist im Job waehlbar. Bestehende Hetzner-Jobs nutzen automatisch Port 22.
 - **Verstaendliche Fehlermeldungen.** Statt der rohen rclone/restic-Ausgabe steht vorne ein Hinweis in Klartext (Anmeldung abgelehnt, Server nicht gefunden, Zeitueberschreitung, Bucket fehlt, falsches Archiv-Passwort ...), die Details dahinter. Der rclone-Hinweis zur Host-Key-Pruefung wird nicht mehr mit ausgegeben.

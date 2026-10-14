@@ -405,7 +405,7 @@ def normalize(body, existing=None, require_sources=True):
     if not 0 <= bw <= 100000:
         raise JobError("Upload-Limit: 0 bis 100000 Mbit/s")
 
-    job = {k: v for k, v in ex.items() if k in ("id", "initialized", "last", "last_backup", "last_slot")}
+    job = {k: v for k, v in ex.items() if k in ("id", "initialized", "last", "last_backup", "last_slot", "running_since")}
     job.update(name=name, engine=engine, sources=sources, target=target,
                remote_path=remote_path, encrypt=encrypt, excludes=excludes,
                retention=retention, keep_versions_days=keep_days,
@@ -500,8 +500,29 @@ def _tick(now):
     return [j["id"] for j in due]
 
 
+def _resume_interrupted():
+    """A backup still marked as running at start-up was cut off by a restart
+    or an update of the add-on. Queue it again - restic and rclone skip what
+    already arrived. Runs the user cancelled are not marked, so they stay off."""
+    resumed = []
+    for j in load_jobs():
+        if not j.get("running_since"):
+            continue
+        try:
+            enqueue(j["id"], "backup", {"resumed": True})
+            resumed.append(j["id"])
+            print(f"[REMOTE-BACKUP] '{j.get('name')}' wurde unterbrochen - wird fortgesetzt", flush=True)
+        except RunError:
+            pass
+    return resumed
+
+
 def _scheduler():
     time.sleep(START_DELAY)
+    try:
+        _resume_interrupted()
+    except Exception as e:
+        print(f"[REMOTE-BACKUP] Fortsetzen fehlgeschlagen: {e}", flush=True)
     while True:
         try:
             _tick(datetime.datetime.now())
@@ -1054,6 +1075,12 @@ def _execute(jid, kind, params):
                        "started": started, "cancel": False}
     log = _Log(_dir("logs", f"{jid}.log"))
     log.write(f"{KIND_LABELS.get(kind, kind)} gestartet ({job['engine']}, Ziel {job['target']['provider']})")
+    if params.get("resumed"):
+        log.write("Fortsetzung nach einem Neustart - bereits Übertragenes wird übersprungen")
+    if kind == "backup":
+        # Cleared when the run ends in any way we see; still set at the next
+        # start means the add-on went down mid-run (see _resume_interrupted).
+        _update_job(jid, running_since=datetime.datetime.now().isoformat(timespec="seconds"))
     print(f"[REMOTE-BACKUP] {KIND_LABELS.get(kind, kind)} '{job['name']}' gestartet", flush=True)
     status, message = "ok", ""
     try:
@@ -1079,7 +1106,7 @@ def _execute(jid, kind, params):
             _state.pop(jid, None)
     rec = {"at": datetime.datetime.now().isoformat(timespec="seconds"), "kind": kind,
            "status": status, "message": message[:1000], "duration": int(time.time() - started)}
-    fields = {"last": rec}
+    fields = {"last": rec, "running_since": ""}
     if kind == "backup":
         fields["last_backup"] = rec
         if status in ("ok", "warning"):
