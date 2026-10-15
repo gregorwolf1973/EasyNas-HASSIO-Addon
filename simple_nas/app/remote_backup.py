@@ -31,7 +31,7 @@ import threading
 import time
 import urllib.request
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 
 import safepath
 
@@ -1394,6 +1394,20 @@ def api_password(jid):
         return err
     print(f"[REMOTE-BACKUP] Passwort von '{job['name']}' angezeigt", flush=True)
     return jsonify({"password": job.get("password", "")})
+
+
+@bp.route("/<jid>/notfallblatt", methods=["GET"])
+def api_notfallblatt(jid):
+    """Printable emergency sheet with the archive password - same access
+    level as /password above (admin session); never cached."""
+    import notfallblatt         # lazy: notfallblatt imports this module
+    job, err = _job_or_404(jid)
+    if err:
+        return err
+    print(f"[REMOTE-BACKUP] Notfallblatt von '{job['name']}' angezeigt", flush=True)
+    page = notfallblatt.render(job, request.args.get("lang", "de"), datetime.datetime.now())
+    return Response(page, mimetype="text/html", headers={
+        "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex"})
 
 
 @bp.route("/<jid>/snapshots", methods=["GET"])

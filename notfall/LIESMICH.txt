@@ -1,0 +1,65 @@
+SIMPLE NAS – NOTFALL-WIEDERHERSTELLUNG
+======================================
+
+Holt die Daten aus dem externen Backup (restic-Archiv auf der Hetzner
+Storage Box) zurück, wenn Home Assistant oder das Add-on nicht mehr läuft.
+Es wird nichts installiert; restic und rclone liegen im Ordner "programme".
+
+DAS BRAUCHEN SIE
+----------------
+  1. Adresse der Storage Box     z. B. u123456.your-storagebox.de
+  2. Benutzer der Storage Box    z. B. u123456
+  3. Passwort der Storage Box    (vergessen? In der Hetzner Console neu
+                                  setzen – die Daten bleiben erhalten)
+  4. Pfad auf der Box            im Add-on "Zielpfad", Vorgabe: simplenas
+  5. ARCHIV-PASSWORT (restic)    das Passwort, das im Add-on am Backup-Job
+                                  steht. OHNE DIESES PASSWORT SIND DIE DATEN
+                                  VERLOREN – auch Hetzner kann sie nicht lesen.
+
+Die Passwörter werden nur eingetippt und nirgends gespeichert. Adresse,
+Benutzer, Port und Pfad kann das Tool in "einstellungen.txt" ablegen.
+
+WINDOWS
+-------
+  Doppelklick auf  WIEDERHERSTELLEN-Windows.cmd
+  (Ordner vorher aus dem ZIP auspacken, nicht im ZIP starten.)
+
+LINUX
+-----
+  Im Terminal, im ausgepackten Ordner:
+      bash wiederherstellen-linux.sh
+  Läuft auf x64-Rechnern (und ARM64, wenn das Paket mit --arm64 gebaut ist).
+
+ABLAUF
+------
+  Nach der Anmeldung zeigt das Tool die Sicherungsstände und ein Menü:
+    [1] Sicherungsstände anzeigen
+    [2] Inhalt ansehen       – Ordner im Archiv, z. B. /share
+    [3] ALLES wiederherstellen in einen Zielordner
+    [4] Einen Ordner/eine Datei wiederherstellen, z. B. /share/Fotos/2024
+    [5] Archiv prüfen
+
+  Wiederhergestellt wird MIT dem vollen Pfad: /share/Fotos/2024 landet im
+  Zielordner unter share\Fotos\2024. Am besten einen leeren Ordner auf
+  einer Platte mit genug freiem Platz wählen.
+
+WENN ES NICHT KLAPPT
+--------------------
+  "wrong password or no key found"  -> Archiv-Passwort falsch
+  "Is there a repository ..."       -> Pfad auf der Box falsch
+  "ssh: handshake failed"           -> Benutzer oder Box-Passwort falsch.
+       Nach mehreren Fehlversuchen sperrt Hetzner die IP für eine Weile:
+       Backup-Jobs anderswo anhalten, 30–60 Minuten warten.
+  Verbindung kommt gar nicht zustande -> in der Hetzner Console prüfen:
+       Box aktiv, "SSH-Unterstützung" und "Externe Erreichbarkeit" an.
+
+  Unter Windows: Dateinamen mit Zeichen, die Windows nicht erlaubt
+  (z. B. : ? * " < > |), lassen sich dort nicht anlegen – restic meldet
+  sie und macht mit den übrigen weiter. Solche Dateien unter Linux
+  wiederherstellen.
+
+TIPP
+----
+  Dieses Paket auf einen USB-Stick UND an einen zweiten Ort legen (nicht
+  nur auf das NAS – das ist ja gerade weg). Das Archiv-Passwort auf Papier
+  daneben.

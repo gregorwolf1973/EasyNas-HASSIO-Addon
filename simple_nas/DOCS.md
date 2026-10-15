@@ -370,7 +370,11 @@ The first run uploads everything; after that only changes are transferred.
 - **Exclude** patterns, one per line (`*.tmp`, `.Trash-*`, `@Recycle`). `.upload-*.part` – half-finished uploads – is excluded by default. An **upload limit** in Mbit/s keeps the internet line usable.
 - Credentials live in `/data/remote_backup/` (mode 600); the sandboxed public share site cannot see that folder. The restic cache (`/data/cache`) is left out of Home Assistant backups.
 - Deleting a job in Simple NAS does **not** delete the data at the provider.
-- To restore without Simple NAS (restic): `restic -r rclone:<remote>:<path> restore latest --target ./restore` with the rclone remote set up like in the job. For a Hetzner Storage Box restic can also go over SFTP directly: `restic -r sftp://u123456@u123456.your-storagebox.de:23/simplenas snapshots`.
+
+### When Home Assistant is gone: emergency sheet and emergency package
+
+- **Emergency sheet** (button on each job): a printable page with where the data lives, the **archive password** character by character (with hints for look-alikes such as `l`/`I`/`1` and `O`/`0`), what is backed up and how to restore by hand – an rclone config with placeholders and the restic commands. Provider secrets (box password, S3 secret, keys) are deliberately **not** printed – they can be reset at the provider; the archive password cannot. Print it, keep it away from the NAS, and print it again after changing the job.
+- **Emergency package** (repository folder [`notfall/`](https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon/tree/main/notfall)): `bash notfall/paket-bauen.sh` builds `SimpleNAS-Notfall-<date>.zip` with restic and rclone for Windows and Linux (checked against the official checksums). Unpacked on any PC – Windows: double-click `WIEDERHERSTELLEN-Windows.cmd`, Linux: `bash wiederherstellen-linux.sh` – it asks for Storage Box, user, port, path and the two passwords (typed, never stored), then lists the snapshots and restores everything or a single folder/file. Nothing to install. Supports restic jobs on a Hetzner Storage Box or an SFTP server with password. Keep the ZIP on a USB stick next to the printed sheet.
 
 ## Reinstall-safe backup
 

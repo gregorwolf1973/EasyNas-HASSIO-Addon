@@ -571,6 +571,18 @@ class ApiTest(_Base):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(rb.load_jobs(), [])
 
+    def test_emergency_sheet(self):
+        jid = self.send("POST", "/api/remote-backups", self.hetzner()).get_json()["id"]
+        r = self.c.get(f"/api/remote-backups/{jid}/notfallblatt?lang=de")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.content_type.startswith("text/html"))
+        self.assertEqual(r.headers.get("Cache-Control"), "no-store")
+        self.assertEqual(r.headers.get("Referrer-Policy"), "no-referrer")
+        page = r.get_data(as_text=True)
+        self.assertIn("archivpasswort", page)
+        self.assertNotIn("boxpass", page)
+        self.assertEqual(self.c.get("/api/remote-backups/nope/notfallblatt").status_code, 404)
+
     def test_jobs_file_is_private(self):
         self.send("POST", "/api/remote-backups", self.hetzner())
         if os.name == "posix":

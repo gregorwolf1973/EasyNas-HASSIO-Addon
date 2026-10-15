@@ -1195,7 +1195,7 @@ const T={
     rb_remote_path:'Ordner auf dem Ziel',rb_remote_path_hint:'Wird angelegt, falls er fehlt. Bei S3/B2 liegt er im Bucket, bei SMB in der Freigabe.',
     rb_security:'Verschlüsselung & Aufbewahrung',rb_encrypt:'Verschlüsseln',rb_encrypt_sub:'Dateinamen und Inhalte werden vor dem Hochladen verschlüsselt',
     rb_password:'Verschlüsselungs-Passwort',rb_pw_gen:'Erzeugen',rb_pw_show:'Anzeigen',rb_pw_locked:'Das Passwort kann nach dem ersten Backup nicht mehr geändert werden.',
-    rb_pw_warn:'<b>Ohne dieses Passwort sind die gesicherten Daten verloren</b> – auch für dich. Bewahre es zusätzlich außerhalb von Home Assistant auf, z. B. im Passwort-Manager.',
+    rb_pw_warn:'<b>Ohne dieses Passwort sind die gesicherten Daten verloren</b> – auch für dich. Bewahre es zusätzlich außerhalb von Home Assistant auf, z. B. im Passwort-Manager oder als ausgedrucktes <b>Notfallblatt</b> (Knopf am Job).',
     rb_retention:'Alte Stände behalten',rb_keep_d:'Tägliche',rb_keep_w:'Wöchentliche',rb_keep_m:'Monatliche',
     rb_retention_hint:'Je Tag, Woche und Monat bleibt der letzte Stand erhalten, ältere werden gelöscht. Alles 0 = nie löschen.',
     rb_keep_days:'Ältere Versionen behalten (Tage)',rb_keep_days_hint:'Ersetzte und gelöschte Dateien liegen im Ordner .versions. 0 = nie löschen.',
@@ -1205,7 +1205,7 @@ const T={
     rb_advanced:'Erweitert',rb_excludes:'Ausschließen',rb_excludes_hint:'Ein Muster pro Zeile, z. B. <code>*.tmp</code>, <code>.Trash-*</code> oder <code>@Recycle</code>.',
     rb_bw:'Upload-Limit (Mbit/s, 0 = ohne)',rb_notify:'Bei Fehler benachrichtigen',rb_notify_sub:'Meldung in Home Assistant, wenn ein Backup fehlschlägt',
     rb_btn_test:'Verbindung testen',rb_testing:'Teste Verbindung …',rb_created:'Externes Backup angelegt',rb_saved:'Externes Backup gespeichert',
-    rb_btn_run:'Jetzt sichern',rb_btn_cancel:'Abbrechen',rb_btn_restore:'Wiederherstellen',rb_btn_log:'Protokoll',rb_btn_check:'Prüfen',
+    rb_btn_run:'Jetzt sichern',rb_btn_cancel:'Abbrechen',rb_btn_restore:'Wiederherstellen',rb_btn_log:'Protokoll',rb_btn_check:'Prüfen',rb_btn_sheet:'Notfallblatt',rb_sheet_title:'Druckbares Blatt mit Archiv-Passwort und Anleitung, um die Daten ohne Home Assistant zurückzuholen',
     rb_queued:'Wartet …',rb_eta:'noch ca. {m} min',rb_never:'Noch nie gelaufen',rb_next:'Nächster Lauf: {d}',
     rb_kind_backup:'Backup',rb_kind_restore:'Wiederherstellung',rb_kind_check:'Prüfung',
     rb_confirm_del:'Externes Backup „{n}“ löschen?\nDie Daten beim Anbieter bleiben erhalten.',rb_confirm_cancel:'Laufenden Vorgang abbrechen?',
@@ -1354,7 +1354,7 @@ const T={
     rb_remote_path:'Folder on the destination',rb_remote_path_hint:'Created if missing. For S3/B2 it lives in the bucket, for SMB in the share.',
     rb_security:'Encryption & retention',rb_encrypt:'Encrypt',rb_encrypt_sub:'File names and contents are encrypted before upload',
     rb_password:'Encryption password',rb_pw_gen:'Generate',rb_pw_show:'Show',rb_pw_locked:'The password cannot be changed after the first backup.',
-    rb_pw_warn:'<b>Without this password the backed-up data is lost</b> – for you too. Keep a copy outside Home Assistant, e.g. in a password manager.',
+    rb_pw_warn:'<b>Without this password the backed-up data is lost</b> – for you too. Keep a copy outside Home Assistant, e.g. in a password manager or as a printed <b>emergency sheet</b> (button on the job).',
     rb_retention:'Keep old versions',rb_keep_d:'Daily',rb_keep_w:'Weekly',rb_keep_m:'Monthly',
     rb_retention_hint:'The last version of each day, week and month is kept, older ones are deleted. All 0 = never delete.',
     rb_keep_days:'Keep older versions (days)',rb_keep_days_hint:'Replaced and deleted files are kept in the .versions folder. 0 = never delete.',
@@ -1364,7 +1364,7 @@ const T={
     rb_advanced:'Advanced',rb_excludes:'Exclude',rb_excludes_hint:'One pattern per line, e.g. <code>*.tmp</code>, <code>.Trash-*</code> or <code>@Recycle</code>.',
     rb_bw:'Upload limit (Mbit/s, 0 = none)',rb_notify:'Notify on failure',rb_notify_sub:'Notification in Home Assistant when a backup fails',
     rb_btn_test:'Test connection',rb_testing:'Testing connection …',rb_created:'External backup created',rb_saved:'External backup saved',
-    rb_btn_run:'Back up now',rb_btn_cancel:'Cancel',rb_btn_restore:'Restore',rb_btn_log:'Log',rb_btn_check:'Check',
+    rb_btn_run:'Back up now',rb_btn_cancel:'Cancel',rb_btn_restore:'Restore',rb_btn_log:'Log',rb_btn_check:'Check',rb_btn_sheet:'Emergency sheet',rb_sheet_title:'Printable sheet with the archive password and instructions to get the data back without Home Assistant',
     rb_queued:'Waiting …',rb_eta:'about {m} min left',rb_never:'Never run',rb_next:'Next run: {d}',
     rb_kind_backup:'Backup',rb_kind_restore:'Restore',rb_kind_check:'Check',
     rb_confirm_del:'Delete external backup “{n}”?\nThe data at the provider is kept.',rb_confirm_cancel:'Cancel the running job?',
@@ -3034,6 +3034,7 @@ async function loadRb(){
           +'<button class="btn btn-ghost btn-sm" onclick="openRbRestore(\''+id+'\')" '+(busy?'disabled style="opacity:.4"':'')+'>'+t('rb_btn_restore')+'</button>'
           +'<button class="btn btn-ghost btn-sm" onclick="openRbLog(\''+id+'\')">'+t('rb_btn_log')+'</button>'
           +(j.engine==='restic'&&j.initialized?'<button class="btn btn-ghost btn-sm" onclick="rbCheck(\''+id+'\')" '+(busy?'disabled style="opacity:.4"':'')+'>'+t('rb_btn_check')+'</button>':'')
+          +'<button class="btn btn-ghost btn-sm" title="'+t('rb_sheet_title')+'" onclick="rbSheet(\''+id+'\')">'+t('rb_btn_sheet')+'</button>'
         +'</div></div>';
     }).join('');
     if(_rbLogId&&document.getElementById('modal-rb-log').classList.contains('open')&&_rbJobs.some(j=>j.id===_rbLogId&&j.state))rbLoadLog();
@@ -3162,6 +3163,7 @@ async function rbDelete(id){
   const j=_rbJobs.find(x=>x.id===id);if(!j||!confirm(rbPlain('rb_confirm_del',{n:j.name})))return;
   try{await api('DELETE','/remote-backups/'+id);toast(t('deleted'));loadRb();}catch(e){toast(e.message,true);}
 }
+function rbSheet(id){window.open(apiBase()+'/api/remote-backups/'+encodeURIComponent(id)+'/notfallblatt?lang='+_lang,'_blank','noopener');}
 async function openRbLog(id){
   _rbLogId=id;const j=_rbJobs.find(x=>x.id===id);
   document.getElementById('rb-log-title').textContent=t('rb_log_title')+(j?' – '+j.name:'');

@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.11.0
+- **Notfallblatt fuer externe Backups.** Neuer Knopf **Notfallblatt** an jedem Job: eine druckbare Seite mit allem, was man braucht, um die Daten ohne Home Assistant zurueckzuholen - wo sie liegen (Anbieter, Server, Benutzer, Pfad), das **Archiv-Passwort** Zeichen fuer Zeichen (verwechselbare Zeichen wie `l`/`I`/`1` und `O`/`0` sind beschriftet), was gesichert wird, und die Wiederherstellung: mit dem Notfall-Paket oder von Hand mit einer rclone-Konfiguration samt restic-Befehlen. Zugangsdaten des Anbieters (Box-Passwort, S3-Secret, Schluessel, eigene rclone-Konfiguration) stehen bewusst **nicht** darauf - die lassen sich beim Anbieter neu setzen, das Archiv-Passwort nicht. Abrufbar mit derselben Anmeldung wie "Passwort anzeigen", wird nicht zwischengespeichert; jeder Abruf steht im Log.
+- **Notfall-Paket** (Ordner `notfall/` im Repository): `bash notfall/paket-bauen.sh` baut ein ZIP mit restic und rclone fuer Windows und Linux (gegen die offiziellen Pruefsummen geprueft) und einem Wiederherstellungs-Tool mit Tastatureingabe. Auf einem beliebigen PC auspacken und starten, Zugangsdaten eintippen (Passwoerter werden nirgends gespeichert), Stand waehlen, alles oder einen Ordner wiederherstellen - ohne Installation. Fuer restic-Jobs auf einer Hetzner Storage Box oder einem SFTP-Server mit Passwort.
+
 ## 3.10.4
 - **Pruefung eines restic-Archivs scheitert nicht mehr an einer verwaisten Sperre.** Wurde ein Backup durch einen Neustart oder ein Update des Add-ons abgebrochen, blieb seine Sperre im Archiv liegen, und jede Pruefung endete mit "Exit 11: lock was created at ..." - bis zum naechsten Backup. Vor `restic check` laeuft jetzt wie vor jedem Backup `restic unlock`. Das entfernt nur verwaiste Sperren, nie die eines laufenden Backups.
 
