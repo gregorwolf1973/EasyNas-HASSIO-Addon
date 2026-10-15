@@ -18,8 +18,12 @@ ARM64=0
 if [ "${1:-}" = "--arm64" ]; then ARM64=1; shift; fi
 
 neuestes() {   # erst ganz lesen: grep -m1 in der Pipe ließe curl mit pipefail scheitern
-  local j; j="$(curl -fsSL "https://api.github.com/repos/$1/releases/latest")"
-  grep -m1 '"tag_name"' <<<"$j" | sed -E 's/.*"v?([^"]+)".*/\1/'
+  local j v; j="$(curl -fsSL "https://api.github.com/repos/$1/releases/latest")"
+  # Nur das Feld selbst herausschneiden: die API liefert das JSON mal mehrzeilig,
+  # mal in EINER Zeile – ein Muster über die ganze Zeile griff dann ein anderes Feld.
+  v="$(grep -o '"tag_name": *"[^"]*"' <<<"$j" | head -1 | sed -E 's/.*"v?([^"]+)"$/\1/')"
+  [[ "$v" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "Neueste Version von $1 nicht lesbar ('$v') – Version beim Aufruf angeben." >&2; exit 1; }
+  echo "$v"
 }
 RESTIC_V="${1:-$(neuestes restic/restic)}"
 RCLONE_V="${2:-$(neuestes rclone/rclone)}"
@@ -28,8 +32,10 @@ echo "restic $RESTIC_V, rclone $RCLONE_V"
 CACHE="$HIER/.cache"
 BAU="$HIER/.bau/SimpleNAS-Notfall"
 AUS="$HIER/dist"
+ZIP="$AUS/SimpleNAS-Notfall-$(date +%Y-%m-%d).zip"
 mkdir -p "$CACHE" "$AUS"
 rm -rf "$HIER/.bau"
+rm -f "$ZIP"   # gleich zu Beginn: ein abgebrochener Lauf soll kein altes ZIP als Ergebnis zurücklassen
 mkdir -p "$BAU/programme"
 
 laden() {   # url datei
@@ -69,12 +75,16 @@ for z in $ZIELE; do
   rm -rf "$TMP"
 done
 
-cp "$HIER/WIEDERHERSTELLEN-Windows.cmd" "$HIER/wiederherstellen-linux.sh" "$HIER/LIESMICH.txt" "$BAU/"
-cp "$HIER/wiederherstellen.ps1" "$BAU/programme/"
+# Windows-Dateien mit CRLF ins Paket – im Repository stehen sie mit LF, und
+# ein unter Linux gebautes Paket bekäme sonst LF-Dateien für cmd.exe/Notepad.
+crlf() { sed 's/\r*$/\r/' "$1" > "$2"; }
+crlf "$HIER/WIEDERHERSTELLEN-Windows.cmd" "$BAU/WIEDERHERSTELLEN-Windows.cmd"
+crlf "$HIER/LIESMICH.txt" "$BAU/LIESMICH.txt"
+crlf "$HIER/wiederherstellen.ps1" "$BAU/programme/wiederherstellen.ps1"
+tr -d '\r' < "$HIER/wiederherstellen-linux.sh" > "$BAU/wiederherstellen-linux.sh"   # bash verträgt kein CR
+chmod +x "$BAU/wiederherstellen-linux.sh"
 printf 'restic %s\r\nrclone %s\r\ngebaut %s\r\n' "$RESTIC_V" "$RCLONE_V" "$(date +%Y-%m-%d)" > "$BAU/programme/VERSIONEN.txt"
 
-ZIP="$AUS/SimpleNAS-Notfall-$(date +%Y-%m-%d).zip"
-rm -f "$ZIP"
 if command -v zip >/dev/null; then
   (cd "$HIER/.bau" && zip -q -r -9 "$ZIP" SimpleNAS-Notfall)
 elif [ -x /c/Windows/System32/tar.exe ]; then
