@@ -153,6 +153,80 @@ class FileApiConfinementTest(unittest.TestCase):
         self.assertEqual(r.status_code, 403)
         self.assertTrue(os.path.exists(src))
 
+    # ── copy/move into a folder (v3.11.2) ────────────────────────────
+    # The folder picker hands over the target folder itself. Copying a
+    # folder there always failed with "[Errno 17] File exists".
+    def read(self, *parts):
+        with open(os.path.join(self.root, *parts)) as f:
+            return f.read()
+
+    def test_copy_folder_into_existing_folder(self):
+        os.makedirs(os.path.join(self.root, "ziel"))
+        r = self.post("/api/files/copy", json={"src": os.path.join(self.root, "fotos"),
+                                               "dst": os.path.join(self.root, "ziel")})
+        self.assertEqual(r.status_code, 200, r.get_json())
+        self.assertEqual(self.read("ziel", "fotos", "a.txt"), "drin")
+        self.assertEqual(self.read("fotos", "a.txt"), "drin")
+
+    def test_copy_file_into_existing_folder(self):
+        os.makedirs(os.path.join(self.root, "ziel"))
+        r = self.post("/api/files/copy", json={"src": os.path.join(self.root, "fotos", "a.txt"),
+                                               "dst": os.path.join(self.root, "ziel")})
+        self.assertEqual(r.status_code, 200, r.get_json())
+        self.assertEqual(self.read("ziel", "a.txt"), "drin")
+
+    def test_copy_to_a_new_name_still_works(self):
+        r = self.post("/api/files/copy", json={"src": os.path.join(self.root, "fotos"),
+                                               "dst": os.path.join(self.root, "fotos-kopie")})
+        self.assertEqual(r.status_code, 200, r.get_json())
+        self.assertEqual(self.read("fotos-kopie", "a.txt"), "drin")
+
+    def test_copy_does_not_merge_into_a_folder_of_the_same_name(self):
+        os.makedirs(os.path.join(self.root, "ziel", "fotos"))
+        r = self.post("/api/files/copy", json={"src": os.path.join(self.root, "fotos"),
+                                               "dst": os.path.join(self.root, "ziel")})
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("existiert bereits", r.get_json()["error"])
+        self.assertEqual(os.listdir(os.path.join(self.root, "ziel", "fotos")), [])
+
+    def test_copy_into_its_own_folder_is_a_clean_409(self):
+        src = os.path.join(self.root, "fotos", "a.txt")
+        r = self.post("/api/files/copy", json={"src": src, "dst": os.path.join(self.root, "fotos")})
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(self.read("fotos", "a.txt"), "drin")
+
+    def test_copy_does_not_overwrite_a_file(self):
+        with open(os.path.join(self.root, "b.txt"), "w") as f:
+            f.write("alt")
+        r = self.post("/api/files/copy", json={"src": os.path.join(self.root, "fotos", "a.txt"),
+                                               "dst": os.path.join(self.root, "b.txt")})
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(self.read("b.txt"), "alt")
+
+    def test_folder_cannot_be_copied_into_itself(self):
+        os.makedirs(os.path.join(self.root, "fotos", "unter"))
+        r = self.post("/api/files/copy", json={"src": os.path.join(self.root, "fotos"),
+                                               "dst": os.path.join(self.root, "fotos", "unter")})
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(os.listdir(os.path.join(self.root, "fotos", "unter")), [])
+
+    def test_move_folder_into_existing_folder(self):
+        os.makedirs(os.path.join(self.root, "ziel"))
+        r = self.post("/api/files/move", json={"src": os.path.join(self.root, "fotos"),
+                                               "dst": os.path.join(self.root, "ziel")})
+        self.assertEqual(r.status_code, 200, r.get_json())
+        self.assertEqual(self.read("ziel", "fotos", "a.txt"), "drin")
+        self.assertFalse(os.path.exists(os.path.join(self.root, "fotos")))
+
+    def test_move_does_not_overwrite_a_file(self):
+        with open(os.path.join(self.root, "b.txt"), "w") as f:
+            f.write("alt")
+        src = os.path.join(self.root, "fotos", "a.txt")
+        r = self.post("/api/files/move", json={"src": src, "dst": os.path.join(self.root, "b.txt")})
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(self.read("b.txt"), "alt")
+        self.assertTrue(os.path.exists(src))
+
     def test_mkdir_outside_is_refused(self):
         r = self.post("/api/mkdir", json={"path": os.path.join(self.outside, "neu")})
         self.assertEqual(r.status_code, 403)

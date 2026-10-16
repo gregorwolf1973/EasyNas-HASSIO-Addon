@@ -987,7 +987,7 @@
       </button>
     </div>
   </div>
-  <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-fileaction')" data-i18n="modal_cancel">Abbrechen</button><button class="btn btn-primary" onclick="doFileAction()" data-i18n="modal_ok">OK</button></div>
+  <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-fileaction')" data-i18n="modal_cancel">Abbrechen</button><button class="btn btn-primary" id="fileaction-ok" onclick="doFileAction()" data-i18n="modal_ok">OK</button></div>
 </div></div>
 
 <!-- ══ MODAL: Mount ══ -->
@@ -2785,8 +2785,9 @@ function openFileAction(mode,src){
   document.getElementById('fileaction-src').value=src;
   document.getElementById('fileaction-src-display').value=src;
   document.getElementById('fileaction-title').textContent=mode==='copy'?t('modal_copy'):t('modal_move');
-  const basename=src.split('/').pop();
-  document.getElementById('fileaction-dst').value=_filesPath+'/'+basename;
+  // The current folder, not the source itself: the server puts the item into
+  // an existing folder, so the folder picker's choice can be used as it is.
+  document.getElementById('fileaction-dst').value=_filesPath;
   openModal('modal-fileaction');
 }
 async function doFileAction(){
@@ -2794,11 +2795,15 @@ async function doFileAction(){
   const src=document.getElementById('fileaction-src').value;
   const dst=document.getElementById('fileaction-dst').value.trim();
   if(!dst){toast(t('err_dst'),true);return;}
+  // Large folders take a while; a second click would start the copy again
+  // and fail on the folder the first one has already created.
+  const btn=document.getElementById('fileaction-ok');btn.disabled=true;const old=btn.textContent;btn.textContent=t('btn_running');
   try{
     await api('POST','/files/'+mode,{src,dst});
     toast(mode==='copy'?t('copied'):t('moved'));
     closeModal('modal-fileaction');loadFiles();
   }catch(e){toast(e.message,true);}
+  finally{btn.disabled=false;btn.textContent=old;}
 }
 /* Upload in pieces (v3.9.5). One request per file was refused above 100 MB
    when Home Assistant sits behind Cloudflare, and nothing showed while a

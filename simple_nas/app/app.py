@@ -2402,6 +2402,25 @@ def api_files_rename():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def _file_action_dest(src, dst):
+    """Where a copy or move lands. An existing folder means "into it", as with
+    cp and mv: the folder picker in the dialog hands over the target folder
+    itself, and copying a folder there used to fail with "File exists"."""
+    if os.path.isdir(dst):
+        return os.path.join(dst, os.path.basename(src))
+    return dst
+
+
+def _file_action_refused(src, dst, verb):
+    """Error response when a copy or move must not run, else None.
+    Nothing is overwritten - same rule as for uploads."""
+    if os.path.lexists(dst):
+        return jsonify({"error": f"„{os.path.basename(dst)}“ existiert bereits in {os.path.dirname(dst)}"}), 409
+    if os.path.isdir(src) and safepath.is_within(src, dst):
+        return jsonify({"error": f"Ein Ordner kann nicht in sich selbst {verb} werden"}), 400
+    return None
+
+
 @app.route("/api/files/copy", methods=["POST"])
 def api_files_copy():
     body = request.get_json(force=True)
@@ -2410,12 +2429,19 @@ def api_files_copy():
     if not src or not dst:
         return jsonify({"error": "src and dst required"}), 400
     src, dst = _safe(src), _safe(dst)
+    dst = _file_action_dest(src, dst)
+    refused = _file_action_refused(src, dst, "kopiert")
+    if refused:
+        return refused
     try:
         if os.path.isdir(src):
             shutil.copytree(src, dst)
         else:
             os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copy2(src, dst)
+            # O_EXCL: a file that appeared since the check is not overwritten
+            with open(src, "rb") as fin, os.fdopen(safepath.open_new_file(dst), "wb") as fout:
+                shutil.copyfileobj(fin, fout)
+            shutil.copystat(src, dst, follow_symlinks=False)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -2430,6 +2456,10 @@ def api_files_move():
     src, dst = _safe(src), _safe(dst)
     if src in _protected_paths():
         return jsonify({"error": "Dieser Pfad kann nicht verschoben werden"}), 400
+    dst = _file_action_dest(src, dst)
+    refused = _file_action_refused(src, dst, "verschoben")
+    if refused:
+        return refused
     try:
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         shutil.move(src, dst)
