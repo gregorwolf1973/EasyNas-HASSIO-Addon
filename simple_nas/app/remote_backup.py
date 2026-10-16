@@ -65,6 +65,11 @@ FIELD_LABELS = {
 }
 DEFAULT_RETENTION = {"daily": 7, "weekly": 4, "monthly": 12}
 DEFAULT_EXCLUDES = [".upload-*.part"]
+# Parallel uploads (restic: rclone.connections, default 5; rclone: --transfers,
+# default 4). A single SFTP stream rarely fills the line. Hetzner allows at
+# most 10 connections per Storage Box, and rclone needs one or two on top.
+DEFAULT_CONNECTIONS = 8
+MAX_CONNECTIONS = 16
 SCHEDULE_TYPES = ("manual", "daily", "weekly")
 VERSIONS_DIR = ".versions"
 TS_FMT = "%Y%m%d_%H%M%S"
@@ -87,6 +92,7 @@ _TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 _SNAP_RE = re.compile(r"^(latest|[0-9a-f]{8,64})$")
 _CONF_KEY_RE = re.compile(r"^[a-z0-9_]{1,64}$")
 _NO_REPO_RE = re.compile(r"does not exist|Is there a repository|repository not found", re.I)
+_NOT_FOUND_RE = re.compile(r"directory not found|not found|no such file|does not exist", re.I)
 
 
 class JobError(ValueError):
@@ -404,12 +410,14 @@ def normalize(body, existing=None, require_sources=True):
         raise JobError("Upload-Limit: keine Zahl")
     if not 0 <= bw <= 100000:
         raise JobError("Upload-Limit: 0 bis 100000 Mbit/s")
+    conns = _int(body.get("connections", ex.get("connections")), "Parallele Verbindungen",
+                 1, MAX_CONNECTIONS, DEFAULT_CONNECTIONS)
 
     job = {k: v for k, v in ex.items() if k in ("id", "initialized", "last", "last_backup", "last_slot", "running_since")}
     job.update(name=name, engine=engine, sources=sources, target=target,
                remote_path=remote_path, encrypt=encrypt, excludes=excludes,
                retention=retention, keep_versions_days=keep_days,
-               schedule=schedule, bwlimit_mbit=bw,
+               schedule=schedule, bwlimit_mbit=bw, connections=conns,
                notify=bool(body.get("notify", ex.get("notify", True))))
 
     if ex and _conn_key(job) != _conn_key(ex):
@@ -675,6 +683,21 @@ def _kib(job):
     return int(float(job.get("bwlimit_mbit") or 0) * 1_000_000 / 8 / 1024)
 
 
+def _conns(job):
+    try:
+        n = int(job.get("connections") or DEFAULT_CONNECTIONS)
+    except (TypeError, ValueError):
+        n = DEFAULT_CONNECTIONS
+    return max(1, min(MAX_CONNECTIONS, n))
+
+
+def _restic_opts(job):
+    """Parallel connections of restic's rclone backend (not for local)."""
+    if job["target"]["provider"] == "local":
+        return []
+    return ["-o", f"rclone.connections={_conns(job)}"]
+
+
 # ─────────────────────────── commands ───────────────────────────
 
 def restic_backup_cmd(job):
@@ -683,7 +706,7 @@ def restic_backup_cmd(job):
         cmd += ["--exclude", e]
     if _kib(job):
         cmd += ["--limit-upload", str(_kib(job))]
-    return cmd + list(job["sources"])
+    return cmd + _restic_opts(job) + list(job["sources"])
 
 
 def restic_forget_cmd(job):
@@ -694,12 +717,13 @@ def restic_forget_cmd(job):
     for k in DEFAULT_RETENTION:
         if r.get(k):
             cmd += [f"--keep-{k}", str(r[k])]
-    return cmd
+    return cmd + _restic_opts(job)
 
 
 def _rclone_common(job):
     cmd = ["--use-json-log", "--log-level", "NOTICE", "--stats", "5s",
-           "--stats-log-level", "NOTICE", "--retries", "3", "--low-level-retries", "10"]
+           "--stats-log-level", "NOTICE", "--retries", "3", "--low-level-retries", "10",
+           "--transfers", str(_conns(job))]
     if _kib(job):
         cmd += ["--bwlimit", f"{_kib(job)}K"]
     return cmd
@@ -996,7 +1020,7 @@ def _do_check(job, log):
     # needs an exclusive lock - it would fail with exit 11 until the next
     # backup. `unlock` removes stale locks only, never those of a live run.
     _quiet(["restic", "unlock"], env)
-    rc = _run_proc(jid, ["restic", "check"], env, log)
+    rc = _run_proc(jid, ["restic", "check"] + _restic_opts(job), env, log)
     _check_cancel(jid)
     if rc != 0:
         raise RunError(f"Prüfung fehlgeschlagen (Exit {rc}): {log.last()}")
@@ -1008,7 +1032,7 @@ def restore_cmd(job, snapshot, path, is_dir, target):
         cmd = ["restic", "restore", snapshot, "--target", target, "--json"]
         if path and path != "/":
             cmd += ["--include", path]
-        return cmd
+        return cmd + _restic_opts(job)
     root = rclone_root(job)
     rel = (path or "").strip("/")
     src = _join(root, rel) if rel else root
@@ -1168,7 +1192,15 @@ def cancel(jid):
 
 # ─────────────────────────── browsing ───────────────────────────
 
-def test_connection(job):
+RELOCATED_EMPTY = ("Am neuen Ort liegen noch keine gesicherten Daten. Erst die vorhandenen Daten "
+                   "dorthin verschieben (z. B. den Ordner beim Anbieter umbenennen), dann erneut testen. "
+                   "Wer bewusst von vorn anfangen will, speichert einfach - das nächste Backup lädt dann alles neu hoch.")
+
+
+def test_connection(job, relocated=False):
+    """relocated: the target of a job that already has backups was changed.
+    Then nothing is created there - an empty folder would hide the mistake
+    and the next backup would silently start a second archive from scratch."""
     env = _prepare(job)
     try:
         if job["engine"] == "restic":
@@ -1179,12 +1211,23 @@ def test_connection(job):
                 raise RunError("Archiv gefunden, aber das Passwort passt nicht")
             if state == "error":
                 raise RunError("Ziel nicht erreichbar: " + _tail(err))
+            if relocated:
+                raise RunError(RELOCATED_EMPTY)
             if job["target"]["provider"] != "local":
                 r = _quiet(["rclone", "mkdir", _base(job)], env, 90)
                 if r.returncode != 0:
                     raise RunError("Ziel nicht erreichbar: " + _tail(r.stderr))
             return "Verbindung ok - das Archiv wird beim ersten Backup angelegt"
         root = rclone_root(job)
+        if relocated:
+            r = _quiet(["rclone", "lsf", "--max-depth", "1", root], env, 90)
+            if r.returncode != 0 and _NOT_FOUND_RE.search(r.stderr or ""):
+                raise RunError(RELOCATED_EMPTY)
+            if r.returncode != 0:
+                raise RunError("Ziel nicht erreichbar: " + _tail(r.stderr))
+            if not r.stdout.strip():
+                raise RunError(RELOCATED_EMPTY)
+            return "Verbindung ok - gesicherte Daten gefunden"
         r = _quiet(["rclone", "mkdir", root], env, 90)
         if r.returncode == 0:
             r = _quiet(["rclone", "lsf", "--max-depth", "1", root], env, 90)
@@ -1336,8 +1379,9 @@ def api_test():
     except JobError as e:
         return _err(str(e))
     job["id"] = existing["id"] if existing else "probe" + secrets.token_hex(3)
+    relocated = bool(existing and existing.get("initialized") and _conn_key(job) != _conn_key(existing))
     try:
-        return jsonify({"ok": True, "message": test_connection(job)})
+        return jsonify({"ok": True, "message": test_connection(job, relocated)})
     except (RunError, OSError) as e:
         return _err(str(e))
     finally:

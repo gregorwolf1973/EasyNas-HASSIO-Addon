@@ -360,6 +360,12 @@
   .rb-item .rb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rb-item .rb-size { font-size: 11px; color: var(--text-dim); }
   details.rb-adv summary { cursor: pointer; font-size: 12px; color: var(--text-dim); margin: 6px 0 10px; }
+  .rb-lock { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--text-dim); background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+  .rb-lock span { flex: 1 1 220px; }
+  #modal-rb input:disabled, #modal-rb select:disabled, #modal-rb .rb-engine:disabled { opacity: .55; cursor: not-allowed; }
+  .rb-unlock-text { font-size: 13px; color: var(--tag-warn-text); line-height: 1.45; }
+  #rb-unlock-info ol { margin: 6px 0 0 18px; padding: 0; }
+  #rb-unlock-info li { margin: 3px 0; }
   .rb-section { font-size: 12px; font-weight: 700; color: var(--text-bright); margin: 18px 0 8px; padding-top: 12px; border-top: 1px solid var(--border); }
 
   /* ── File list ── */
@@ -825,6 +831,17 @@
 <div class="modal-overlay" id="modal-rb"><div class="modal" style="max-width:640px;max-height:92vh;overflow-y:auto;">
   <div class="modal-title" id="rb-modal-title" data-i18n="rb_modal_new">Neues externes Backup</div>
   <div class="form-group"><label data-i18n="lbl_name">Name</label><input type="text" id="rb-name" placeholder="Hetzner"></div>
+  <div class="rb-lock" id="rb-lockbar" style="display:none">
+    <span data-i18n="rb_lock_text">Backup-Programm, Ziel und Ordner sind fixiert, weil hier schon gesichert wurde.</span>
+    <button type="button" class="btn btn-ghost btn-sm" id="rb-lock-btn" onclick="rbUnlockAsk()" data-i18n="rb_lock_btn">Ziel ändern …</button>
+  </div>
+  <div class="warn-box" id="rb-unlock-info" style="display:none">
+    <div class="rb-unlock-text" data-i18n-html="rb_unlock_html">Erst die Daten verschieben, dann hier ändern.</div>
+    <div id="rb-unlock-btns" style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="rbUnlockCancel()" data-i18n="modal_cancel">Abbrechen</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="rbUnlock()" data-i18n="rb_unlock_ok">Verstanden, entsperren</button>
+    </div>
+  </div>
   <div class="form-group"><label data-i18n="rb_engine">Backup-Programm</label>
     <div class="rb-engines">
       <button type="button" class="rb-engine" id="rb-engine-restic" onclick="rbSetEngine('restic')"><b>restic</b><span data-i18n="rb_engine_restic_d">Verschlüsselt, mit Versionen, ohne Dubletten</span></button>
@@ -881,6 +898,8 @@
     <div class="form-group"><label data-i18n="rb_excludes">Ausschließen</label><textarea id="rb-excludes" rows="3" spellcheck="false" style="font-family:monospace;font-size:12px"></textarea></div>
     <div class="rb-hint" data-i18n-html="rb_excludes_hint">Ein Muster pro Zeile.</div>
     <div class="form-group"><label data-i18n="rb_bw">Upload-Limit (Mbit/s, 0 = ohne)</label><input type="number" id="rb-bw" min="0" step="0.5"></div>
+    <div class="form-group"><label data-i18n="rb_conns">Parallele Verbindungen</label><input type="number" id="rb-conns" min="1" max="16" step="1"></div>
+    <div class="rb-hint" data-i18n="rb_conns_hint">Mehr Verbindungen nutzen die Leitung besser aus.</div>
     <div class="toggle-row"><div><div class="toggle-label" data-i18n="rb_notify">Bei Fehler benachrichtigen</div><div class="toggle-sub" data-i18n="rb_notify_sub">Meldung in Home Assistant, wenn ein Backup fehlschlägt</div></div>
       <label class="toggle" id="rb-notify-t"><input type="checkbox" id="rb-notify" onchange="updateToggle('rb-notify-t',this)"><div class="toggle-knob"></div></label></div>
   </details>
@@ -1203,6 +1222,17 @@ const T={
     rb_wd0:'Montag',rb_wd1:'Dienstag',rb_wd2:'Mittwoch',rb_wd3:'Donnerstag',rb_wd4:'Freitag',rb_wd5:'Samstag',rb_wd6:'Sonntag',
     rb_sched_daily_at:'Täglich {t}',rb_sched_weekly_at:'{d}, {t}',
     rb_advanced:'Erweitert',rb_excludes:'Ausschließen',rb_excludes_hint:'Ein Muster pro Zeile, z. B. <code>*.tmp</code>, <code>.Trash-*</code> oder <code>@Recycle</code>.',
+    rb_conns:'Parallele Verbindungen',
+    rb_conns_hint:'Mehr Verbindungen nutzen die Leitung besser aus (Standard 8). Hetzner Storage Box: höchstens 8, die Box erlaubt 10 gleichzeitig. Bei Abbrüchen oder Fehlern wie „too many connections“ verringern.',
+    rb_lock_text:'Backup-Programm, Ziel und Ordner sind fixiert, weil hier schon gesichert wurde.',rb_lock_btn:'Ziel ändern …',
+    rb_unlock_ok:'Verstanden, entsperren',
+    rb_unlock_html:'<b>Erst die Daten verschieben, dann hier ändern.</b> Die gesicherten Daten bleiben am bisherigen Ort. Änderst du nur diesen Eintrag, beginnt das nächste Backup am neuen Ort von vorn und lädt alles noch einmal hoch – das alte Archiv bliebe ungenutzt liegen.'
+      +'<ol><li><b>Ordner umbenennen:</b> zuerst beim Anbieter umbenennen (z. B. mit WinSCP), danach hier den neuen Namen eintragen.</li>'
+      +'<li><b>Anderer Server, Benutzer oder Anbieter:</b> zuerst die Daten komplett dorthin kopieren, danach hier eintragen.</li>'
+      +'<li><b>Backup-Programm oder Verschlüsselung umstellen</b> heißt immer: neues Archiv, alles wird neu hochgeladen.</li>'
+      +'<li>Danach <b>Verbindung testen</b> – der Test muss die gesicherten Daten am neuen Ort finden.</li>'
+      +'<li>Nach dem Speichern das <b>Notfallblatt</b> neu drucken.</li></ol>'
+      +'Zugangsdaten wie das Passwort der Storage Box kannst du jederzeit ändern, dafür musst du nicht entsperren.',
     rb_bw:'Upload-Limit (Mbit/s, 0 = ohne)',rb_notify:'Bei Fehler benachrichtigen',rb_notify_sub:'Meldung in Home Assistant, wenn ein Backup fehlschlägt',
     rb_btn_test:'Verbindung testen',rb_testing:'Teste Verbindung …',rb_created:'Externes Backup angelegt',rb_saved:'Externes Backup gespeichert',
     rb_btn_run:'Jetzt sichern',rb_btn_cancel:'Abbrechen',rb_btn_restore:'Wiederherstellen',rb_btn_log:'Protokoll',rb_btn_check:'Prüfen',rb_btn_sheet:'Notfallblatt',rb_sheet_title:'Druckbares Blatt mit Archiv-Passwort und Anleitung, um die Daten ohne Home Assistant zurückzuholen',
@@ -1362,6 +1392,17 @@ const T={
     rb_wd0:'Monday',rb_wd1:'Tuesday',rb_wd2:'Wednesday',rb_wd3:'Thursday',rb_wd4:'Friday',rb_wd5:'Saturday',rb_wd6:'Sunday',
     rb_sched_daily_at:'Daily {t}',rb_sched_weekly_at:'{d}, {t}',
     rb_advanced:'Advanced',rb_excludes:'Exclude',rb_excludes_hint:'One pattern per line, e.g. <code>*.tmp</code>, <code>.Trash-*</code> or <code>@Recycle</code>.',
+    rb_conns:'Parallel connections',
+    rb_conns_hint:'More connections make better use of the line (default 8). Hetzner Storage Box: at most 8, the box allows 10 at a time. Lower it if runs break off or report "too many connections".',
+    rb_lock_text:'Backup program, destination and folder are locked because backups already exist here.',rb_lock_btn:'Change destination …',
+    rb_unlock_ok:'Understood, unlock',
+    rb_unlock_html:'<b>Move the data first, then change it here.</b> The backed-up data stays where it is. If you only change this entry, the next backup starts from scratch at the new place and uploads everything again – the old archive would be left unused.'
+      +'<ol><li><b>Rename the folder:</b> first rename it at the provider (e.g. with WinSCP), then enter the new name here.</li>'
+      +'<li><b>Other server, user or provider:</b> first copy all data there, then enter it here.</li>'
+      +'<li><b>Switching the backup program or encryption</b> always means a new archive; everything is uploaded again.</li>'
+      +'<li>Then <b>Test connection</b> – it must find the backed-up data at the new place.</li>'
+      +'<li>After saving, print the <b>emergency sheet</b> again.</li></ol>'
+      +'Credentials such as the Storage Box password can be changed at any time without unlocking.',
     rb_bw:'Upload limit (Mbit/s, 0 = none)',rb_notify:'Notify on failure',rb_notify_sub:'Notification in Home Assistant when a backup fails',
     rb_btn_test:'Test connection',rb_testing:'Testing connection …',rb_created:'External backup created',rb_saved:'External backup saved',
     rb_btn_run:'Back up now',rb_btn_cancel:'Cancel',rb_btn_restore:'Restore',rb_btn_log:'Log',rb_btn_check:'Check',rb_btn_sheet:'Emergency sheet',rb_sheet_title:'Printable sheet with the archive password and instructions to get the data back without Home Assistant',
@@ -3111,9 +3152,42 @@ function openRbModal(id){
   document.getElementById('rb-sched').value=s.type;document.getElementById('rb-time').value=s.time;document.getElementById('rb-weekday').value=String(s.weekday);
   document.getElementById('rb-excludes').value=j?(j.excludes||[]).join('\n'):'.upload-*.part';
   document.getElementById('rb-bw').value=j?(j.bwlimit_mbit||0):0;
+  document.getElementById('rb-conns').value=(j&&j.connections)||8;
   const nt=document.getElementById('rb-notify');nt.checked=j?j.notify!==false:true;updateToggle('rb-notify-t',nt);
   rbSetEngine(j?j.engine:'restic');rbSchedVis();
+  // After the first backup the location is fixed: changing it only here
+  // would start a second archive from scratch. Unlocking explains the order.
+  document.getElementById('rb-unlock-info').style.display='none';
+  document.getElementById('rb-unlock-btns').style.display='flex';
+  document.getElementById('rb-lockbar').style.display=j&&j.initialized?'':'none';
+  rbLock(!!(j&&j.initialized));
   openModal('modal-rb');
+}
+function rbLock(on){
+  const prov=rbVal('rb-provider');
+  const els=[document.getElementById('rb-engine-restic'),document.getElementById('rb-engine-rclone'),
+    document.getElementById('rb-provider'),document.getElementById('rb-remote-path'),document.getElementById('rb-encrypt')];
+  for(const [k,type] of RB_FIELDS[prov]){
+    if(RB_SECRET.includes(k))continue;               // credentials stay editable
+    const el=document.getElementById('rb-f-'+k);if(!el)continue;
+    els.push(el);
+    if(type==='path'&&el.nextElementSibling)els.push(el.nextElementSibling);
+  }
+  els.forEach(el=>{if(el)el.disabled=on;});
+}
+function rbUnlockAsk(){
+  document.getElementById('rb-unlock-info').style.display='';
+  document.getElementById('rb-lock-btn').disabled=true;
+}
+function rbUnlockCancel(){
+  document.getElementById('rb-unlock-info').style.display='none';
+  document.getElementById('rb-lock-btn').disabled=false;
+}
+function rbUnlock(){
+  rbLock(false);
+  document.getElementById('rb-lockbar').style.display='none';
+  document.getElementById('rb-unlock-btns').style.display='none';   // the steps stay visible as a reminder
+  document.getElementById('rb-lock-btn').disabled=false;
 }
 function rbCollect(){
   const prov=rbVal('rb-provider'),target={provider:prov};
@@ -3128,6 +3202,7 @@ function rbCollect(){
     keep_versions_days:rbVal('rb-keep-days'),
     schedule:{type:rbVal('rb-sched'),time:rbVal('rb-time')||'03:00',weekday:rbVal('rb-weekday')},
     excludes:rbVal('rb-excludes'),bwlimit_mbit:parseFloat(rbVal('rb-bw'))||0,
+    connections:parseInt(rbVal('rb-conns'),10)||8,
     notify:document.getElementById('rb-notify').checked};
 }
 async function rbSave(){

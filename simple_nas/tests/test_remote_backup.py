@@ -315,6 +315,31 @@ class ConfigAndCommandTest(_Base):
         self.assertEqual(cmd[:3], ["restic", "restore", "abcdef12"])
         self.assertEqual(cmd[cmd.index("--include") + 1], "/share/doc.txt")
 
+    def test_parallel_connections(self):
+        # default: 8 instead of restic's 5 / rclone's 4
+        cmd = rb.restic_backup_cmd(self.job())
+        self.assertEqual(cmd[cmd.index("-o") + 1], "rclone.connections=8")
+        self.assertEqual(cmd[-2:], [self.share, self.media])    # sources stay last
+        job = self.job(connections=3)
+        self.assertIn("rclone.connections=3", rb.restic_forget_cmd(job))
+        self.assertIn("rclone.connections=3", rb.restore_cmd(job, "latest", "", True, "/share/r"))
+        _, cmd = rb.rclone_sync_cmds(self.job(engine="rclone", connections=12), "20261014_030000")[0]
+        self.assertEqual(cmd[cmd.index("--transfers") + 1], "12")
+        # jobs saved before the setting existed
+        old = self.job()
+        del old["connections"]
+        self.assertIn("rclone.connections=8", rb.restic_backup_cmd(old))
+        for bad in (0, 17, "viele"):
+            with self.assertRaises(rb.JobError):
+                self.job(connections=bad)
+
+    def test_local_restic_has_no_rclone_option(self):
+        body = self.hetzner(target={"provider": "local", "path": os.path.join(self.share, "ziel")},
+                            sources=[self.media])
+        job = rb.normalize(body)
+        job["id"] = "abcd1234"
+        self.assertNotIn("-o", rb.restic_backup_cmd(job))
+
 
 class ScheduleTest(_Base):
     def test_last_slot_daily(self):
@@ -512,6 +537,34 @@ class RunTest(_Base):
         self.assertIn(["restic", "unlock"], order)
         self.assertLess(order.index(["restic", "unlock"]), order.index(["restic", "check"]))
 
+    def test_relocated_target_is_not_created_by_the_test(self):
+        # Changing only the folder of a job with backups would start a second
+        # archive; the connection test must say so instead of creating the folder.
+        results = {"rclone obscure -": (0, "OBSC\n", ""),
+                   "restic cat config": (10, "", "Fatal: repository does not exist")}
+        with mock.patch.object(rb.subprocess, "run", side_effect=self.fake_run(results)):
+            with self.assertRaises(rb.RunError) as cm:
+                rb.test_connection(self.job, relocated=True)
+            self.assertIn("noch keine gesicherten Daten", str(cm.exception))
+            self.assertFalse(any(c[:2] == ["rclone", "mkdir"] for c in self.calls))
+            # a new job may create it
+            self.assertIn("ersten Backup", rb.test_connection(self.job))
+            self.assertTrue(any(c[:2] == ["rclone", "mkdir"] for c in self.calls))
+
+    def test_relocated_rclone_target_needs_data(self):
+        job = rb.normalize(self.hetzner(engine="rclone"))
+        job["id"] = "abcd1234"
+        results = {"rclone obscure -": (0, "OBSC\n", ""),
+                   "rclone lsf --max-depth": (3, "", "ERROR : : error listing: directory not found")}
+        with mock.patch.object(rb.subprocess, "run", side_effect=self.fake_run(results)):
+            with self.assertRaises(rb.RunError) as cm:
+                rb.test_connection(job, relocated=True)
+            self.assertIn("noch keine gesicherten Daten", str(cm.exception))
+        results["rclone lsf --max-depth"] = (0, "share/\n", "")
+        with mock.patch.object(rb.subprocess, "run", side_effect=self.fake_run(results)):
+            self.assertIn("gefunden", rb.test_connection(job, relocated=True))
+        self.assertFalse(any(c[:2] == ["rclone", "mkdir"] for c in self.calls))
+
     def test_marker_survives_an_edit(self):
         rb._update_job("abcd1234", running_since="2026-10-14T23:10:00")
         job = rb.normalize(self.hetzner(name="Neu", password=""), rb.get_job("abcd1234"))
@@ -566,10 +619,21 @@ class ApiTest(_Base):
         stored = rb.get_job(jid)
         self.assertEqual(stored["name"], "Umbenannt")
         self.assertEqual(stored["target"]["password"], "boxpass")
+        self.assertEqual(stored["connections"], 8)
 
         r = self.send("DELETE", f"/api/remote-backups/{jid}")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(rb.load_jobs(), [])
+
+    def test_connection_test_knows_a_relocation(self):
+        jid = self.send("POST", "/api/remote-backups", self.hetzner()).get_json()["id"]
+        rb._update_job(jid, initialized=True)
+        with mock.patch.object(rb, "test_connection", return_value="ok") as tc:
+            self.send("POST", "/api/remote-backups/test", dict(self.hetzner(password=""), id=jid))
+            self.assertFalse(tc.call_args[0][1])                    # same place
+            self.send("POST", "/api/remote-backups/test",
+                      dict(self.hetzner(password="", remote_path="neu"), id=jid))
+            self.assertTrue(tc.call_args[0][1])                     # moved
 
     def test_emergency_sheet(self):
         jid = self.send("POST", "/api/remote-backups", self.hetzner()).get_json()["id"]
