@@ -2922,7 +2922,8 @@ def api_run_backup(job_id):
             # waiting in a share's recycle bin are not worth a backup.
             proc = subprocess.run(
                 ["rsync", "-a", "--info=progress2", f"--exclude={RECYCLE_DIR}/", src + "/", dst_dir + "/"],
-                capture_output=True, text=True, timeout=3600)
+                capture_output=True, text=True, timeout=3600,
+                preexec_fn=remote_backup._background_priority)   # like the external backups: HA first
             if proc.returncode != 0:
                 # Fallback to shutil if rsync not available
                 if "not found" in (proc.stderr or ""):

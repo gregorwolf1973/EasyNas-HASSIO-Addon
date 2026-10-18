@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.12.1
+- **Backups bremsen Home Assistant nicht mehr aus.** restic und rclone (externe Backups) sowie rsync (Datei-Backup-Jobs) laufen jetzt mit niedrigster CPU- und Festplatten-Prioritaet (`nice 19`, I/O-Klasse *idle*), restic und rclone ausserdem nur noch auf zwei Kernen weniger als vorhanden (auf dem Raspberry Pi 5: 2 von 4). Bisher lag ein grosses restic-Backup mit allen Kernen bei 100 % CPU, gleichberechtigt mit Home Assistant. Ein Backup dauert dadurch etwas laenger, Home Assistant, Samba und die anderen Add-ons haben aber immer Vorrang.
+
 ## 3.12.0
 - **Papierkorb fuer Netzwerkfreigaben.** Windows, macOS und Linux loeschen auf einer Samba-Freigabe sofort endgueltig, Nautilus fragt nur noch "Soll sie sofort geloescht werden?". Jetzt verschiebt Simple NAS alles, was ueber das Netzwerk geloescht wird, in den versteckten Ordner `.recycle` der Freigabe, samt Ordnerstruktur (Samba-Modul `vfs_recycle`). Zum Wiederherstellen die Datei einfach zurueckschieben, ueber die Freigabe (versteckte Dateien einblenden) oder im Dateien-Tab. Gibt es eine Datei dort schon, heisst die neue "Copy #1 of ...". Temporaere Dateien (`*.tmp`, `~$*`, `.~lock.*#`, `*.part`, `*.crdownload`) landen nicht im Papierkorb.
 - **Einstellungen-Tab, Karte "Papierkorb fuer Netzwerkfreigaben":** ein- und ausschalten (Standard: an), Aufbewahrung in Tagen (Standard 30), Belegung je Freigabe und **Leeren** je Freigabe. Simple NAS loescht alle paar Stunden, was laenger als die eingestellten Tage im Papierkorb liegt. Gilt fuer beschreibbare Freigaben.

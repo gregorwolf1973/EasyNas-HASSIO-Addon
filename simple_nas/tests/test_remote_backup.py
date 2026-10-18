@@ -343,6 +343,26 @@ class ConfigAndCommandTest(_Base):
         self.assertNotIn("-o", rb.restic_backup_cmd(job))
 
 
+class PriorityTest(_Base):
+    def test_backups_get_fewer_cores_and_the_lowest_priority(self):
+        job = rb.normalize(self.hetzner())
+        job["id"] = "abcd1234"
+        with mock.patch.object(rb, "build_rclone_conf", return_value=""):   # kein rclone obscure auf der Testmaschine
+            env = rb._prepare(job)
+        self.assertEqual(env["GOMAXPROCS"], str(max(1, (os.cpu_count() or 4) - 2)))
+        import subprocess
+        out = subprocess.run([sys.executable, "-c", "import os; print(os.nice(0))"], capture_output=True,
+                             text=True, preexec_fn=rb._background_priority).stdout.strip()
+        self.assertEqual(out, "19", "restic/rclone laufen mit niedrigster CPU-Prioritaet")
+
+    def test_tools_are_started_with_it(self):
+        job = rb.normalize(self.hetzner())
+        job["id"] = "abcd1234"
+        with mock.patch.object(rb.subprocess, "Popen", return_value=_FakeProc([], 0)) as popen:
+            rb._run_proc("abcd1234", ["restic", "version"], {}, mock.Mock())
+        self.assertIs(popen.call_args.kwargs["preexec_fn"], rb._background_priority)
+
+
 class ScheduleTest(_Base):
     def test_last_slot_daily(self):
         sch = {"type": "daily", "time": "03:00"}

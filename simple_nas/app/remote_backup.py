@@ -19,9 +19,11 @@ Only one job runs at a time; scheduled and manual runs share one queue.
 """
 import collections
 import copy
+import ctypes
 import datetime
 import json
 import os
+import platform
 import queue
 import re
 import secrets
@@ -84,6 +86,29 @@ _cfg = {"data_dir": "/data", "safe": None, "on_change": None}
 _lock = threading.RLock()
 _state = {}                         # job id -> runtime state of a queued/running job
 _procs = {}                         # job id -> running Popen
+
+# Backups run in the background: they get two cores less than the machine has
+# (2 of 4 on a Pi 5) and the lowest CPU and disk priority, so Home Assistant,
+# Samba and the other add-ons always come first. restic and rclone are Go
+# programs and honour GOMAXPROCS.
+BACKUP_CPU_CORES = max(1, (os.cpu_count() or 4) - 2)
+# ioprio_set syscall per architecture - Python has no ionice of its own
+_IOPRIO_SET = {"x86_64": 251, "aarch64": 30, "armv7l": 314, "armv6l": 314, "i686": 289, "i386": 289}
+
+
+def _background_priority():
+    """preexec_fn for restic/rclone: nice 19 and the idle I/O class."""
+    try:
+        os.nice(19)
+    except OSError:
+        pass
+    nr = _IOPRIO_SET.get(platform.machine())
+    if nr:
+        try:
+            # IOPRIO_WHO_PROCESS, this process, IOPRIO_CLASS_IDLE
+            ctypes.CDLL(None, use_errno=True).syscall(nr, 1, 0, 3 << 13)
+        except (OSError, AttributeError):
+            pass
 _queue = queue.Queue()
 _threads = {}
 _tools = {}
@@ -661,6 +686,7 @@ def _prepare(job):
     _write_private(conf, build_rclone_conf(job))
     env = dict(os.environ)
     env["RCLONE_CONFIG"] = conf
+    env["GOMAXPROCS"] = str(BACKUP_CPU_CORES)
     if job["engine"] == "restic":
         pw = _dir("run", f"{job['id']}.pw")
         _write_private(pw, job["password"])
@@ -881,7 +907,7 @@ def _run_proc(jid, cmd, env, log, on_json=None):
     """Run one tool, stream its output into the log, return the exit code."""
     _check_cancel(jid)
     proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, errors="replace", bufsize=1)
+                            text=True, errors="replace", bufsize=1, preexec_fn=_background_priority)
     _procs[jid] = proc
     try:
         for line in proc.stdout:
@@ -905,7 +931,8 @@ def _run_proc(jid, cmd, env, log, on_json=None):
 
 
 def _quiet(cmd, env, timeout=300):
-    return subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout,
+                          preexec_fn=_background_priority)
 
 
 def _restic_repo_state(env, timeout=300):
