@@ -10,7 +10,7 @@ configuration:
     description: Samba log verbosity
   web_port:
     name: Web GUI Port
-    description: Port for the web interface (default 8100). Note - if you change this the HA Ingress 'Open' button may not work. Access the GUI directly via http://YOUR-HA-IP:PORT instead.
+    description: Port for direct access to the web interface via http://YOUR-HA-IP:PORT (default 8100). The 'Open' button in Home Assistant has its own port and works regardless.
   admin_password_enabled:
     name: Enable Admin Password Protection
     description: Protects the web interface with a username and password. Also requires setting admin_username and admin_password.
@@ -26,6 +26,12 @@ configuration:
   smb_port:
     name: SMB Port
     description: SMB port (default 445). Change to e.g. 4445 if the official Samba add-on is also running.
+  webdav_enabled:
+    name: WebDAV
+    description: "Also offer the shares over WebDAV (http://YOUR-HA-IP:webdav_port/), e.g. for phone apps, Windows, macOS and access on the go. Log in with the Samba users; same permissions as Samba. For the internet, publish it only through a reverse proxy with HTTPS."
+  webdav_port:
+    name: WebDAV port
+    description: Port for WebDAV (default 8102).
   web_gui_enabled:
     name: Enable Web GUI
     description: Set to false to run Samba only, without the web interface (smaller attack surface).

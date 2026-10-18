@@ -430,6 +430,58 @@ def reload_samba():
                              stdout=open("/var/log/samba/nmbd.log", "a"),
                              stderr=subprocess.STDOUT)
     publish_timemachine()
+    if _WEBDAV["app"] is not None:
+        _WEBDAV["app"].refresh()            # Laufwerk ein-/ausgehaengt, Freigabe geaendert
+
+
+# ── WebDAV (Issue #12) ──
+# Die Freigaben ueber HTTP(S), mit WsgiDAV auf eigenem Port; Anmeldung mit Samba-Benutzern (webdav.py).
+_WEBDAV = {"app": None, "server": None, "port": None, "error": None, "passwords": None}
+
+
+def _webdav_log(event, **fields):
+    print(f"[WEBDAV] {event} " + " ".join(f"{k}={v}" for k, v in fields.items() if v and k != "ua"), flush=True)
+    accesslog.log(event, **fields)
+
+
+def start_webdav():
+    port = int(_opt("webdav_port", 8102) or 8102)
+    _WEBDAV["port"] = port
+    try:
+        import webdav
+    except ImportError as e:
+        _WEBDAV["error"] = f"WsgiDAV fehlt: {e}"
+        print(f"[WEBDAV] {_WEBDAV['error']}", flush=True)
+        return False
+    passwords = webdav.SambaPasswords()
+    dav = webdav.ReloadingApp(
+        SHARES_FILE, lambda: load_json(SHARES_FILE, []), passwords=passwords,
+        load_groups=lambda: load_json(GROUPS_FILE, []), recycle_on=lambda: recycle_settings()["enabled"],
+        recycle_dir=RECYCLE_DIR,
+        trusted_nets=lambda: webdav.trusted_networks(_opt("share_trusted_proxies", DEFAULT_TRUSTED_PROXIES)),
+        log=_webdav_log)
+    try:
+        server = webdav.serve(dav, port)
+    except OSError as e:
+        _WEBDAV["error"] = f"Port {port} ist belegt ({e}) - webdav_port aendern"
+        print(f"[WEBDAV] FEHLER: {_WEBDAV['error']}", flush=True)
+        return False
+    _WEBDAV.update(app=dav, server=server, passwords=passwords, error=None)
+    print(f"[WEBDAV] laeuft auf Port {port}", flush=True)
+    return True
+
+
+def _webdav_passwords_changed():
+    if _WEBDAV["passwords"] is not None:
+        _WEBDAV["passwords"].invalidate()
+
+
+@app.route("/api/settings/webdav", methods=["GET"])
+def api_get_webdav():
+    dav = _WEBDAV["app"]
+    return jsonify({"enabled": bool(_opt("webdav_enabled", False)), "running": _WEBDAV["server"] is not None,
+                    "port": _WEBDAV["port"] or int(_opt("webdav_port", 8102) or 8102), "error": _WEBDAV["error"],
+                    "shares": dav.names() if dav is not None else []})
 
 
 # ── Time Machine (Issue #11) ──
@@ -1399,6 +1451,7 @@ def api_create_user():
     users.append({"username": username})
     save_json(USERS_FILE, users)
     backup_samba_passwords()
+    _webdav_passwords_changed()
     return jsonify({"username": username}), 201
 
 @app.route("/api/users/<username>", methods=["PUT"])
@@ -1415,11 +1468,13 @@ def api_update_user(username):
     if proc.returncode != 0:
         return jsonify({"error": proc.stderr or "Failed"}), 500
     backup_samba_passwords()
+    _webdav_passwords_changed()
     return jsonify({"ok": True})
 
 @app.route("/api/users/<username>", methods=["DELETE"])
 def api_delete_user(username):
     subprocess.run(["smbpasswd", "-x", username], capture_output=True)
+    _webdav_passwords_changed()
     subprocess.run(["deluser", username], capture_output=True)
     users = load_json(USERS_FILE, [])
     users = [u for u in users if u["username"] != username]
@@ -3373,5 +3428,7 @@ if __name__ == "__main__":
     remote_backup.start()
     start_recycle_purge()
     publish_timemachine()
+    if _opt("webdav_enabled", False):
+        start_webdav()
     port = int(os.environ.get("WEB_PORT", 8100))
     serve(app, port)

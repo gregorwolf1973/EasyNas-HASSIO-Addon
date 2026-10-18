@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.14.0
+- **WebDAV** (Issue #12): Mit `webdav_enabled` bietet Simple NAS alle Freigaben zusaetzlich ueber WebDAV an (Port `webdav_port`, Standard 8102) - fuer Handy-Apps, den macOS-Finder, Linux-Dateimanager und, ueber einen Reverse Proxy mit HTTPS, fuer Windows und den Zugriff von unterwegs. `http://HA-IP:8102/` zeigt die Freigaben, die der angemeldete Benutzer oeffnen darf. Anmeldung mit den Samba-Benutzern und ihren Passwoertern, ohne neue Einrichtung; es gelten dieselben Rechte wie bei Samba. Oeffentliche Freigaben verlangen hier trotzdem eine Anmeldung. Geloeschtes landet im Papierkorb der Freigabe, Symlinks werden nicht verfolgt, zehn Fehlversuche in 15 Minuten sperren IP und Benutzernamen. Der Einstellungen-Tab zeigt Stand und Adressen.
+- **Fix: Papierkorb-Karte im Einstellungen-Tab.** Seit 3.12.0 trugen ihre Texte dieselben Namen wie die der externen Backups, die Karte hiess deshalb "Externe Backups". Schlimmer: Schalter und Tage-Feld riefen die Speichern-Funktion der externen Backups auf, die Papierkorb-Einstellung liess sich ueber die Oberflaeche nicht aendern (es galten die Standardwerte: an, 30 Tage).
+- Die Beschreibung von `web_port` sagt jetzt richtig, dass der Oeffnen-Knopf seit 3.13.0 unabhaengig davon funktioniert.
+
 ## 3.13.1
 - Ingress-Port ueber `bashio::app.ingress_port` statt des veralteten `bashio::addon.ingress_port` (die Warnung im Log ist weg). Laesst sich der Port nicht ermitteln, sagt das Log jetzt deutlich, dass "Oeffnen" nicht geht und die Oberflaeche unter `http://HA-IP:web_port` erreichbar ist.
 

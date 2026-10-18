@@ -17,6 +17,7 @@ A lightweight NAS add-on for Home Assistant OS. Turns your Raspberry Pi (or othe
 - **Access control** – restrict shares to specific users or groups
 - **Network discovery** – auto-discovery in Windows Explorer (WSDD), Linux Nautilus/Dolphin (Avahi/mDNS) and macOS Finder
 - **Time Machine** – any share can be a backup target for Macs (found automatically via Bonjour, optional size limit)
+- **WebDAV** – the shares over HTTP(S) for phone apps, macOS, Linux and (through a reverse proxy) Windows, with the Samba users
 - **Dark/Light theme** – switchable in the header
 - **Protection** against accidental unmounting of system partitions
 - **File manager** – browse, upload, download, copy, move, rename and delete files

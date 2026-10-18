@@ -13,6 +13,7 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 - **USB / external drives** – mount and unmount drives at runtime; mounts survive reboots using stable `/dev/disk/by-id/` identifiers
 - **Network discovery** – mDNS (Avahi) for macOS Finder / Linux Nautilus, WS-Discovery (wsdd) for Windows 10/11
 - **Time Machine** – any share can be a backup target for Macs, found automatically via Bonjour
+- **WebDAV** – the shares over HTTP(S) for phone apps, Windows, macOS and access on the go, with the Samba users
 - **External backups** – back up `/share`, `/media` or any folder to a Hetzner Storage Box, S3, Backblaze B2, SFTP, WebDAV, SMB, a second disk or any rclone provider; with restic (encrypted, versioned) or rclone (files 1:1), on a schedule, with restore in the browser
 - **Reinstall-safe backup** – settings are automatically backed up to `/config/.simplenas/auto` and restored on fresh install; manual snapshots (up to 10) are also supported
 - **Password protection** – optional web GUI login (username + password via add-on config)
@@ -39,13 +40,15 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 |---|---|---|---|
 | `workgroup` | string | `WORKGROUP` | Samba workgroup name |
 | `nas_name` | string | `SimpleNAS` | NetBIOS / mDNS hostname shown in network browsers |
-| `web_port` | port | `8100` | Port for the web GUI |
+| `web_port` | port | `8100` | Port for direct access to the web GUI; the **Open** button in Home Assistant has its own port |
 | `smb_port` | port | `445` | SMB port. Change to e.g. `4445` if the official Samba add-on is also running |
 | `log_level` | list | `info` | Log level: `trace` / `debug` / `info` / `notice` / `warning` / `error` / `fatal` |
 | `admin_password_enabled` | bool | `false` | Enable web GUI password protection |
 | `admin_username` | string | `admin` | Web GUI username |
 | `admin_password` | string | _(empty)_ | Web GUI password |
 | `web_gui_enabled` | bool | `true` | Set to `false` to run Samba only, without the web interface |
+| `webdav_enabled` | bool | `false` | Also offer the shares over WebDAV. See "WebDAV" below |
+| `webdav_port` | port | `8102` | Port for WebDAV |
 | `hdd_idle_seconds` | int | `0` | Spin down mounted drives after this many seconds of inactivity (0 = disabled). See "Drive spindown / power saving" below |
 | `file_allowed_roots` | list | `/media`, `/mnt`, `/share`, `/config`, `/addon_configs` | Directories the file manager may open |
 | `sharing_enabled` | bool | `false` | Start the public sharing site on its own port (requires an admin password). See "Sharing files on the internet" below |
@@ -96,6 +99,20 @@ Edit a share and switch on **Time Machine**. Macs on the network then offer it u
 - The drive needs extended attributes: **ext4** is best, NTFS works too, **exFAT/FAT do not**.
 - The recycle bin is off for Time Machine shares – Time Machine deletes old backup data all the time, and all of it would end up in `.recycle`.
 - A dedicated share (e.g. a folder `TimeMachine` on the drive) per Mac or for all Macs is the usual setup; one share can hold several Macs.
+
+## WebDAV
+
+Switch on `webdav_enabled` in the add-on configuration and restart the add-on. Simple NAS then also serves every active share over WebDAV on `webdav_port` (default 8102):
+
+- `http://<HA-IP>:8102/` lists the shares the logged-in user may open, `http://<HA-IP>:8102/<share>` opens one directly.
+- **Login with the Samba users** (Users tab) and their passwords – nothing new to set up. The same rules as in Samba apply: listed users and groups, read-only shares stay read-only. **Public shares need a login too**, because WebDAV is often reachable from the internet.
+- Deleting moves files into the share's recycle bin (`.recycle`) when it is on, like over Samba.
+- Symlinks are not followed; nothing outside a share is reachable.
+- Ten wrong passwords within 15 minutes lock the IP address and the user name (15 min, doubling on repeat, max. 24 h), as on the sharing site. Failed logins appear in the add-on log.
+
+**Clients:** macOS Finder → *Go → Connect to Server*; Linux file managers with `dav://` instead of `http://` (`davs://` for HTTPS); on phones a file app with WebDAV support (e.g. Solid Explorer, Documents, CX File Explorer). **Windows** only uses WebDAV with Basic login over **HTTPS** – publish the port through Nginx Proxy Manager with a domain and certificate, which is also the way for access on the go. Put the proxy's address into `share_trusted_proxies` so lockouts hit the visitor, not the proxy.
+
+The settings tab shows whether WebDAV runs and lists the addresses.
 
 ## Running alongside the official Samba add-on
 

@@ -22,6 +22,8 @@ all inside Home Assistant, no second box needed.
   Nautilus and Dolphin (Avahi/mDNS) and in the macOS Finder
 - **Time Machine** — any share can be a backup target for Macs, found
   automatically via Bonjour, with an optional size limit
+- **WebDAV** — the shares over HTTP(S) for phone apps, macOS, Linux and
+  (through a reverse proxy) Windows and access on the go, with the Samba users
 - **Settings survive a reinstall** — they are backed up to
   `/config/.simplenas/auto` and restored automatically
 - German and English interface, dark and light theme
