@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.13.1
+- Ingress-Port ueber `bashio::app.ingress_port` statt des veralteten `bashio::addon.ingress_port` (die Warnung im Log ist weg). Laesst sich der Port nicht ermitteln, sagt das Log jetzt deutlich, dass "Oeffnen" nicht geht und die Oberflaeche unter `http://HA-IP:web_port` erreichbar ist.
+
 ## 3.13.0
 - **Time Machine** (Issue #11): Jede Freigabe laesst sich im Freigabe-Dialog als Backup-Ziel fuer Macs einschalten, auf Wunsch mit Groessenbegrenzung in GB. Macs finden sie per Bonjour (`_adisk._tcp`) von selbst unter *Backup-Volume hinzufuegen*. Fuer solche Freigaben ist der Papierkorb aus, sonst liefe er mit alten Backup-Daten voll. Am besten auf einem ext4-Laufwerk; exFAT/FAT taugen nicht.
 - **Windows findet die NAS wieder unter "Netzwerk"** (Issue #13): wsdd lauscht nur noch an der LAN-Schnittstelle (Standardroute). Auf allen Schnittstellen erreichten die Ankuendigungen unter Home Assistant OS oft das LAN nicht. Fix von @mirican.

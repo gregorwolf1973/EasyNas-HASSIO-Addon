@@ -17,9 +17,19 @@ WEB_PORT=$(bashio::config 'web_port')
 bashio::log.info "Web GUI Port: ${WEB_PORT}"
 # Home Assistant assigns the Ingress port itself (ingress_port: 0 in config.yaml). A fixed 8100 clashed
 # with other host-network add-ons such as Dnsmasq-DHCP (issue #10); the GUI listens on both ports.
+# bashio renamed addon.* to app.*; the old name only warns for now.
 export INGRESS_PORT
-INGRESS_PORT=$(bashio::addon.ingress_port 2>/dev/null || true)
-bashio::log.info "Ingress Port: ${INGRESS_PORT:-unknown}"
+if declare -F bashio::app.ingress_port > /dev/null; then
+    INGRESS_PORT=$(bashio::app.ingress_port 2>/dev/null || true)
+else
+    INGRESS_PORT=$(bashio::addon.ingress_port 2>/dev/null || true)
+fi
+case "${INGRESS_PORT}" in
+    ''|*[!0-9]*)
+        INGRESS_PORT=""
+        bashio::log.warning "Ingress port unknown - the Open button in Home Assistant will not work, use http://HA-IP:${WEB_PORT}" ;;
+    *) bashio::log.info "Ingress Port: ${INGRESS_PORT}" ;;
+esac
 
 export ADMIN_PASSWORD_ENABLED
 ADMIN_PASSWORD_ENABLED=$(bashio::config 'admin_password_enabled')
