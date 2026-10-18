@@ -471,17 +471,36 @@ def start_webdav():
     return True
 
 
-def _webdav_passwords_changed():
+def _webdav_passwords_changed(username=None):
     if _WEBDAV["passwords"] is not None:
         _WEBDAV["passwords"].invalidate()
+    if username:
+        # neues Passwort vom Admin: eine Sperre des Benutzernamens ist damit hinfaellig
+        LIMITER.clear(key=f"authfail:user:{username.lower()}")
 
 
 @app.route("/api/settings/webdav", methods=["GET"])
 def api_get_webdav():
     dav = _WEBDAV["app"]
+    # Die Sperren von WebDAV liegen im Limiter dieses Prozesses; die Freigabe-Seite laeuft meist
+    # abgeschottet mit eigenem, darum zeigt der Teilen-Tab sie nicht
+    snap = LIMITER.snapshot(AUTHFAIL_IP[1]) if _WEBDAV["server"] is not None else {"locks": [], "counters": []}
     return jsonify({"enabled": bool(_opt("webdav_enabled", False)), "running": _WEBDAV["server"] is not None,
                     "port": _WEBDAV["port"] or int(_opt("webdav_port", 8102) or 8102), "error": _WEBDAV["error"],
-                    "shares": dav.names() if dav is not None else []})
+                    "shares": dav.names() if dav is not None else [],
+                    "locks": snap["locks"], "authfail": snap["counters"],
+                    "authfail_limit": AUTHFAIL_IP[0], "authfail_window_min": AUTHFAIL_IP[1] // 60})
+
+
+@app.route("/api/settings/webdav/unlock", methods=["POST"])
+def api_webdav_unlock():
+    """Sperre nach Fehlversuchen aufheben (IP-Adresse oder Benutzername), ohne auf ihr Ende zu warten."""
+    key = str((request.get_json(silent=True) or {}).get("key", "")).strip()
+    if not key.startswith("authfail:"):
+        return jsonify({"error": "Unbekannte Sperre"}), 400
+    LIMITER.clear(key=key)
+    print(f"[WEBDAV] Sperre aufgehoben: {key}", flush=True)
+    return jsonify({"ok": True, "key": key})
 
 
 # ── Time Machine (Issue #11) ──
@@ -1451,7 +1470,7 @@ def api_create_user():
     users.append({"username": username})
     save_json(USERS_FILE, users)
     backup_samba_passwords()
-    _webdav_passwords_changed()
+    _webdav_passwords_changed(username)
     return jsonify({"username": username}), 201
 
 @app.route("/api/users/<username>", methods=["PUT"])
@@ -1468,13 +1487,13 @@ def api_update_user(username):
     if proc.returncode != 0:
         return jsonify({"error": proc.stderr or "Failed"}), 500
     backup_samba_passwords()
-    _webdav_passwords_changed()
+    _webdav_passwords_changed(username)
     return jsonify({"ok": True})
 
 @app.route("/api/users/<username>", methods=["DELETE"])
 def api_delete_user(username):
     subprocess.run(["smbpasswd", "-x", username], capture_output=True)
-    _webdav_passwords_changed()
+    _webdav_passwords_changed(username)
     subprocess.run(["deluser", username], capture_output=True)
     users = load_json(USERS_FILE, [])
     users = [u for u in users if u["username"] != username]

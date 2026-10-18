@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.14.1
+- **WebDAV-Sperren aufheben:** Die WebDAV-Karte im Einstellungen-Tab zeigt aktive Sperren und Fehlversuche; ein Klick auf eine Sperre hebt sie auf. Bisher ging das nur durch Abwarten oder einen Neustart - der Knopf im Teilen-Tab erreicht WebDAV nicht, weil die Freigabe-Seite abgeschottet mit eigener Sperrliste laeuft. Ein neues Passwort fuer einen Benutzer (Benutzer-Tab) hebt auch die Sperre seines Benutzernamens auf.
+
 ## 3.14.0
 - **WebDAV** (Issue #12): Mit `webdav_enabled` bietet Simple NAS alle Freigaben zusaetzlich ueber WebDAV an (Port `webdav_port`, Standard 8102) - fuer Handy-Apps, den macOS-Finder, Linux-Dateimanager und, ueber einen Reverse Proxy mit HTTPS, fuer Windows und den Zugriff von unterwegs. `http://HA-IP:8102/` zeigt die Freigaben, die der angemeldete Benutzer oeffnen darf. Anmeldung mit den Samba-Benutzern und ihren Passwoertern, ohne neue Einrichtung; es gelten dieselben Rechte wie bei Samba. Oeffentliche Freigaben verlangen hier trotzdem eine Anmeldung. Geloeschtes landet im Papierkorb der Freigabe, Symlinks werden nicht verfolgt, zehn Fehlversuche in 15 Minuten sperren IP und Benutzernamen. Der Einstellungen-Tab zeigt Stand und Adressen.
 - **Fix: Papierkorb-Karte im Einstellungen-Tab.** Seit 3.12.0 trugen ihre Texte dieselben Namen wie die der externen Backups, die Karte hiess deshalb "Externe Backups". Schlimmer: Schalter und Tage-Feld riefen die Speichern-Funktion der externen Backups auf, die Papierkorb-Einstellung liess sich ueber die Oberflaeche nicht aendern (es galten die Standardwerte: an, 30 Tage).

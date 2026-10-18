@@ -109,6 +109,7 @@ Switch on `webdav_enabled` in the add-on configuration and restart the add-on. S
 - Deleting moves files into the share's recycle bin (`.recycle`) when it is on, like over Samba.
 - Symlinks are not followed; nothing outside a share is reachable.
 - Ten wrong passwords within 15 minutes lock the IP address and the user name (15 min, doubling on repeat, max. 24 h), as on the sharing site. Failed logins appear in the add-on log.
+- **Lifting a lock:** Settings tab → WebDAV → *Locks*: click a lock to lift it. Setting a new password for a user in the Users tab lifts that user name's lock too. A restart of the add-on clears all locks.
 
 **Clients:** macOS Finder → *Go → Connect to Server*; Linux file managers with `dav://` instead of `http://` (`davs://` for HTTPS); on phones a file app with WebDAV support (e.g. Solid Explorer, Documents, CX File Explorer). **Windows** only uses WebDAV with Basic login over **HTTPS** – publish the port through Nginx Proxy Manager with a domain and certificate, which is also the way for access on the go. Put the proxy's address into `share_trusted_proxies` so lockouts hit the visitor, not the proxy.
 

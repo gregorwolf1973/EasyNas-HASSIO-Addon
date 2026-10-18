@@ -277,6 +277,25 @@ class AppIntegrationTest(unittest.TestCase):
         body = self.c.get("/api/settings/webdav").get_json()
         self.assertEqual((body["running"], body["port"], body["shares"]), (True, port, ["Fotos"]))
         nas._webdav_passwords_changed()                 # darf nicht scheitern
+
+        # Sperren sehen und aufheben; ein neues Passwort hebt die Sperre des Benutzernamens auf
+        nas.LIMITER.lock("authfail:ip:192.0.2.7", 900, 3600)
+        nas.LIMITER.lock("authfail:user:anna", 900, 3600)
+        nas.LIMITER.record("authfail:ip:192.0.2.8")
+        body = self.c.get("/api/settings/webdav").get_json()
+        self.assertEqual({l["key"] for l in body["locks"]}, {"authfail:ip:192.0.2.7", "authfail:user:anna"})
+        self.assertIn("authfail:ip:192.0.2.8", {a["key"] for a in body["authfail"]})
+        with self.c.session_transaction() as sess:
+            csrf = sess.get("csrf", "")
+        r = self.c.post("/api/settings/webdav/unlock", json={"key": "authfail:ip:192.0.2.7"},
+                        headers={"X-CSRF-Token": csrf})
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(nas.LIMITER.banned("authfail:ip:192.0.2.7"))
+        self.assertEqual(self.c.post("/api/settings/webdav/unlock", json={"key": "ban:x"},
+                                     headers={"X-CSRF-Token": csrf}).status_code, 400)
+        nas._webdav_passwords_changed("Anna")
+        self.assertFalse(nas.LIMITER.banned("authfail:user:anna"))
+        nas.LIMITER.clear(prefix="authfail:")
         nas._WEBDAV["server"].close()
         nas._WEBDAV.update(server=None, app=None)
 

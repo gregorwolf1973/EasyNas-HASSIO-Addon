@@ -2729,7 +2729,23 @@ async function loadWebdav(){
   box.innerHTML='<div>'+esc(t('wd_running',{p:r.port}))+'</div>'+
     '<div style="margin:8px 0 2px;color:var(--text-dim)">'+esc(t('wd_all'))+'</div>'+row(base+'/')+
     (r.shares.length?'<div style="margin:8px 0 2px;color:var(--text-dim)">'+esc(t('wd_each'))+'</div>'+r.shares.map(n=>row(base+'/'+n)).join(''):'')+
+    '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span>'+esc(t('locks_title'))+'</span>'+wdLocks(r)+'</div>'+
     '<div style="margin-top:10px;color:var(--text-dim)">'+esc(t('wd_hint'))+'</div>';
+}
+function wdLocks(r){
+  let h='';
+  (r.locks||[]).forEach(l=>{
+    h+='<span class="tag warn" style="cursor:pointer" title="'+t('btn_unlock')+'" onclick="wdUnlock(\''+escJs(l.key)+'\')">'
+      +esc(l.kind)+' '+esc(l.target)+' · '+Math.ceil(l.remaining/60)+' min ⟲</span>';
+  });
+  (r.authfail||[]).slice(0,4).forEach(a=>{
+    h+='<span class="tag">'+esc(a.kind)+' '+esc(a.target)+': '+a.count+'/'+r.authfail_limit+'</span>';
+  });
+  return h||'<span>'+esc(t('locks_none',{n:r.authfail_limit,m:r.authfail_window_min}))+'</span>';
+}
+async function wdUnlock(key){
+  try{await api('POST','/settings/webdav/unlock',{key});toast(t('unlocked'));loadWebdav();}
+  catch(e){toast(e.message,true);}
 }
 
 // Color and bar rendering. Color thresholds are absolute (per spec),
