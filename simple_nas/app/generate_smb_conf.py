@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate /etc/samba/smb.conf from shares.json and system config."""
-import json, os, sys
+import errno, json, os, sys
 
 
 def get_mounted_points():
@@ -76,14 +76,36 @@ SMB_CONF    = os.environ.get("SIMPLE_NAS_SMB_CONF", "/etc/samba/smb.conf")
 # to <share>/.recycle instead; app.py empties it after the configured days.
 # Within one share only - a drive mounted below the share root cannot rename
 # into the bin, and vfs_recycle then deletes for real.
-RECYCLE_OPTIONS = """   vfs objects = catia fruit streams_xattr recycle
-   recycle:repository = .recycle
+RECYCLE_OPTIONS = """   recycle:repository = .recycle
    recycle:keeptree = yes
    recycle:versions = yes
    recycle:directory_mode = 0777
    recycle:exclude = *.tmp *.temp ~$* .~lock.*# *.part *.crdownload
    recycle:exclude_dir = .recycle
 """
+
+
+MAC_MODULES = "catia fruit streams_xattr"
+MAC_VETO = "/.DS_Store/.TemporaryItems/.Trashes/.fseventsd/.Spotlight-V100/"
+
+
+def supports_xattr(path):
+    """Can the drive behind `path` store extended attributes? exFAT and FAT cannot (issue #15).
+
+    streams_xattr keeps the Finder metadata and resource forks of macOS in them. Without that
+    support every stream write fails, and since ._* AppleDouble files are vetoed as well, macOS
+    has nowhere to put the metadata and aborts the copy with error 100093.
+    """
+    test_paths = os.environ.get("SIMPLE_NAS_NO_XATTR_PATHS")  # Tests: tmpfs/ext4 can always
+    if test_paths is not None:
+        return os.path.realpath(path) not in {os.path.realpath(p) for p in test_paths.split(":") if p}
+    probe = "user.simplenas_probe"
+    try:
+        os.setxattr(path, probe, b"1")
+        os.removexattr(path, probe)
+    except OSError as e:
+        return e.errno not in (errno.ENOTSUP, errno.EOPNOTSUPP)  # e.g. read-only: nothing to write
+    return True
 
 
 def recycle_enabled():
@@ -142,7 +164,7 @@ conf = f"""[global]
    smb ports = {smb_port}
    # macOS Finder / iOS Files app compatibility (resource forks, metadata,
    # correct filename display). Harmless for Windows/Linux clients. (Issue #7)
-   vfs objects = catia fruit streams_xattr
+   vfs objects = {MAC_MODULES}
    fruit:metadata = stream
    fruit:model = MacSamba
    fruit:posix_rename = yes
@@ -151,7 +173,7 @@ conf = f"""[global]
    fruit:wipe_intentionally_left_blank_rfork = yes
    fruit:delete_empty_adfiles = yes
    # Suppress macOS junk files on all shares
-   veto files = /.DS_Store/._.DS_Store/._*/.TemporaryItems/.Trashes/.fseventsd/.Spotlight-V100/
+   veto files = /._*{MAC_VETO}
    delete veto files = yes
 
 """
@@ -220,9 +242,20 @@ for share in shares:
         max_gb = share.get("timemachine_max_gb") or 0
         if isinstance(max_gb, int) and max_gb > 0:
             conf += f"   fruit:time machine max size = {max_gb}G\n"
-    elif use_recycle and writable:
-        # replaces the global vfs objects for this share, so the Mac modules come along
-        conf += RECYCLE_OPTIONS
+    else:
+        modules = MAC_MODULES
+        if not supports_xattr(path):
+            # exFAT/FAT (issue #15): no streams, so macOS falls back to ._* AppleDouble files
+            # as on a local exFAT stick - those must not be vetoed here
+            modules = "catia"
+            conf += "   ea support = no\n"
+            conf += f"   veto files = {MAC_VETO}\n"
+        if use_recycle and writable:
+            modules += " recycle"
+            conf += RECYCLE_OPTIONS
+        if modules != MAC_MODULES:
+            # replaces the global vfs objects for this share
+            conf += f"   vfs objects = {modules}\n"
     conf += "\n"
 
 os.makedirs(os.path.dirname(SMB_CONF), exist_ok=True)

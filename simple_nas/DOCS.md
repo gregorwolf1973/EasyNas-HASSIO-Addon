@@ -136,7 +136,7 @@ Simple NAS automatically resolves `/dev/sdX` device names to their stable `/dev/
 
 > ⚠️ **Devices that back the HA system (`/`, `/boot`, …) are marked SYSTEM** in the GUI and require explicit confirmation before mounting/unmounting.
 
-**Supported filesystems:** what the Home Assistant OS kernel can read – ext2/3/4, FAT/vfat, NTFS (via ntfs-3g), exFAT and a few more. **XFS is not supported:** the Home Assistant OS kernel does not contain it, and an add-on cannot add kernel modules. Mounting such a drive ends with a clear message; copy the data off on another computer and format the drive as ext4 (Drives tab → Format).
+**Supported filesystems:** what the Home Assistant OS kernel can read – ext2/3/4, FAT/vfat, NTFS (via ntfs-3g), exFAT and a few more. **XFS is not supported:** the Home Assistant OS kernel does not contain it, and an add-on cannot add kernel modules. Mounting such a drive ends with a clear message; copy the data off on another computer and format the drive as ext4 (Drives tab → Format). **Macs and exFAT/FAT:** these drives cannot store the Finder metadata that Samba normally keeps in extended attributes, so Simple NAS lets macOS write its `._*` companion files there instead, as macOS does on a local exFAT stick. The `._*` files are visible to Windows/Linux users. ext4 keeps the folders tidier.
 
 ---
 

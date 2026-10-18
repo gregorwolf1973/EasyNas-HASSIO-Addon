@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.14.2
+- **Fix: Macs koennen wieder auf exFAT- und FAT-Laufwerke kopieren** (Issue #15, Fehler 100093). Simple NAS legt die Finder-Metadaten ueber `streams_xattr` in erweiterten Attributen ab, die exFAT/FAT nicht kennen; der uebliche Ausweg von macOS, `._*`-Begleitdateien, war gesperrt. Freigaben auf solchen Laufwerken werden jetzt beim Erzeugen der smb.conf erkannt (Probe-Attribut) und bekommen nur `catia`, `ea support = no` und erlauben `._*`-Dateien - wie auf einem lokal angeschlossenen exFAT-Stick. ext4- und NTFS-Freigaben bleiben unveraendert.
+
 ## 3.14.1
 - **WebDAV-Sperren aufheben:** Die WebDAV-Karte im Einstellungen-Tab zeigt aktive Sperren und Fehlversuche; ein Klick auf eine Sperre hebt sie auf. Bisher ging das nur durch Abwarten oder einen Neustart - der Knopf im Teilen-Tab erreicht WebDAV nicht, weil die Freigabe-Seite abgeschottet mit eigener Sperrliste laeuft. Ein neues Passwort fuer einen Benutzer (Benutzer-Tab) hebt auch die Sperre seines Benutzernamens auf.
 
