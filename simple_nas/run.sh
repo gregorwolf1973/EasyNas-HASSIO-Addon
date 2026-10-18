@@ -15,6 +15,11 @@ bashio::log.info "NAS Name: ${NAS_NAME}"
 export WEB_PORT
 WEB_PORT=$(bashio::config 'web_port')
 bashio::log.info "Web GUI Port: ${WEB_PORT}"
+# Home Assistant assigns the Ingress port itself (ingress_port: 0 in config.yaml). A fixed 8100 clashed
+# with other host-network add-ons such as Dnsmasq-DHCP (issue #10); the GUI listens on both ports.
+export INGRESS_PORT
+INGRESS_PORT=$(bashio::addon.ingress_port 2>/dev/null || true)
+bashio::log.info "Ingress Port: ${INGRESS_PORT:-unknown}"
 
 export ADMIN_PASSWORD_ENABLED
 ADMIN_PASSWORD_ENABLED=$(bashio::config 'admin_password_enabled')
@@ -296,9 +301,18 @@ else
 fi
 
 # 3) WSDD – WS-Discovery (Windows 10/11 network browser)
+#    Bound to the LAN interface (default route) only. Home Assistant OS always has hassio, docker0 and
+#    veth interfaces besides the LAN one; bound to all of them, the multicast announcements never reached
+#    the LAN and the NAS did not show up in the Windows "Network" folder (issue #13, fix by @mirican).
 if command -v wsdd > /dev/null 2>&1; then
-    python3 /usr/local/bin/wsdd --workgroup "${WORKGROUP}" --hostname "${NAS_NAME}" &
-    bashio::log.info "WSDD started (WS-Discovery for Windows 10/11, hostname=${NAS_NAME})"
+    WSDD_IFACE="$(ip route show default 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "dev") {print $(i + 1); exit}}')"
+    if [ -n "${WSDD_IFACE}" ]; then
+        python3 /usr/local/bin/wsdd --workgroup "${WORKGROUP}" --hostname "${NAS_NAME}" --interface "${WSDD_IFACE}" &
+        bashio::log.info "WSDD started (WS-Discovery for Windows 10/11, interface=${WSDD_IFACE}, hostname=${NAS_NAME})"
+    else
+        python3 /usr/local/bin/wsdd --workgroup "${WORKGROUP}" --hostname "${NAS_NAME}" &
+        bashio::log.warning "WSDD started on all interfaces (no default route found)"
+    fi
 else
     bashio::log.warning "wsdd not installed"
 fi

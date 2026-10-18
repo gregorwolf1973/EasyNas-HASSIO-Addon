@@ -132,7 +132,9 @@ class SmbConfTest(unittest.TestCase):
         self.data = os.path.join(self.tmp, "data")
         os.makedirs(self.data)
         shares = [{"name": "rw", "path": os.path.join(self.tmp, "rw")},
-                  {"name": "ro", "path": os.path.join(self.tmp, "ro"), "writable": False}]
+                  {"name": "ro", "path": os.path.join(self.tmp, "ro"), "writable": False},
+                  {"name": "tm", "path": os.path.join(self.tmp, "tm"), "timemachine": True, "timemachine_max_gb": 500},
+                  {"name": "tmro", "path": os.path.join(self.tmp, "tmro"), "timemachine": True, "writable": False}]
         for share in shares:
             os.makedirs(share["path"])
         with open(os.path.join(self.data, "shares.json"), "w") as f:
@@ -157,6 +159,14 @@ class SmbConfTest(unittest.TestCase):
         self.assertIn("recycle:exclude_dir = .recycle", s["rw"])
         self.assertNotIn("recycle", s["ro"])
         self.assertNotIn("recycle", s["global"])
+
+    def test_time_machine_share_without_bin(self):
+        s = self.sections()
+        self.assertIn("fruit:time machine = yes", s["tm"])
+        self.assertIn("fruit:time machine max size = 500G", s["tm"])
+        self.assertNotIn("recycle", s["tm"], "Time Machine raeumt selbst auf, sonst liefe der Papierkorb voll")
+        self.assertNotIn("time machine", s["tmro"], "nur lesbar taugt nicht als Backup-Ziel")
+        self.assertNotIn("time machine", s["rw"])
 
     def test_switched_off_in_settings(self):
         with open(os.path.join(self.data, "recycle.json"), "w") as f:

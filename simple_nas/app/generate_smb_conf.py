@@ -168,6 +168,7 @@ for share in shares:
     comment      = share.get("comment", "")
     valid_users  = share.get("users", [])
     valid_groups = share.get("groups", [])
+    timemachine  = bool(share.get("timemachine")) and writable
 
     available = share_available(path, mounted_points)
 
@@ -210,7 +211,16 @@ for share in shares:
     conf += f"   force directory mode = 0777\n"
     conf += f"   force user = root\n"
     conf += f"   force group = root\n"
-    if use_recycle and writable:
+    if timemachine:
+        # macOS Time Machine target (issue #11). The global fruit/streams_xattr modules do the work;
+        # the drive must support extended attributes (ext4, NTFS - not exFAT/FAT).
+        # No recycle bin here: Time Machine prunes old backup bands all the time, and every one of
+        # them would end up in .recycle and fill the drive.
+        conf += "   fruit:time machine = yes\n"
+        max_gb = share.get("timemachine_max_gb") or 0
+        if isinstance(max_gb, int) and max_gb > 0:
+            conf += f"   fruit:time machine max size = {max_gb}G\n"
+    elif use_recycle and writable:
         # replaces the global vfs objects for this share, so the Mac modules come along
         conf += RECYCLE_OPTIONS
     conf += "\n"

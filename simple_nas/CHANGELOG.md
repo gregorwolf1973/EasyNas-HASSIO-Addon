@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.13.0
+- **Time Machine** (Issue #11): Jede Freigabe laesst sich im Freigabe-Dialog als Backup-Ziel fuer Macs einschalten, auf Wunsch mit Groessenbegrenzung in GB. Macs finden sie per Bonjour (`_adisk._tcp`) von selbst unter *Backup-Volume hinzufuegen*. Fuer solche Freigaben ist der Papierkorb aus, sonst liefe er mit alten Backup-Daten voll. Am besten auf einem ext4-Laufwerk; exFAT/FAT taugen nicht.
+- **Windows findet die NAS wieder unter "Netzwerk"** (Issue #13): wsdd lauscht nur noch an der LAN-Schnittstelle (Standardroute). Auf allen Schnittstellen erreichten die Ankuendigungen unter Home Assistant OS oft das LAN nicht. Fix von @mirican.
+- **Kein Ingress-Konflikt mehr mit anderen Add-ons im Host-Netz** (Issue #10): Den Ingress-Port vergibt jetzt Home Assistant (`ingress_port: 0`), bisher war er fest 8100 und kollidierte z. B. mit Dnsmasq-DHCP - "Oeffnen" zeigte dann das andere Add-on. Der Direktzugriff ueber `web_port` (Standard 8100) bleibt unveraendert; ist der Port belegt, laeuft "Oeffnen" trotzdem.
+- **XFS-Laufwerke** (Issue #16): Statt "Mount fehlgeschlagen" erklaert Simple NAS jetzt, dass Home Assistant OS XFS nicht im Kernel hat und ein Add-on das nicht nachruesten kann, mit dem Ausweg ext4.
+
 ## 3.12.1
 - **Backups bremsen Home Assistant nicht mehr aus.** restic und rclone (externe Backups) sowie rsync (Datei-Backup-Jobs) laufen jetzt mit niedrigster CPU- und Festplatten-Prioritaet (`nice 19`, I/O-Klasse *idle*), restic und rclone ausserdem nur noch auf zwei Kernen weniger als vorhanden (auf dem Raspberry Pi 5: 2 von 4). Bisher lag ein grosses restic-Backup mit allen Kernen bei 100 % CPU, gleichberechtigt mit Home Assistant. Ein Backup dauert dadurch etwas laenger, Home Assistant, Samba und die anderen Add-ons haben aber immer Vorrang.
 

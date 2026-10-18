@@ -12,6 +12,7 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 - **Web GUI** – manage shares, users, groups, drives, and file browser via HA Ingress
 - **USB / external drives** – mount and unmount drives at runtime; mounts survive reboots using stable `/dev/disk/by-id/` identifiers
 - **Network discovery** – mDNS (Avahi) for macOS Finder / Linux Nautilus, WS-Discovery (wsdd) for Windows 10/11
+- **Time Machine** – any share can be a backup target for Macs, found automatically via Bonjour
 - **External backups** – back up `/share`, `/media` or any folder to a Hetzner Storage Box, S3, Backblaze B2, SFTP, WebDAV, SMB, a second disk or any rclone provider; with restic (encrypted, versioned) or rclone (files 1:1), on a schedule, with restore in the browser
 - **Reinstall-safe backup** – settings are automatically backed up to `/config/.simplenas/auto` and restored on fresh install; manual snapshots (up to 10) are also supported
 - **Password protection** – optional web GUI login (username + password via add-on config)
@@ -87,6 +88,15 @@ Settings tab → **Recycle bin for network shares**: switch it on or off (defaul
 
 Limit: the bin lives inside the share. A drive mounted *below* a share's root cannot move files into it, so deletions there stay permanent – give each drive its own share.
 
+## Time Machine (macOS backups)
+
+Edit a share and switch on **Time Machine**. Macs on the network then offer it under *System Settings → General → Time Machine → Add Backup Disk* (announced via Bonjour `_adisk._tcp`); log in with a Samba user that has access to the share.
+
+- **Use at most (GB)** caps how much space the backups may take (Samba `fruit:time machine max size`); `0` = unlimited. Without a limit Time Machine fills the whole drive over time and only then deletes old backups.
+- The drive needs extended attributes: **ext4** is best, NTFS works too, **exFAT/FAT do not**.
+- The recycle bin is off for Time Machine shares – Time Machine deletes old backup data all the time, and all of it would end up in `.recycle`.
+- A dedicated share (e.g. a folder `TimeMachine` on the drive) per Mac or for all Macs is the usual setup; one share can hold several Macs.
+
 ## Running alongside the official Samba add-on
 
 Both add-ons use `host_network: true` and bind to the same SMB ports (445 and 139), so they **cannot run simultaneously** with default settings.
@@ -107,6 +117,8 @@ Simple NAS automatically resolves `/dev/sdX` device names to their stable `/dev/
 - Saved mounts are **automatically restored on every add-on start**, using the filesystem type that was detected at mount time (e.g. `ext4`) rather than relying on kernel auto-detection, which can fail on some USB devices.
 
 > ⚠️ **Devices that back the HA system (`/`, `/boot`, …) are marked SYSTEM** in the GUI and require explicit confirmation before mounting/unmounting.
+
+**Supported filesystems:** what the Home Assistant OS kernel can read – ext2/3/4, FAT/vfat, NTFS (via ntfs-3g), exFAT and a few more. **XFS is not supported:** the Home Assistant OS kernel does not contain it, and an add-on cannot add kernel modules. Mounting such a drive ends with a clear message; copy the data off on another computer and format the drive as ext4 (Drives tab → Format).
 
 ---
 
@@ -456,7 +468,10 @@ The drive is not mounted. Go to the Drives tab and mount it first.
 The drive was saved using a raw `/dev/sdX` path with an older version. Delete the mount entry and re-mount the drive — Simple NAS will now save the stable by-id path automatically.
 
 **Can't see the NAS in Windows Network Browser**  
-Make sure `wsdd` is running (check add-on logs). Windows 10/11 uses WS-Discovery instead of NetBIOS.
+Make sure `wsdd` is running (check add-on logs). Windows 10/11 uses WS-Discovery instead of NetBIOS. Since 3.13.0 wsdd only listens on the LAN interface (the one with the default route, logged as `WSDD started … interface=…`); before, on Home Assistant OS with its internal Docker networks, the announcements often never reached the LAN.
+
+**"Open Web UI" shows another add-on (e.g. Dnsmasq-DHCP)**  
+Fixed in 3.13.0: Home Assistant now assigns Simple NAS its own Ingress port. Direct access via `web_port` (default 8100) stays as it was; if another host-network add-on already uses 8100, change `web_port` – the **Open** button keeps working either way.
 
 **SSL certificate folder is read-only**  
 Upgrade to v3.0.32 or later — the `/ssl` mapping was changed from `ro` to `rw`.

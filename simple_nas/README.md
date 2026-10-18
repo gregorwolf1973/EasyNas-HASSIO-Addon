@@ -16,6 +16,7 @@ A lightweight NAS add-on for Home Assistant OS. Turns your Raspberry Pi (or othe
 - **Users & Groups** – Samba users with passwords and group membership
 - **Access control** – restrict shares to specific users or groups
 - **Network discovery** – auto-discovery in Windows Explorer (WSDD), Linux Nautilus/Dolphin (Avahi/mDNS) and macOS Finder
+- **Time Machine** – any share can be a backup target for Macs (found automatically via Bonjour, optional size limit)
 - **Dark/Light theme** – switchable in the header
 - **Protection** against accidental unmounting of system partitions
 - **File manager** – browse, upload, download, copy, move, rename and delete files
@@ -167,7 +168,7 @@ Switchable via the moon/sun button in the top right. The choice is stored in the
 
 ## Supported Filesystems
 
-ext4, ext3, NTFS (ntfs-3g), FAT32 (vfat), exFAT, btrfs, XFS
+ext4, ext3, NTFS (ntfs-3g), FAT32 (vfat), exFAT – whatever the Home Assistant OS kernel supports. **XFS is not supported:** the kernel does not contain it, and an add-on cannot add it.
 
 ## Network Discovery
 

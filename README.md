@@ -20,11 +20,14 @@ all inside Home Assistant, no second box needed.
 - **Backup jobs** with automatic clean-up of old runs
 - **Network discovery** — the NAS shows up in Windows Explorer (WSDD), in
   Nautilus and Dolphin (Avahi/mDNS) and in the macOS Finder
+- **Time Machine** — any share can be a backup target for Macs, found
+  automatically via Bonjour, with an optional size limit
 - **Settings survive a reinstall** — they are backed up to
   `/config/.simplenas/auto` and restored automatically
 - German and English interface, dark and light theme
 
-Filesystems: ext4, ext3, NTFS, FAT32, exFAT, btrfs, XFS.
+Filesystems: ext4, ext3, NTFS, FAT32, exFAT – whatever the Home Assistant OS
+kernel supports. XFS is not part of it.
 Architectures: `aarch64` (Raspberry Pi 4/5), `amd64`, `armv7`.
 
 ## Installation

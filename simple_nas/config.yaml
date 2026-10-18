@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Simple NAS with Samba shares and web GUI for drive management"
-version: "3.12.1"
+version: "3.13.0"
 url: "https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon"
 slug: "simple_nas"
 init: false
@@ -11,7 +11,7 @@ arch:
 startup: services
 boot: auto
 ingress: true
-ingress_port: 8100
+ingress_port: 0  # assigned by Home Assistant (host network), see run.sh
 panel_icon: "mdi:nas"
 panel_title: "Simple NAS"
 host_network: true

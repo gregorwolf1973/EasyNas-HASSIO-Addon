@@ -429,6 +429,52 @@ def reload_samba():
             subprocess.Popen(["nmbd", "--foreground", "--no-process-group"],
                              stdout=open("/var/log/samba/nmbd.log", "a"),
                              stderr=subprocess.STDOUT)
+    publish_timemachine()
+
+
+# ── Time Machine (Issue #11) ──
+# macOS findet Backup-Ziele über den Bonjour-Dienst _adisk._tcp: je Freigabe ein Eintrag dkN mit
+# adVF=0x82 (Time-Machine-Ziel). Ohne ihn ginge es nur über "Mit Server verbinden" und tmutil.
+_ADISK = {"proc": None, "txt": None}
+
+
+def timemachine_txt(shares):
+    names = [s.get("name") for s in shares if s.get("timemachine") and s.get("writable", True) and s.get("name")]
+    if not names:
+        return []
+    return ["sys=waMa=0,adVF=0x100"] + [f"dk{i}=adVN={name},adVF=0x82" for i, name in enumerate(names)]
+
+
+def timemachine_size(value):
+    """Maximale Größe in GB, 0 = unbegrenzt. Ungültiges wird 0."""
+    try:
+        return max(0, min(int(value or 0), 1_000_000))
+    except (TypeError, ValueError):
+        return 0
+
+
+def publish_timemachine():
+    """Bonjour-Eintrag für Time Machine an die aktuellen Freigaben anpassen (avahi-publish läuft weiter)."""
+    txt = timemachine_txt(load_json(SHARES_FILE, []))
+    proc = _ADISK["proc"]
+    running = proc is not None and proc.poll() is None
+    if txt == _ADISK["txt"] and (running or not txt):
+        return
+    if running:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    _ADISK.update(proc=None, txt=txt)
+    if not txt:
+        return
+    try:
+        _ADISK["proc"] = subprocess.Popen(["avahi-publish", "-s", NAS_NAME, "_adisk._tcp", "9", *txt],
+                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"[TM] Bonjour: Time Machine fuer {len(txt) - 1} Freigabe(n) angekuendigt", flush=True)
+    except OSError as e:
+        print(f"[TM] avahi-publish nicht startbar: {e}", flush=True)
 
 def get_by_id_path(dev_name):
     """Return the most readable stable /dev/disk/by-id/ symlink for dev_name (e.g. 'sdb1').
@@ -867,7 +913,8 @@ def api_mount():
 
     rc, out = _helper_call("MOUNT", stable_dev, mountpoint, fstype)
     if rc != 0:
-        return jsonify({"error": out or "Mount fehlgeschlagen"}), 500
+        body, status = mount_error(out)
+        return jsonify(body), status
 
     # Resolve the actual FS type the kernel is using — for the drive list tag
     resolved_fs = fstype
@@ -901,6 +948,21 @@ def api_mount():
     save_json(MOUNTS_FILE, mounts)
     reload_samba()
     return jsonify({"ok": True, "mountpoint": mountpoint, "stable_device": stable_dev})
+
+UNKNOWN_FS = re.compile(r"unknown filesystem type '([^']+)'")
+
+
+def mount_error(out):
+    """Fehlermeldung von mount fürs Frontend. Kennt der Kernel das Dateisystem nicht (XFS, Issue #16),
+    hilft kein zweiter Versuch: Home Assistant OS bringt es nicht mit, ein Add-on kann es nicht nachladen."""
+    unknown = UNKNOWN_FS.search(out or "")
+    if unknown:
+        fs = unknown.group(1)
+        return {"error": f"Home Assistant OS kann {fs}-Laufwerke nicht einbinden: Das Dateisystem fehlt im Kernel. "
+                         f"Daten an einem anderen Rechner sichern und das Laufwerk mit ext4 formatieren.",
+                "code": "fs_unsupported", "fstype": fs}, 422
+    return {"error": out or "Mount fehlgeschlagen"}, 500
+
 
 @app.route("/api/drives/unmount", methods=["POST"])
 def api_unmount():
@@ -1266,6 +1328,8 @@ def api_create_share():
         "public": body.get("public", False),
         "users": body.get("users", []),
         "groups": body.get("groups", []),
+        "timemachine": bool(body.get("timemachine", False)),
+        "timemachine_max_gb": timemachine_size(body.get("timemachine_max_gb")),
     }
     shares.append(share)
     save_json(SHARES_FILE, shares)
@@ -1283,6 +1347,10 @@ def api_update_share(name):
         if s["name"] == name:
             for key in ("comment", "writable", "public", "users", "groups", "path"):
                 if key in body: s[key] = body[key]
+            if "timemachine" in body:
+                s["timemachine"] = bool(body["timemachine"])
+            if "timemachine_max_gb" in body:
+                s["timemachine_max_gb"] = timemachine_size(body["timemachine_max_gb"])
             # Ensure share directory exists with correct permissions
             p = s.get("path", "")
             if p:
@@ -1834,7 +1902,7 @@ def api_get_recycle():
     for s in load_json(SHARES_FILE, []):
         path = s.get("path", "")
         shares.append({"name": s.get("name"), "path": path, "writable": s.get("writable", True),
-                       **recycle_usage(path)})
+                       "timemachine": bool(s.get("timemachine")), **recycle_usage(path)})
     return jsonify({**recycle_settings(), "dir": RECYCLE_DIR, "shares": shares})
 
 
@@ -3231,6 +3299,20 @@ def start_share_site():
     return True
 
 
+def listen_ports(web_port, ingress_port):
+    """web_port für den Direktzugriff, dazu der Port, den Home Assistant für Ingress vergibt
+    (ingress_port: 0 in config.yaml; ein fester 8100 kollidierte mit Dnsmasq-DHCP, Issue #10)."""
+    ports = [web_port]
+    if ingress_port and ingress_port != web_port:
+        ports.append(ingress_port)
+    return ports
+
+
+def _env_port(name):
+    value = str(os.environ.get(name, "")).strip()
+    return int(value) if value.isdigit() else 0
+
+
 def serve(wsgi_app, port):
     """Run the admin UI on waitress, a production WSGI server.
 
@@ -3249,15 +3331,29 @@ def serve(wsgi_app, port):
         print("[WEB] waitress fehlt - Rueckfall auf den Entwicklungsserver", flush=True)
         wsgi_app.run(host="0.0.0.0", port=port, debug=False)
         return
-    print(f"[WEB] waitress auf 0.0.0.0:{port}", flush=True)
-    create_server(
-        wsgi_app, host="0.0.0.0", port=port,
+    server, ports = make_server(wsgi_app, port, _env_port("INGRESS_PORT"), create_server)
+    print(f"[WEB] waitress auf Port {', '.join(map(str, ports))}", flush=True)
+    server.run()
+
+
+def make_server(wsgi_app, port, ingress, create_server, host="0.0.0.0"):
+    """waitress-Server auf web_port und Ingress-Port. Ist web_port belegt (anderes Add-on im Host-Netz),
+    lauscht er nur auf dem Ingress-Port: "Öffnen" in Home Assistant geht dann weiter."""
+    options = dict(
         threads=8,
         ident=None,                       # no "Server: waitress" header
         channel_timeout=300,              # slow USB media, long listings
         max_request_body_size=MAX_UPLOAD_BYTES + 8 * 1024 * 1024,
         asyncore_use_poll=True,
-    ).run()
+    )
+    ports = listen_ports(port, ingress)
+    try:
+        return create_server(wsgi_app, listen=" ".join(f"{host}:{p}" for p in ports), **options), ports
+    except OSError as e:
+        if len(ports) < 2:
+            raise
+        print(f"[WEB] Port {port} nicht verfuegbar ({e}) - nur ueber Home Assistant (Ingress-Port {ingress})", flush=True)
+        return create_server(wsgi_app, listen=f"{host}:{ingress}", **options), [ingress]
 
 
 if __name__ == "__main__":
@@ -3276,5 +3372,6 @@ if __name__ == "__main__":
             print(f"[SHARE] Start der oeffentlichen Seite fehlgeschlagen: {e}", flush=True)
     remote_backup.start()
     start_recycle_purge()
+    publish_timemachine()
     port = int(os.environ.get("WEB_PORT", 8100))
     serve(app, port)
