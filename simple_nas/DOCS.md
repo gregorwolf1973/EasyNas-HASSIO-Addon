@@ -79,6 +79,14 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 
 ---
 
+## Recycle bin for network shares
+
+Windows Explorer, the macOS Finder and Linux file managers delete files on a network share for good – there is no client-side trash for SMB. Simple NAS therefore turns on Samba's `vfs_recycle` for every writable share: whatever a client deletes is moved into the hidden folder `.recycle` at the root of that share, with its folder structure kept. To restore a file, move it back (show hidden files in your file manager, or use the Files tab).
+
+Settings tab → **Recycle bin for network shares**: switch it on or off (default: on), set how many days deleted files are kept (default: 30) and see or empty each share's bin. Simple NAS removes older entries every few hours. A `.recycle` folder that already existed before the bin was turned on (e.g. from an earlier Samba setup) is never emptied automatically – only with **Empty**. Temporary files (`*.tmp`, `~$*`, `.~lock.*#`, `*.part`, `*.crdownload`) are deleted directly. File backup jobs, restic and rclone skip `.recycle`.
+
+Limit: the bin lives inside the share. A drive mounted *below* a share's root cannot move files into it, so deletions there stay permanent – give each drive its own share.
+
 ## Running alongside the official Samba add-on
 
 Both add-ons use `host_network: true` and bind to the same SMB ports (445 and 139), so they **cannot run simultaneously** with default settings.

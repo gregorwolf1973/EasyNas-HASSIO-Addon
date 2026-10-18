@@ -279,7 +279,8 @@ class ConfigAndCommandTest(_Base):
         self.assertEqual(cmd[:2], ["restic", "backup"])
         self.assertIn("--json", cmd)
         self.assertEqual(cmd[cmd.index("--host") + 1], "simplenas")
-        self.assertEqual(cmd[cmd.index("--exclude") + 1], "*.tmp")
+        excludes = [cmd[i + 1] for i, a in enumerate(cmd) if a == "--exclude"]
+        self.assertEqual(excludes, [".recycle", "*.tmp"])                 # Samba-Papierkorb immer raus
         self.assertEqual(cmd[cmd.index("--limit-upload") + 1], "976")    # 8 Mbit/s in KiB/s
         self.assertEqual(cmd[-2:], [self.share, self.media])
 
@@ -298,6 +299,7 @@ class ConfigAndCommandTest(_Base):
         self.assertEqual(cmd[:4], ["rclone", "sync", self.share, "t_abcd1234:simplenas/" + sub])
         self.assertEqual(cmd[cmd.index("--backup-dir") + 1],
                          "t_abcd1234:simplenas/.versions/20261014_030000/" + sub)
+        self.assertEqual(cmd[cmd.index("--exclude") + 1], ".recycle/**")
 
     def test_sub_names(self):
         self.assertEqual(rb._sub_name("/share"), "share")

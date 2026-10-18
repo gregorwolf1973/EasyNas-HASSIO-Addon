@@ -65,10 +65,34 @@ def share_available(path, mounted_points):
         return False
     return True  # HA-mapped or other always-available path
 
-SHARES_FILE = "/data/shares.json"
-USERS_FILE  = "/data/users.json"
-GROUPS_FILE = "/data/groups.json"
-SMB_CONF    = "/etc/samba/smb.conf"
+DATA_DIR    = os.environ.get("SIMPLE_NAS_DATA", "/data")              # Tests: Temp-Ordner
+SHARES_FILE = f"{DATA_DIR}/shares.json"
+USERS_FILE  = f"{DATA_DIR}/users.json"
+GROUPS_FILE = f"{DATA_DIR}/groups.json"
+RECYCLE_FILE = f"{DATA_DIR}/recycle.json"
+SMB_CONF    = os.environ.get("SIMPLE_NAS_SMB_CONF", "/etc/samba/smb.conf")
+
+# Network recycle bin (Settings tab): what a client deletes over SMB is moved
+# to <share>/.recycle instead; app.py empties it after the configured days.
+# Within one share only - a drive mounted below the share root cannot rename
+# into the bin, and vfs_recycle then deletes for real.
+RECYCLE_OPTIONS = """   vfs objects = catia fruit streams_xattr recycle
+   recycle:repository = .recycle
+   recycle:keeptree = yes
+   recycle:versions = yes
+   recycle:directory_mode = 0777
+   recycle:exclude = *.tmp *.temp ~$* .~lock.*# *.part *.crdownload
+   recycle:exclude_dir = .recycle
+"""
+
+
+def recycle_enabled():
+    try:
+        with open(RECYCLE_FILE) as f:
+            saved = json.load(f)
+    except Exception:
+        return True   # on unless switched off in the Settings tab
+    return not isinstance(saved, dict) or bool(saved.get("enabled", True))
 
 workgroup = sys.argv[1] if len(sys.argv) > 1 else "WORKGROUP"
 nas_name  = sys.argv[2] if len(sys.argv) > 2 else "SimpleNAS"
@@ -134,6 +158,7 @@ conf = f"""[global]
 
 mounted_points = get_mounted_points()
 inactive_count = 0
+use_recycle = recycle_enabled()
 
 for share in shares:
     name         = share.get("name", "share")
@@ -185,9 +210,12 @@ for share in shares:
     conf += f"   force directory mode = 0777\n"
     conf += f"   force user = root\n"
     conf += f"   force group = root\n"
+    if use_recycle and writable:
+        # replaces the global vfs objects for this share, so the Mac modules come along
+        conf += RECYCLE_OPTIONS
     conf += "\n"
 
-os.makedirs("/etc/samba", exist_ok=True)
+os.makedirs(os.path.dirname(SMB_CONF), exist_ok=True)
 with open(SMB_CONF, "w") as f:
     f.write(conf)
 

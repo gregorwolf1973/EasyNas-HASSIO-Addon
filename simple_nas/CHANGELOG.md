@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.12.0
+- **Papierkorb fuer Netzwerkfreigaben.** Windows, macOS und Linux loeschen auf einer Samba-Freigabe sofort endgueltig, Nautilus fragt nur noch "Soll sie sofort geloescht werden?". Jetzt verschiebt Simple NAS alles, was ueber das Netzwerk geloescht wird, in den versteckten Ordner `.recycle` der Freigabe, samt Ordnerstruktur (Samba-Modul `vfs_recycle`). Zum Wiederherstellen die Datei einfach zurueckschieben, ueber die Freigabe (versteckte Dateien einblenden) oder im Dateien-Tab. Gibt es eine Datei dort schon, heisst die neue "Copy #1 of ...". Temporaere Dateien (`*.tmp`, `~$*`, `.~lock.*#`, `*.part`, `*.crdownload`) landen nicht im Papierkorb.
+- **Einstellungen-Tab, Karte "Papierkorb fuer Netzwerkfreigaben":** ein- und ausschalten (Standard: an), Aufbewahrung in Tagen (Standard 30), Belegung je Freigabe und **Leeren** je Freigabe. Simple NAS loescht alle paar Stunden, was laenger als die eingestellten Tage im Papierkorb liegt. Gilt fuer beschreibbare Freigaben.
+- Ein `.recycle`-Ordner, der schon vor dem Einschalten existierte (etwa von einer frueheren Samba-Einrichtung), wird nie automatisch geleert, nur mit **Leeren**.
+- Datei-Backup-Jobs, restic und rclone sichern den Papierkorb nicht mit.
+- Grenze: Der Papierkorb liegt im Freigabe-Ordner. Ein Laufwerk, das *unterhalb* einer Freigabe eingehaengt ist, kann nicht dorthin verschieben; Samba loescht dort weiterhin endgueltig. Am besten jede Platte als eigene Freigabe anlegen.
+
 ## 3.11.2
 - **Fix: Ordner kopieren scheiterte immer mit "File exists".** Der Ordner-Auswahlknopf im Dialog *Kopieren* traegt den Zielordner selbst ein, und der Server versuchte, den kopierten Ordner unter genau diesem Namen anzulegen - den es ja schon gab. Ein bestehender Ordner als Ziel heisst jetzt "dort hinein", wie bei `cp` und `mv`; ein Pfad, den es noch nicht gibt, ist weiterhin der neue Name der Kopie. Das Zielfeld ist mit dem aktuellen Ordner vorbelegt statt mit der Quelle selbst.
 - **Kopieren und Verschieben ueberschreiben nichts mehr.** Liegt am Ziel schon etwas mit demselben Namen, kommt "„Name“ existiert bereits in Ordner" statt der rohen Python-Meldung. Bisher ersetzten das Kopieren einer Datei und das Verschieben eine vorhandene Datei stillschweigend. Ein Ordner laesst sich nicht mehr in sich selbst kopieren oder verschieben.

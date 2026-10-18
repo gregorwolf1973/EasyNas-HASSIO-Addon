@@ -323,7 +323,7 @@ def _copy_data_to(dest_dir):
     for fname in ("shares.json", "users.json", "groups.json",
                   "mounts.json", "backups.json", "admin_auth.json",
                   "file_access.json", "share_links.json", "share_accounts.json", "share_auth.json",
-                  "crowdsec_setup.json"):
+                  "crowdsec_setup.json", "recycle.json"):
         src = os.path.join(DATA_DIR, fname)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(dest_dir, fname))
@@ -345,7 +345,7 @@ def _restore_from(src_dir):
     for fname in ("shares.json", "users.json", "groups.json",
                   "mounts.json", "backups.json", "admin_auth.json",
                   "file_access.json", "share_links.json", "share_accounts.json", "share_auth.json",
-                  "crowdsec_setup.json"):
+                  "crowdsec_setup.json", "recycle.json"):
         src = os.path.join(src_dir, fname)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(DATA_DIR, fname))
@@ -1705,6 +1705,165 @@ def api_set_file_access():
     return jsonify({"ok": True, "roots": roots, "unlock_system": unlock})
 
 
+# ─────────────────────────── network recycle bin ────────────────
+#
+# Samba's vfs_recycle moves files deleted over SMB into <share>/.recycle
+# instead of removing them (generate_smb_conf.py switches it on). Clients
+# cannot trash files on a network share themselves - Nautilus and Windows
+# Explorer delete them for good - so this is the only safety net there is.
+
+RECYCLE_FILE = f"{DATA_DIR}/recycle.json"
+RECYCLE_DIR = ".recycle"
+RECYCLE_DEFAULT_DAYS = 30
+RECYCLE_PURGE_INTERVAL = 6 * 3600
+
+
+def recycle_settings():
+    saved = load_json(RECYCLE_FILE, {})
+    if not isinstance(saved, dict):
+        saved = {}
+    try:
+        days = min(365, max(1, int(saved.get("days", RECYCLE_DEFAULT_DAYS))))
+    except (TypeError, ValueError):
+        days = RECYCLE_DEFAULT_DAYS
+    # since: when Simple NAS first ran with the bin. A .recycle left by an
+    # earlier Samba setup predates it and is never purged automatically.
+    since = saved.get("since")
+    return {"enabled": bool(saved.get("enabled", True)), "days": days,
+            "since": since if isinstance(since, (int, float)) else None}
+
+
+def _save_recycle(enabled, days):
+    since = recycle_settings()["since"]
+    save_json(RECYCLE_FILE, {"enabled": enabled, "days": days, "since": since or time.time()})
+
+
+def _recycle_root(share_path):
+    """The share's bin, or None if there is none or it is not a plain directory."""
+    root = os.path.join(share_path, RECYCLE_DIR)
+    if os.path.islink(root) or not os.path.isdir(root):
+        return None
+    return root
+
+
+def recycle_purge(share_path, older_than_days=None, now=None, since=None):
+    """Delete what has been in the bin longer than older_than_days; None empties it.
+
+    Age is the ctime: the move into the bin sets it, and unlike the access
+    time a later read (backup, virus scan) cannot push it back. With since,
+    anything that was already in the bin before that moment stays.
+    Returns (files, bytes) removed."""
+    root = _recycle_root(share_path)
+    if root is None:
+        return 0, 0
+    cutoff = None if older_than_days is None else (now or time.time()) - older_than_days * 86400
+    files = size = 0
+    for folder, dirs, names in os.walk(root, topdown=False):
+        # os.walk lists symlinks to directories under dirs; they go like files
+        links = [d for d in dirs if os.path.islink(os.path.join(folder, d))]
+        for name in names + links:
+            path = os.path.join(folder, name)
+            try:
+                st = os.lstat(path)
+                if cutoff is None or (st.st_ctime < cutoff and (since is None or st.st_ctime >= since)):
+                    os.unlink(path)
+                    files += 1
+                    size += st.st_size
+            except OSError as e:
+                print(f"[RECYCLE] {path}: {e}", flush=True)
+        for name in dirs:
+            try:
+                os.rmdir(os.path.join(folder, name))   # only succeeds once it is empty
+            except OSError:
+                pass
+    return files, size
+
+
+def recycle_usage(share_path, max_seconds=5):
+    """Files and bytes in the share's bin; truncated when the walk ran out of time."""
+    root = _recycle_root(share_path)
+    files = size = 0
+    if root is not None:
+        deadline = time.time() + max_seconds
+        for folder, _dirs, names in os.walk(root):
+            if time.time() > deadline:
+                return {"files": files, "bytes": size, "truncated": True}
+            for name in names:
+                try:
+                    size += os.lstat(os.path.join(folder, name)).st_size
+                    files += 1
+                except OSError:
+                    pass
+    return {"files": files, "bytes": size, "truncated": False}
+
+
+def _recycle_purge_all():
+    settings = recycle_settings()
+    days = settings["days"]
+    for share in load_json(SHARES_FILE, []):
+        path = share.get("path")
+        if not path:
+            continue
+        files, size = recycle_purge(path, days, since=settings["since"] or time.time())
+        if files:
+            print(f"[RECYCLE] {share.get('name')}: {files} Dateien ({size} Bytes) "
+                  f"aelter als {days} Tage geloescht", flush=True)
+
+
+def start_recycle_purge():
+    """Empty old entries every few hours - also while the bin is switched off,
+    so what is already in it still goes away on schedule."""
+    if recycle_settings()["since"] is None:
+        cur = recycle_settings()
+        _save_recycle(cur["enabled"], cur["days"])   # remembers since = now
+
+    def run():
+        time.sleep(120)   # slow USB drives mount after the web UI starts
+        while True:
+            try:
+                _recycle_purge_all()
+            except Exception as e:
+                print(f"[RECYCLE] Aufraeumen fehlgeschlagen: {e}", flush=True)
+            time.sleep(RECYCLE_PURGE_INTERVAL)
+    threading.Thread(target=run, daemon=True, name="recycle-purge").start()
+
+
+@app.route("/api/settings/recycle", methods=["GET"])
+def api_get_recycle():
+    shares = []
+    for s in load_json(SHARES_FILE, []):
+        path = s.get("path", "")
+        shares.append({"name": s.get("name"), "path": path, "writable": s.get("writable", True),
+                       **recycle_usage(path)})
+    return jsonify({**recycle_settings(), "dir": RECYCLE_DIR, "shares": shares})
+
+
+@app.route("/api/settings/recycle", methods=["POST"])
+def api_set_recycle():
+    body = request.get_json(force=True) or {}
+    cur = recycle_settings()
+    enabled = bool(body.get("enabled", cur["enabled"]))
+    try:
+        days = min(365, max(1, int(body.get("days", cur["days"]))))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Tage: bitte eine Zahl von 1 bis 365"}), 400
+    _save_recycle(enabled, days)
+    reload_samba()
+    print(f"[RECYCLE] geaendert: enabled={enabled} days={days} ip={_client_ip()}", flush=True)
+    return api_get_recycle()
+
+
+@app.route("/api/settings/recycle/empty", methods=["POST"])
+def api_empty_recycle():
+    name = (request.get_json(force=True) or {}).get("name")
+    share = next((s for s in load_json(SHARES_FILE, []) if s.get("name") == name), None)
+    if share is None:
+        return jsonify({"error": "Not found"}), 404
+    files, size = recycle_purge(share.get("path", ""))
+    print(f"[RECYCLE] {name} geleert: {files} Dateien ({size} Bytes) ip={_client_ip()}", flush=True)
+    return jsonify({"ok": True, "files": files, "bytes": size})
+
+
 @app.errorhandler(safepath.PathError)
 def _handle_path_error(e):
     # The reason goes to the add-on log only - the client gets one flat answer
@@ -2759,14 +2918,15 @@ def api_run_backup(job_id):
             dst_dir = os.path.join(dst_base, f"{j['name']}_{ts}")
 
             _backup_status[jid]["progress"] = f"Kopiere {src} → {dst_dir}"
-            # Use rsync for better performance and progress
+            # Use rsync for better performance and progress. Deleted files
+            # waiting in a share's recycle bin are not worth a backup.
             proc = subprocess.run(
-                ["rsync", "-a", "--info=progress2", src + "/", dst_dir + "/"],
+                ["rsync", "-a", "--info=progress2", f"--exclude={RECYCLE_DIR}/", src + "/", dst_dir + "/"],
                 capture_output=True, text=True, timeout=3600)
             if proc.returncode != 0:
                 # Fallback to shutil if rsync not available
                 if "not found" in (proc.stderr or ""):
-                    shutil.copytree(src, dst_dir)
+                    shutil.copytree(src, dst_dir, ignore=shutil.ignore_patterns(RECYCLE_DIR))
                 else:
                     raise Exception(proc.stderr or f"rsync failed (rc={proc.returncode})")
 
@@ -3114,5 +3274,6 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[SHARE] Start der oeffentlichen Seite fehlgeschlagen: {e}", flush=True)
     remote_backup.start()
+    start_recycle_purge()
     port = int(os.environ.get("WEB_PORT", 8100))
     serve(app, port)

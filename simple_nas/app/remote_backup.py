@@ -65,6 +65,8 @@ FIELD_LABELS = {
 }
 DEFAULT_RETENTION = {"daily": 7, "weekly": 4, "monthly": 12}
 DEFAULT_EXCLUDES = [".upload-*.part"]
+# Samba's recycle bin in every share (see app.py): deleted files, never backed up
+RECYCLE_EXCLUDE = ".recycle"
 # Parallel uploads (restic: rclone.connections, default 5; rclone: --transfers,
 # default 4). A single SFTP stream rarely fills the line. Hetzner allows at
 # most 10 connections per Storage Box, and rclone needs one or two on top.
@@ -702,7 +704,7 @@ def _restic_opts(job):
 
 def restic_backup_cmd(job):
     cmd = ["restic", "backup", "--json", "--host", RESTIC_HOST, "--tag", RESTIC_TAG]
-    for e in job.get("excludes") or []:
+    for e in [RECYCLE_EXCLUDE] + (job.get("excludes") or []):
         cmd += ["--exclude", e]
     if _kib(job):
         cmd += ["--limit-upload", str(_kib(job))]
@@ -736,7 +738,7 @@ def rclone_sync_cmds(job, ts):
         sub = _sub_name(src)
         cmd = ["rclone", "sync", src, _join(root, sub),
                "--backup-dir", _join(root, VERSIONS_DIR, ts, sub), "--links"]
-        for e in job.get("excludes") or []:
+        for e in [f"{RECYCLE_EXCLUDE}/**"] + (job.get("excludes") or []):
             cmd += ["--exclude", e]
         cmds.append((src, cmd + _rclone_common(job)))
     return cmds
