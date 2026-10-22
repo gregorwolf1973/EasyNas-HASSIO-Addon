@@ -1368,6 +1368,43 @@ def ensure_share_dir(path):
         print(f"ensure_share_dir: chmod not supported on {path} "
               f"(likely exFAT/FAT/NTFS): {e}", flush=True)
 
+from verified_capacity import Meter, VerificationError
+
+_verified_capacity_meter = Meter()
+
+
+@app.route("/api/storage/verified-capacity", methods=["GET", "POST"])
+def api_verified_capacity():
+    # Trust neither forwarded IPs nor client-supplied user headers from the LAN.
+    # Supervisor removes and sets X-Remote-User-Id itself for ingress sessions.
+    if not _via_ingress() or not request.headers.get("X-Remote-User-Id", "").strip():
+        return jsonify({"error": "authenticated_ingress_required"}), 403
+    if request.method in ("GET", "HEAD"):
+        # Bootstrap only: NO device, mount or filesystem access.
+        result = jsonify({"requires_confirmation": True, "csrf_token": csrf_token()})
+        result.headers["Cache-Control"] = "no-store"
+        return result
+    csrf_error = _csrf_check()
+    if csrf_error is not None:
+        return csrf_error
+    if request.content_length is None or request.content_length > 1024 or not request.is_json:
+        return jsonify({"error": "invalid_request"}), 400
+    body = request.get_json(silent=True)
+    if (not isinstance(body, dict)
+            or set(body) != {"disk_id_sha256", "partition", "confirm_wd_active"}
+            or body.get("confirm_wd_active") is not True):
+        return jsonify({"error": "explicit_confirmation_required"}), 400
+    try:
+        result = _verified_capacity_meter.measure(
+            load_json(MOUNTS_FILE, []), body["disk_id_sha256"], body["partition"])
+        response = jsonify(result)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    except VerificationError as error:
+        # Fixed safe codes only; no automatic retry or path/serial logging.
+        return jsonify({"error": str(error)}), 409
+
+
 @app.route("/api/shares", methods=["GET"])
 def api_get_shares():
     shares = load_json(SHARES_FILE, [])
