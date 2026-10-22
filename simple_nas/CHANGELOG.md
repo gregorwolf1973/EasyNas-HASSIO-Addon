@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.14.3
+- **Fix: iPhone/iPad (Dateien-App) koennen auf exFAT- und FAT-Laufwerke wieder schreiben** (Issue #15). Seit iOS 18 oeffnet die Dateien-App Dateien auf SMB-Freigaben ohne benannte Datenstroeme (Named Streams) nur lesend; vor 3.14.2 entstanden dort 0-KB-Dateien. Freigaben auf exFAT/FAT bekommen jetzt wieder `fruit` und als Ablage fuer die Datenstroeme `streams_depot` statt `streams_xattr`, denn exFAT/FAT kennen keine erweiterten Attribute. Die Ablage liegt in `/tmp` des Containers und beginnt mit jedem Start des Add-ons leer: `streams_depot` ordnet nach Inode-Nummer zu, und exFAT/FAT vergeben diese bei jedem Einlesen neu - eine dauerhafte Ablage zeigte nach einem Neustart Metadaten an der falschen Datei. Finder-Metadaten (z. B. Tags, Herkunft) ueberstehen auf diesen Laufwerken deshalb keinen Neustart; Resource Forks liegen weiter in `._*`-Dateien neben der Datei. ext4- und NTFS-Freigaben bleiben unveraendert.
+
 ## 3.14.2
 - **Fix: Macs koennen wieder auf exFAT- und FAT-Laufwerke kopieren** (Issue #15, Fehler 100093). Simple NAS legt die Finder-Metadaten ueber `streams_xattr` in erweiterten Attributen ab, die exFAT/FAT nicht kennen; der uebliche Ausweg von macOS, `._*`-Begleitdateien, war gesperrt. Freigaben auf solchen Laufwerken werden jetzt beim Erzeugen der smb.conf erkannt (Probe-Attribut) und bekommen nur `catia`, `ea support = no` und erlauben `._*`-Dateien - wie auf einem lokal angeschlossenen exFAT-Stick. ext4- und NTFS-Freigaben bleiben unveraendert.
 

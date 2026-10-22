@@ -130,6 +130,7 @@ class SmbConfTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.data = os.path.join(self.tmp, "data")
+        self.streams = os.path.join(self.tmp, "streams")
         os.makedirs(self.data)
         shares = [{"name": "rw", "path": os.path.join(self.tmp, "rw")},
                   {"name": "ro", "path": os.path.join(self.tmp, "ro"), "writable": False},
@@ -146,6 +147,7 @@ class SmbConfTest(unittest.TestCase):
     def sections(self, no_xattr=()):
         conf_path = os.path.join(self.tmp, "smb.conf")
         env = dict(os.environ, SIMPLE_NAS_DATA=self.data, SIMPLE_NAS_SMB_CONF=conf_path,
+                   SIMPLE_NAS_STREAMS_DIR=self.streams,
                    SIMPLE_NAS_NO_XATTR_PATHS=":".join(os.path.join(self.tmp, n) for n in no_xattr))
         subprocess.run([sys.executable, os.path.join(APP_DIR, "generate_smb_conf.py"), "WG", "NAS", "445"],
                        env=env, check=True, capture_output=True)
@@ -169,14 +171,20 @@ class SmbConfTest(unittest.TestCase):
         self.assertNotIn("time machine", s["tmro"], "nur lesbar taugt nicht als Backup-Ziel")
         self.assertNotIn("time machine", s["rw"])
 
-    def test_exfat_share_without_streams_and_with_appledouble(self):
-        # Issue #15: exFAT/FAT keep no extended attributes - macOS needs ._* files there
+    def test_exfat_share_streams_in_depot_and_appledouble(self):
+        # Issue #15: exFAT/FAT keep no extended attributes. Named streams (iOS Files opens files
+        # read-only without them) go to streams_depot in a folder that starts empty, ._* stays
         s = self.sections(no_xattr=["rw", "ro"])
-        self.assertIn("vfs objects = catia recycle", s["rw"])
+        self.assertIn("vfs objects = catia fruit streams_depot recycle", s["rw"])
         self.assertIn("ea support = no", s["rw"])
+        self.assertIn("streams_depot:check_valid = no", s["rw"])
+        depot = os.path.join(self.streams, "rw")
+        self.assertIn(f"streams_depot:directory = {depot}\n", s["rw"])
+        self.assertTrue(os.path.isdir(depot))
         self.assertIn("veto files = /.DS_Store/", s["rw"])
         self.assertNotIn("._*", s["rw"])
-        self.assertIn("vfs objects = catia\n", s["ro"])
+        self.assertIn("vfs objects = catia fruit streams_depot\n", s["ro"])
+        self.assertIn(f"streams_depot:directory = {os.path.join(self.streams, 'ro')}\n", s["ro"])
         self.assertIn("veto files = /._*/.DS_Store/", s["global"])
         self.assertIn("vfs objects = catia fruit streams_xattr\n", s["global"])
 
@@ -185,6 +193,7 @@ class SmbConfTest(unittest.TestCase):
         self.assertNotIn("vfs objects", s["ro"])
         self.assertNotIn("ea support", s["rw"])
         self.assertNotIn("veto files", s["rw"])
+        self.assertNotIn("streams_depot", s["rw"])
 
     def test_switched_off_in_settings(self):
         with open(os.path.join(self.data, "recycle.json"), "w") as f:

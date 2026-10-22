@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate /etc/samba/smb.conf from shares.json and system config."""
-import errno, json, os, sys
+import errno, json, os, re, sys
 
 
 def get_mounted_points():
@@ -87,6 +87,13 @@ RECYCLE_OPTIONS = """   recycle:repository = .recycle
 
 MAC_MODULES = "catia fruit streams_xattr"
 MAC_VETO = "/.DS_Store/.TemporaryItems/.Trashes/.fseventsd/.Spotlight-V100/"
+# Named streams of shares on exFAT/FAT (issue #15). Inside the container /tmp starts empty with
+# every add-on start - see the comment where it is used.
+NO_XATTR_STREAMS = os.environ.get("SIMPLE_NAS_STREAMS_DIR", "/tmp/simple-nas-streams")
+
+
+def streams_dir(share_name):
+    return os.path.join(NO_XATTR_STREAMS, re.sub(r"[^A-Za-z0-9_.-]", "_", share_name) or "share")
 
 
 def supports_xattr(path):
@@ -245,10 +252,23 @@ for share in shares:
     else:
         modules = MAC_MODULES
         if not supports_xattr(path):
-            # exFAT/FAT (issue #15): no streams, so macOS falls back to ._* AppleDouble files
-            # as on a local exFAT stick - those must not be vetoed here
-            modules = "catia"
+            # exFAT/FAT (issue #15) keep no extended attributes, so streams_xattr cannot work.
+            # Without named streams the iOS Files app opens every file read-only, and macOS gives
+            # up with error 100093. streams_depot keeps the streams as files instead. Its folders
+            # are named after the inode number, which exFAT/FAT hand out anew whenever a file is
+            # loaded (iunique) - a lasting depot would show old metadata on the wrong file after
+            # a reboot. So the depot lives in /tmp, which starts empty with every add-on start:
+            # Finder metadata does not survive a restart there, but never lands on another file.
+            # Resource forks go to ._* files next to the file (fruit:resource = file, the
+            # default), which exFAT keeps by name - so ._* must not be vetoed here.
+            modules = "catia fruit streams_depot"
+            depot = streams_dir(name)
+            os.makedirs(depot, exist_ok=True)
             conf += "   ea support = no\n"
+            conf += f"   streams_depot:directory = {depot}\n"
+            # the validity check needs an extended attribute on every file
+            conf += "   streams_depot:check_valid = no\n"
+            conf += "   streams_depot:delete_lost = yes\n"
             conf += f"   veto files = {MAC_VETO}\n"
         if use_recycle and writable:
             modules += " recycle"
