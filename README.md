@@ -4,7 +4,7 @@ Turns your Home Assistant machine into network storage: Samba shares for
 Windows, macOS and Linux, plus a web interface for drives, users and files —
 all inside Home Assistant, no second box needed.
 
-[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/gregorwolf1973)
+[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/gregorwolf1973) [![Donate using Liberapay](https://liberapay.com/assets/widgets/donate.svg)](https://liberapay.com/Gregor_Wolf/donate)
 
 ## What it does
 
