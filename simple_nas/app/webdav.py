@@ -30,6 +30,7 @@ from wsgidav.fs_dav_provider import FileResource, FilesystemProvider, FolderReso
 from wsgidav.wsgidav_app import WsgiDAVApp
 
 from ratelimit import AUTHFAIL_IP, AUTHFAIL_USER, LIMITER, LOCK_BASE, LOCK_CAP
+from services import offers
 
 REALM_FALLBACK = "Simple NAS"
 PASSWORD_TTL = 30                    # seconds; app.py also drops the cache when a password changes
@@ -365,7 +366,7 @@ def build_app(shares, *, passwords, load_groups, recycle_on, recycle_dir=".recyc
     mounts = mounted_points()
     for share in shares:
         name, path = share.get("name"), share.get("path", "")
-        if not name or not share_available(path, mounts):
+        if not name or not offers(share, "webdav") or not share_available(path, mounts):
             continue
         active[name] = share
         mapping[f"/{name}"] = ShareProvider(share, recycle_on, recycle_dir)

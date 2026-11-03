@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.16.0
+- **Dienste je Freigabe:** Im Freigabe-Dialog legt "Dienste" fest, ob eine Freigabe ueber SMB, WebDAV und FTP erreichbar ist. Bisher galt der Schalter fuer WebDAV und FTP fuer alle Freigaben auf einmal. Eine Freigabe ohne SMB erscheint nicht mehr im Windows- und Mac-Netzwerk, zum Beispiel ein Ordner, in den nur eine Kamera per FTP schreibt. In der Freigaben-Liste zeigen Schilder, welche Dienste an sind.
+- Standard: SMB und WebDAV an wie bisher, **FTP aus**. FTP ist unverschluesselt und soll nur dort laufen, wo ein Geraet es braucht. **Wer FTP seit 3.15.0 nutzt, muss bei der Freigabe des Geraets einmal FTP anklicken.** Die FTP-Karte im Einstellungen-Tab weist darauf hin, solange keine Freigabe FTP hat.
+
 ## 3.15.0
 - **FTP** fuer Geraete, die nur FTP koennen, etwa IP-Kameras, die Schnappschuesse hochladen, oder Scanner. Mit `ftp_enabled` bietet Simple NAS alle Freigaben zusaetzlich ueber FTP an (Port `ftp_port`, Standard 21; passive Ports `ftp_passive_ports`, Standard 30000-30010). Damit ersetzt Simple NAS das separate FTP-Add-on. Das Wurzelverzeichnis `/` zeigt die Freigaben, die der angemeldete Benutzer oeffnen darf. Anmeldung mit den Samba-Benutzern und ihren Passwoertern; es gelten dieselben Rechte wie bei Samba. Anonymes FTP gibt es nicht. Geloeschtes landet im Papierkorb der Freigabe. Fehlversuche sperren IP und Benutzernamen wie bei WebDAV. Der Einstellungen-Tab zeigt Stand, Serveradresse und Sperren. FTP ist unverschluesselt und nur fuers Heimnetz gedacht.
 

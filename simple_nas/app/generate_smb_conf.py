@@ -2,6 +2,8 @@
 """Generate /etc/samba/smb.conf from shares.json and system config."""
 import errno, json, os, re, sys
 
+from services import offers
+
 
 def get_mounted_points():
     """Return set of all mount points listed in /proc/mounts."""
@@ -188,6 +190,11 @@ conf = f"""[global]
 mounted_points = get_mounted_points()
 inactive_count = 0
 use_recycle = recycle_enabled()
+smb_off = [s for s in shares if not offers(s, "smb")]
+shares = [s for s in shares if offers(s, "smb")]
+for share in smb_off:
+    # only for WebDAV/FTP (share dialog): not in the Windows network at all
+    conf += f"# [{share.get('name', 'share')}] - SMB switched off for this share\n\n"
 
 for share in shares:
     name         = share.get("name", "share")
@@ -284,4 +291,5 @@ with open(SMB_CONF, "w") as f:
 
 active = len(shares) - inactive_count
 print(f"Generated {SMB_CONF} with {len(shares)} share(s) "
-      f"({active} active, {inactive_count} inactive/not mounted).")
+      f"({active} active, {inactive_count} inactive/not mounted"
+      f"{f', {len(smb_off)} without SMB' if smb_off else ''}).")

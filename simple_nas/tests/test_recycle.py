@@ -135,7 +135,8 @@ class SmbConfTest(unittest.TestCase):
         shares = [{"name": "rw", "path": os.path.join(self.tmp, "rw")},
                   {"name": "ro", "path": os.path.join(self.tmp, "ro"), "writable": False},
                   {"name": "tm", "path": os.path.join(self.tmp, "tm"), "timemachine": True, "timemachine_max_gb": 500},
-                  {"name": "tmro", "path": os.path.join(self.tmp, "tmro"), "timemachine": True, "writable": False}]
+                  {"name": "tmro", "path": os.path.join(self.tmp, "tmro"), "timemachine": True, "writable": False},
+                  {"name": "nurftp", "path": os.path.join(self.tmp, "nurftp"), "services": {"smb": False, "ftp": True}}]
         for share in shares:
             os.makedirs(share["path"])
         with open(os.path.join(self.data, "shares.json"), "w") as f:
@@ -154,6 +155,11 @@ class SmbConfTest(unittest.TestCase):
         with open(conf_path) as f:
             parts = f.read().split("\n[")
         return {p.split("]", 1)[0].lstrip("["): p for p in parts}
+
+    def test_share_without_smb_is_left_out(self):
+        s = self.sections()
+        self.assertNotIn("nurftp", s)
+        self.assertIn("rw", s)
 
     def test_writable_shares_get_the_bin_with_the_mac_modules(self):
         s = self.sections()

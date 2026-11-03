@@ -40,13 +40,15 @@ class FtpServerTest(unittest.TestCase):
         with open(os.path.join(self.tmp, "outside", "secret.txt"), "w") as f:
             f.write("geheim")
         os.symlink(os.path.join(self.tmp, "outside"), os.path.join(self.tmp, "media", "escape"))
+        ftp_on = {"services": {"ftp": True}}
         self.shares = [
-            {"name": "medien", "path": os.path.join(self.tmp, "media"), "writable": True, "users": ["anna"]},
+            {"name": "medien", "path": os.path.join(self.tmp, "media"), "writable": True, "users": ["anna"], **ftp_on},
             {"name": "kamera", "path": os.path.join(self.tmp, "media", "camera"), "writable": True,
-             "users": ["cam"]},
-            {"name": "docs", "path": os.path.join(self.tmp, "docs"), "writable": False, "public": True},
-            {"name": "privat", "path": os.path.join(self.tmp, "privat"), "users": ["bob"]},
-            {"name": "weg", "path": os.path.join(self.tmp, "fehlt"), "public": True},
+             "users": ["cam"], **ftp_on},
+            {"name": "docs", "path": os.path.join(self.tmp, "docs"), "writable": False, "public": True, **ftp_on},
+            {"name": "privat", "path": os.path.join(self.tmp, "privat"), "users": ["bob"], **ftp_on},
+            {"name": "weg", "path": os.path.join(self.tmp, "fehlt"), "public": True, **ftp_on},
+            {"name": "nurSMB", "path": os.path.join(self.tmp, "docs"), "public": True},   # FTP not ticked
         ]
         self.shares_file = os.path.join(self.tmp, "shares.json")
         with open(self.shares_file, "w") as f:
@@ -80,7 +82,7 @@ class FtpServerTest(unittest.TestCase):
         return c.storbinary(f"STOR {path}", io.BytesIO(data))
 
     def test_root_lists_only_allowed_and_available_shares(self):
-        self.assertEqual(sorted(self.client("anna").nlst("/")), ["docs", "medien"])
+        self.assertEqual(sorted(self.client("anna").nlst("/")), ["docs", "medien"])  # not nurSMB
         self.assertEqual(sorted(self.client("cam").nlst("/")), ["docs", "kamera"])
         lines = []
         self.client("bob").retrlines("LIST /", lines.append)
@@ -121,7 +123,7 @@ class FtpServerTest(unittest.TestCase):
 
     def test_foreign_share_and_traversal_are_unreachable(self):
         c = self.client("anna")
-        for path in ("/privat", "/kamera", "/medien/../../outside", "/../outside", "/weg"):
+        for path in ("/privat", "/kamera", "/medien/../../outside", "/../outside", "/weg", "/nurSMB"):
             with self.assertRaises(ftplib.error_perm, msg=path):
                 c.cwd(path)
         with self.assertRaises(ftplib.error_perm):
@@ -164,7 +166,8 @@ class FtpServerTest(unittest.TestCase):
         self.client("anna")
 
     def test_new_share_appears_without_restart(self):
-        self.shares.append({"name": "neu", "path": os.path.join(self.tmp, "privat"), "public": True})
+        self.shares.append({"name": "neu", "path": os.path.join(self.tmp, "privat"), "public": True,
+                            "services": {"ftp": True}})
         with open(self.shares_file, "w") as f:
             json.dump(self.shares, f)
         os.utime(self.shares_file, ns=(1, 1))   # a new mtime even within the same clock tick

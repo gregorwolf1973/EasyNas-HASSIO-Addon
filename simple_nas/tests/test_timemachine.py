@@ -51,6 +51,11 @@ class TimeMachineTest(unittest.TestCase):
         self.assertEqual((r.get_json()["timemachine"], r.get_json()["timemachine_max_gb"]), (False, 0))
         plain = self.send("POST", "/api/shares", {"name": "Fotos", "path": os.path.join(self.tmp, "f")}).get_json()
         self.assertEqual((plain["timemachine"], plain["timemachine_max_gb"]), (False, 0))
+        self.assertEqual(plain["services"], {"smb": True, "webdav": True, "ftp": False})
+        r = self.send("PUT", "/api/shares/Fotos", {"services": {"smb": False, "ftp": 1, "telnet": True}})
+        self.assertEqual(r.get_json()["services"], {"smb": False, "webdav": True, "ftp": True})
+        listed = {s["name"]: s["services"] for s in self.c.get("/api/shares").get_json()}
+        self.assertEqual(listed["Mac"], {"smb": True, "webdav": True, "ftp": False})
 
     def test_bonjour_records_for_time_machine_shares_only(self):
         shares = [{"name": "Mac", "timemachine": True}, {"name": "Fotos"},
@@ -58,6 +63,8 @@ class TimeMachineTest(unittest.TestCase):
         self.assertEqual(nas.timemachine_txt(shares),
                          ["sys=waMa=0,adVF=0x100", "dk0=adVN=Mac,adVF=0x82", "dk1=adVN=Mac2,adVF=0x82"])
         self.assertEqual(nas.timemachine_txt([{"name": "Fotos"}]), [])
+        self.assertEqual(nas.timemachine_txt([{"name": "Mac", "timemachine": True, "services": {"smb": False}}]), [],
+                         "ohne SMB kein Backup-Ziel")
 
     def test_publish_restarts_only_on_change(self):
         started = []

@@ -94,7 +94,8 @@ class DavTest(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.paths = {}
         shares = []
-        for name, extra in (("Fotos", {"users": ["anna"]}), ("Alle", {"writable": False}), ("Mac", {"timemachine": True})):
+        for name, extra in (("Fotos", {"users": ["anna"]}), ("Alle", {"writable": False}), ("Mac", {"timemachine": True}),
+                            ("Kamera", {"services": {"smb": False, "webdav": False, "ftp": True}})):
             path = os.path.join(self.tmp, name.lower())
             os.makedirs(path)
             self.paths[name] = path
@@ -123,6 +124,12 @@ class DavTest(unittest.TestCase):
         if user:
             headers["Authorization"] = "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
         return self.c.open(path, method=method, headers=headers, **kw)
+
+    def test_share_without_webdav_is_not_served(self):
+        self.assertEqual(self.req("PROPFIND", "/Kamera/", headers={"Depth": "1"}).status_code, 404)
+        body = self.req("PROPFIND", "/", headers={"Depth": "1"}).get_data(as_text=True)
+        self.assertIn("/Fotos/", body)
+        self.assertNotIn("Kamera", body)
 
     def test_login_required(self):
         self.assertEqual(self.req("GET", "/Alle/info.txt", user=None).status_code, 401)

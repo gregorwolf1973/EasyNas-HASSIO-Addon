@@ -3,7 +3,8 @@
 
 - Served by pyftpdlib on its own port, off by default. Plain FTP without TLS - meant for the home
   network only, never forward the port to the internet.
-- The root / lists the shares the logged-in user may open; /<share>/... is the share itself.
+- The root / lists the shares the logged-in user may open and that have FTP ticked in the share
+  dialog (services.py); /<share>/... is the share itself.
   Same rules as in Samba: valid users and groups, read-only shares stay read-only.
 - Login with the Samba users and passwords (NT hash, see webdav.py). Public shares need a login too,
   anonymous FTP does not exist here. Failed logins count in the same limiter as WebDAV.
@@ -25,6 +26,7 @@ from pyftpdlib.log import config_logging
 from pyftpdlib.servers import ThreadedFTPServer
 
 from ratelimit import AUTHFAIL_IP, AUTHFAIL_USER, LIMITER, LOCK_BASE, LOCK_CAP
+from services import offers
 from webdav import RECYCLE_EXCLUDE, _bin_target, mounted_points, share_allows, share_available
 
 ROOT_DIR = "/run/simple-nas-ftp"         # empty stand-in for "/", the list of shares
@@ -71,7 +73,7 @@ class ShareSet:
             if key != self._key:
                 mounts = mounted_points()
                 self._active = {s["name"]: s for s in self._load_shares()
-                                if s.get("name") and "/" not in s["name"]
+                                if s.get("name") and "/" not in s["name"] and offers(s, "ftp")
                                 and share_available(s.get("path", ""), mounts)}
                 self._key = key
             return dict(self._active)

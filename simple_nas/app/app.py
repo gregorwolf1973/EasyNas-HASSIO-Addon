@@ -28,6 +28,7 @@ import share_worker
 import fileicons
 import wopi
 import remote_backup
+import services
 from ratelimit import LIMITER, AUTHFAIL_IP, AUTHFAIL_LINK, LOCK_BASE, LOCK_CAP, Limiter
 
 # ── Admin-Login: Brute-Force-Schutz ─────────────────────────────────────────
@@ -563,7 +564,8 @@ _ADISK = {"proc": None, "txt": None}
 
 
 def timemachine_txt(shares):
-    names = [s.get("name") for s in shares if s.get("timemachine") and s.get("writable", True) and s.get("name")]
+    names = [s.get("name") for s in shares
+             if s.get("timemachine") and s.get("writable", True) and s.get("name") and services.offers(s, "smb")]
     if not names:
         return []
     return ["sys=waMa=0,adVF=0x100"] + [f"dk{i}=adVN={name},adVF=0x82" for i, name in enumerate(names)]
@@ -1425,6 +1427,7 @@ def ensure_share_dir(path):
 def api_get_shares():
     shares = load_json(SHARES_FILE, [])
     for s in shares:
+        s["services"] = services.share_services(s)
         usage = get_disk_usage(s.get("path", "/"))
         if usage: s["usage"] = usage
     return jsonify(shares)
@@ -1454,6 +1457,7 @@ def api_create_share():
         "groups": body.get("groups", []),
         "timemachine": bool(body.get("timemachine", False)),
         "timemachine_max_gb": timemachine_size(body.get("timemachine_max_gb")),
+        "services": services.clean(body.get("services")),
     }
     shares.append(share)
     save_json(SHARES_FILE, shares)
@@ -1475,6 +1479,8 @@ def api_update_share(name):
                 s["timemachine"] = bool(body["timemachine"])
             if "timemachine_max_gb" in body:
                 s["timemachine_max_gb"] = timemachine_size(body["timemachine_max_gb"])
+            if "services" in body:
+                s["services"] = services.clean(body["services"])
             # Ensure share directory exists with correct permissions
             p = s.get("path", "")
             if p:

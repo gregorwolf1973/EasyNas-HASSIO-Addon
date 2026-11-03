@@ -104,11 +104,23 @@ Edit a share and switch on **Time Machine**. Macs on the network then offer it u
 - The recycle bin is off for Time Machine shares – Time Machine deletes old backup data all the time, and all of it would end up in `.recycle`.
 - A dedicated share (e.g. a folder `TimeMachine` on the drive) per Mac or for all Macs is the usual setup; one share can hold several Macs.
 
+## Services per share (SMB, WebDAV, FTP)
+
+In the share dialog, *Services* decides how a share can be reached:
+
+| Service | Default | Note |
+|---|---|---|
+| SMB | on | Off: the share does not appear in the Windows/Mac network at all (and is not a Time Machine target), e.g. for a folder only a camera writes to over FTP |
+| WebDAV | on | Only matters when `webdav_enabled` is on. Untick shares that should not be reachable through WebDAV, especially if WebDAV is published on the internet |
+| FTP | off | Only matters when `ftp_enabled` is on. Tick only the shares a device really needs – FTP is unencrypted |
+
+Shares created before 3.16.0 keep SMB and WebDAV; FTP has to be ticked once. The switches in the add-on configuration still start or stop the WebDAV and FTP servers as a whole.
+
 ## WebDAV
 
 Switch on `webdav_enabled` in the add-on configuration and restart the add-on. Simple NAS then also serves every active share over WebDAV on `webdav_port` (default 8102):
 
-- `http://<HA-IP>:8102/` lists the shares the logged-in user may open, `http://<HA-IP>:8102/<share>` opens one directly.
+- `http://<HA-IP>:8102/` lists the shares the logged-in user may open, `http://<HA-IP>:8102/<share>` opens one directly. Shares with WebDAV unticked in the share dialog are left out (see "Services per share").
 - **Login with the Samba users** (Users tab) and their passwords – nothing new to set up. The same rules as in Samba apply: listed users and groups, read-only shares stay read-only. **Public shares need a login too**, because WebDAV is often reachable from the internet.
 - Deleting moves files into the share's recycle bin (`.recycle`) when it is on, like over Samba.
 - Symlinks are not followed; nothing outside a share is reachable.
@@ -123,7 +135,8 @@ The settings tab shows whether WebDAV runs and lists the addresses.
 
 Some devices can only upload over FTP, for example IP cameras that store snapshots or scanners that scan to a folder. Switch on `ftp_enabled` in the add-on configuration and restart the add-on. Simple NAS then serves every active share over FTP on `ftp_port` (default 21):
 
-- The FTP root `/` lists the shares the logged-in user may open; `/<share>/...` is the share itself. A camera that should store its pictures in the share `camera` gets the path `/camera`.
+- **FTP is off for every share until you tick it:** Shares tab → edit the share → *Services* → **FTP**. Only shares with FTP ticked appear.
+- The FTP root `/` lists those shares the logged-in user may open; `/<share>/...` is the share itself. A camera that should store its pictures in the share `camera` gets the path `/camera`.
 - **Log in with the Samba users** (Users tab) and their passwords. The same rules as in Samba apply: listed users and groups, read-only shares stay read-only. There is no anonymous FTP; public shares need a login too.
 - Active and passive mode both work. Passive mode uses the ports in `ftp_passive_ports` (default 30000–30010).
 - Deleting moves files into the share's recycle bin (`.recycle`) when it is on, like over Samba. Symlinks pointing outside a share are refused.
@@ -131,7 +144,7 @@ Some devices can only upload over FTP, for example IP cameras that store snapsho
 
 **FTP is unencrypted** – user name, password and files travel in plain text. Use it in the home network only and never forward the port in your router. Best to create a Samba user just for the device and allow it only the one share it writes to.
 
-**Moving from the FTP add-on:** stop the FTP add-on first (both want port 21), switch on `ftp_enabled`, restart Simple NAS. Then point the device at a share: same server address and port, the Samba user, and the path `/<share>/...` instead of the old `/media/...` or `/share/...`.
+**Moving from the FTP add-on:** stop the FTP add-on first (both want port 21), switch on `ftp_enabled`, restart Simple NAS and tick FTP for the share the device writes to. Then point the device at that share: same server address and port, the Samba user, and the path `/<share>/...` instead of the old `/media/...` or `/share/...`.
 
 ## Running alongside the official Samba add-on
 
