@@ -432,6 +432,8 @@ def reload_samba():
     publish_timemachine()
     if _WEBDAV["app"] is not None:
         _WEBDAV["app"].refresh()            # Laufwerk ein-/ausgehaengt, Freigabe geaendert
+    if _FTP["shares"] is not None:
+        _FTP["shares"].refresh()
 
 
 # ── WebDAV (Issue #12) ──
@@ -472,8 +474,9 @@ def start_webdav():
 
 
 def _webdav_passwords_changed(username=None):
-    if _WEBDAV["passwords"] is not None:
-        _WEBDAV["passwords"].invalidate()
+    for svc in (_WEBDAV, _FTP):
+        if svc["passwords"] is not None:
+            svc["passwords"].invalidate()
     if username:
         # neues Passwort vom Admin: eine Sperre des Benutzernamens ist damit hinfaellig
         LIMITER.clear(key=f"authfail:user:{username.lower()}")
@@ -501,6 +504,56 @@ def api_webdav_unlock():
     LIMITER.clear(key=key)
     print(f"[WEBDAV] Sperre aufgehoben: {key}", flush=True)
     return jsonify({"ok": True, "key": key})
+
+
+# ── FTP ──
+# Fuer Geraete, die nur FTP koennen (IP-Kameras, Scanner): die Freigaben mit pyftpdlib auf eigenem Port,
+# Anmeldung und Rechte wie bei WebDAV (ftp.py). Unverschluesselt - nur im Heimnetz.
+_FTP = {"server": None, "shares": None, "port": None, "error": None, "passwords": None}
+
+
+def _ftp_log(event, **fields):
+    print(f"[FTP] {event} " + " ".join(f"{k}={v}" for k, v in fields.items() if v), flush=True)
+    accesslog.log(event, **fields)
+
+
+def start_ftp():
+    port = int(_opt("ftp_port", 21) or 21)
+    _FTP["port"] = port
+    try:
+        import ftp
+        import webdav
+    except ImportError as e:
+        _FTP["error"] = f"pyftpdlib fehlt: {e}"
+        print(f"[FTP] {_FTP['error']}", flush=True)
+        return False
+    passwords = webdav.SambaPasswords()
+    shares = ftp.ShareSet(SHARES_FILE, lambda: load_json(SHARES_FILE, []), lambda: load_json(GROUPS_FILE, []))
+    authorizer = ftp.SambaAuthorizer(shares, passwords, log=_ftp_log,
+                                     recycle_on=lambda: recycle_settings()["enabled"], recycle_dir=RECYCLE_DIR)
+    passive = ftp.parse_passive_ports(_opt("ftp_passive_ports", ftp.DEFAULT_PASSIVE))
+    try:
+        server = ftp.serve(ftp.make_handler(authorizer, passive), port)
+    except OSError as e:
+        _FTP["error"] = f"Port {port} ist belegt ({e}) - ftp_port aendern oder das andere FTP-Add-on stoppen"
+        print(f"[FTP] FEHLER: {_FTP['error']}", flush=True)
+        return False
+    _FTP.update(server=server, shares=shares, passwords=passwords, error=None)
+    print(f"[FTP] laeuft auf Port {port} (passiv {passive[0]}-{passive[-1]})", flush=True)
+    return True
+
+
+@app.route("/api/settings/ftp", methods=["GET"])
+def api_get_ftp():
+    # dieselbe Sperrliste wie WebDAV (gleicher Limiter, gleicher Prozess)
+    running = _FTP["server"] is not None
+    snap = LIMITER.snapshot(AUTHFAIL_IP[1]) if running else {"locks": [], "counters": []}
+    return jsonify({"enabled": bool(_opt("ftp_enabled", False)), "running": running,
+                    "port": _FTP["port"] or int(_opt("ftp_port", 21) or 21), "error": _FTP["error"],
+                    "passive": str(_opt("ftp_passive_ports", "30000-30010") or "30000-30010"),
+                    "shares": _FTP["shares"].names() if _FTP["shares"] is not None else [],
+                    "locks": snap["locks"], "authfail": snap["counters"],
+                    "authfail_limit": AUTHFAIL_IP[0], "authfail_window_min": AUTHFAIL_IP[1] // 60})
 
 
 # ── Time Machine (Issue #11) ──
@@ -3449,5 +3502,7 @@ if __name__ == "__main__":
     publish_timemachine()
     if _opt("webdav_enabled", False):
         start_webdav()
+    if _opt("ftp_enabled", False):
+        start_ftp()
     port = int(os.environ.get("WEB_PORT", 8100))
     serve(app, port)

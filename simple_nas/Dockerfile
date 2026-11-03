@@ -46,6 +46,8 @@ RUN pip3 install --break-system-packages flask psutil waitress
 # WebDAV (webdav_enabled): WsgiDAV ohne seine Abhaengigkeiten passlib/bcrypt - die braucht nur seine
 # htpasswd-Anmeldung, Simple NAS meldet gegen die Samba-Benutzer an. Jinja2 kommt mit Flask.
 RUN pip3 install --break-system-packages --no-deps wsgidav==4.3.5 defusedxml==0.7.1 json5==0.17.3
+# FTP (ftp_enabled) fuer Geraete, die nur FTP koennen; asyncore/asynchat fehlen seit Python 3.12
+RUN pip3 install --break-system-packages --no-deps pyftpdlib==2.2.0 pyasyncore==1.0.5 pyasynchat==1.0.5
 
 # Install wsdd (WS-Discovery for Windows 10+) directly from GitHub
 RUN curl -sSL https://raw.githubusercontent.com/christgau/wsdd/master/src/wsdd.py \

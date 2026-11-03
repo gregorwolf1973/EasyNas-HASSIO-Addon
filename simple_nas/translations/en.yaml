@@ -32,6 +32,15 @@ configuration:
   webdav_port:
     name: WebDAV port
     description: Port for WebDAV (default 8102).
+  ftp_enabled:
+    name: FTP
+    description: "Also offer the shares over FTP (ftp://YOUR-HA-IP/) for devices that only speak FTP, e.g. IP cameras and scanners. Log in with the Samba users; same permissions as Samba. Unencrypted – home network only, never forward the port in your router."
+  ftp_port:
+    name: FTP port
+    description: Port for FTP (default 21). If another FTP add-on still uses port 21, stop it first or pick another port here.
+  ftp_passive_ports:
+    name: FTP passive ports
+    description: Port range for passive FTP (default 30000-30010).
   web_gui_enabled:
     name: Enable Web GUI
     description: Set to false to run Samba only, without the web interface (smaller attack surface).

@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.15.0
+- **FTP** fuer Geraete, die nur FTP koennen, etwa IP-Kameras, die Schnappschuesse hochladen, oder Scanner. Mit `ftp_enabled` bietet Simple NAS alle Freigaben zusaetzlich ueber FTP an (Port `ftp_port`, Standard 21; passive Ports `ftp_passive_ports`, Standard 30000-30010). Damit ersetzt Simple NAS das separate FTP-Add-on. Das Wurzelverzeichnis `/` zeigt die Freigaben, die der angemeldete Benutzer oeffnen darf. Anmeldung mit den Samba-Benutzern und ihren Passwoertern; es gelten dieselben Rechte wie bei Samba. Anonymes FTP gibt es nicht. Geloeschtes landet im Papierkorb der Freigabe. Fehlversuche sperren IP und Benutzernamen wie bei WebDAV. Der Einstellungen-Tab zeigt Stand, Serveradresse und Sperren. FTP ist unverschluesselt und nur fuers Heimnetz gedacht.
+
 ## 3.14.3
 - **Fix: iPhone/iPad (Dateien-App) koennen auf exFAT- und FAT-Laufwerke wieder schreiben** (Issue #15). Seit iOS 18 oeffnet die Dateien-App Dateien auf SMB-Freigaben ohne benannte Datenstroeme (Named Streams) nur lesend; vor 3.14.2 entstanden dort 0-KB-Dateien. Freigaben auf exFAT/FAT bekommen jetzt wieder `fruit` und als Ablage fuer die Datenstroeme `streams_depot` statt `streams_xattr`, denn exFAT/FAT kennen keine erweiterten Attribute. Die Ablage liegt in `/tmp` des Containers und beginnt mit jedem Start des Add-ons leer: `streams_depot` ordnet nach Inode-Nummer zu, und exFAT/FAT vergeben diese bei jedem Einlesen neu - eine dauerhafte Ablage zeigte nach einem Neustart Metadaten an der falschen Datei. Finder-Metadaten (z. B. Tags, Herkunft) ueberstehen auf diesen Laufwerken deshalb keinen Neustart; Resource Forks liegen weiter in `._*`-Dateien neben der Datei. ext4- und NTFS-Freigaben bleiben unveraendert.
 

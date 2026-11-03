@@ -14,6 +14,7 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 - **Network discovery** – mDNS (Avahi) for macOS Finder / Linux Nautilus, WS-Discovery (wsdd) for Windows 10/11
 - **Time Machine** – any share can be a backup target for Macs, found automatically via Bonjour
 - **WebDAV** – the shares over HTTP(S) for phone apps, Windows, macOS and access on the go, with the Samba users
+- **FTP** – the shares for devices that only speak FTP, such as IP cameras and scanners, with the Samba users
 - **External backups** – back up `/share`, `/media` or any folder to a Hetzner Storage Box, S3, Backblaze B2, SFTP, WebDAV, SMB, a second disk or any rclone provider; with restic (encrypted, versioned) or rclone (files 1:1), on a schedule, with restore in the browser
 - **Reinstall-safe backup** – settings are automatically backed up to `/config/.simplenas/auto` and restored on fresh install; manual snapshots (up to 10) are also supported
 - **Password protection** – optional web GUI login (username + password via add-on config)
@@ -49,6 +50,9 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 | `web_gui_enabled` | bool | `true` | Set to `false` to run Samba only, without the web interface |
 | `webdav_enabled` | bool | `false` | Also offer the shares over WebDAV. See "WebDAV" below |
 | `webdav_port` | port | `8102` | Port for WebDAV |
+| `ftp_enabled` | bool | `false` | Also offer the shares over FTP. See "FTP" below |
+| `ftp_port` | port | `21` | Port for FTP |
+| `ftp_passive_ports` | string | `30000-30010` | Port range for passive FTP |
 | `hdd_idle_seconds` | int | `0` | Spin down mounted drives after this many seconds of inactivity (0 = disabled). See "Drive spindown / power saving" below |
 | `file_allowed_roots` | list | `/media`, `/mnt`, `/share`, `/config`, `/addon_configs` | Directories the file manager may open |
 | `sharing_enabled` | bool | `false` | Start the public sharing site on its own port (requires an admin password). See "Sharing files on the internet" below |
@@ -114,6 +118,20 @@ Switch on `webdav_enabled` in the add-on configuration and restart the add-on. S
 **Clients:** macOS Finder → *Go → Connect to Server*; Linux file managers with `dav://` instead of `http://` (`davs://` for HTTPS); on phones a file app with WebDAV support (e.g. Solid Explorer, Documents, CX File Explorer). **Windows** only uses WebDAV with Basic login over **HTTPS** – publish the port through Nginx Proxy Manager with a domain and certificate, which is also the way for access on the go. Put the proxy's address into `share_trusted_proxies` so lockouts hit the visitor, not the proxy.
 
 The settings tab shows whether WebDAV runs and lists the addresses.
+
+## FTP
+
+Some devices can only upload over FTP, for example IP cameras that store snapshots or scanners that scan to a folder. Switch on `ftp_enabled` in the add-on configuration and restart the add-on. Simple NAS then serves every active share over FTP on `ftp_port` (default 21):
+
+- The FTP root `/` lists the shares the logged-in user may open; `/<share>/...` is the share itself. A camera that should store its pictures in the share `camera` gets the path `/camera`.
+- **Log in with the Samba users** (Users tab) and their passwords. The same rules as in Samba apply: listed users and groups, read-only shares stay read-only. There is no anonymous FTP; public shares need a login too.
+- Active and passive mode both work. Passive mode uses the ports in `ftp_passive_ports` (default 30000–30010).
+- Deleting moves files into the share's recycle bin (`.recycle`) when it is on, like over Samba. Symlinks pointing outside a share are refused.
+- Wrong passwords lock the IP address and the user name like WebDAV does (shared lock list). The Settings tab → FTP shows the state, the server address and the locks; click a lock to lift it.
+
+**FTP is unencrypted** – user name, password and files travel in plain text. Use it in the home network only and never forward the port in your router. Best to create a Samba user just for the device and allow it only the one share it writes to.
+
+**Moving from the FTP add-on:** stop the FTP add-on first (both want port 21), switch on `ftp_enabled`, restart Simple NAS. Then point the device at a share: same server address and port, the Samba user, and the path `/<share>/...` instead of the old `/media/...` or `/share/...`.
 
 ## Running alongside the official Samba add-on
 
