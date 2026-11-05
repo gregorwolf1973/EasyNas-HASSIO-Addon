@@ -47,6 +47,9 @@ configuration:
   hdd_idle_seconds:
     name: Festplatten-Spindown (Sekunden)
     description: Gemountete Laufwerke nach so vielen Sekunden Inaktivität herunterfahren, um Strom zu sparen und Geräusche/Verschleiß zu reduzieren (0 = deaktiviert). Nutzt I/O-basiertes hd-idle, geeignet für USB-Platten. Betrifft nur in Simple NAS gemountete Laufwerke, niemals die HA-System-Platte. Hinweis - jeder Zugriff auf die Freigabe (Samba-Client, SMART-Abfrage, Backup-Jobs) setzt den Timer zurück.
+  trim_interval_days:
+    name: Automatisches SSD-TRIM (Tage)
+    description: TRIM auf eingehängten Laufwerken alle so viele Tage ausführen (0 = aus, 30 = monatlich). Nur Laufwerke, die TRIM melden, werden einbezogen.
   file_allowed_roots:
     name: Erlaubte Ordner
     description: Verzeichnisse, die der Dateimanager oeffnen darf. Alles ausserhalb wird abgewiesen. Aendere das nur, wenn du Dateien ausserhalb der Standardordner verwalten musst.

@@ -1,6 +1,6 @@
 name: "Simple NAS"
 description: "Simple NAS with Samba shares and web GUI for drive management"
-version: "3.17.0"
+version: "3.18.0"
 url: "https://github.com/gregorwolf1973/EasyNas-HASSIO-Addon"
 slug: "simple_nas"
 init: false
@@ -45,6 +45,7 @@ options:
   ftp_port: 21
   ftp_passive_ports: "30000-30010"
   hdd_idle_seconds: 0
+  trim_interval_days: 0
   file_allowed_roots:
     - "/media"
     - "/mnt"
@@ -131,6 +132,7 @@ schema:
   ftp_passive_ports: match(^\d{4,5}-\d{4,5}$)?
   web_gui_enabled: bool
   hdd_idle_seconds: int(0,)
+  trim_interval_days: int(0,)?
   file_allowed_roots:
     - "str?"
   sharing_enabled: bool

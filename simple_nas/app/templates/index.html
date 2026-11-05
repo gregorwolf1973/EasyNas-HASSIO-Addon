@@ -1378,6 +1378,9 @@ const T={
     title_copy:'Kopieren',title_move:'Verschieben',date_locale:'de-DE',logout_title:'Abmelden',
     dblclick_open:'Doppelklick zum Öffnen',
     // SMART
+    btn_trim:'TRIM',btn_trim_title:'Freien Speicher an die SSD melden (fstrim). Nur für SSDs sinnvoll.',
+    trim_started:'TRIM läuft auf {m} …',trim_ok:'TRIM auf {m} fertig: {s} gemeldet',trim_ok_nosize:'TRIM auf {m} fertig',
+    trim_unsupported:'TRIM geht auf {m} nicht: Laufwerk, Dateisystem oder USB-Adapter unterstützen es nicht. Das ist kein Fehler; viele USB-Adapter geben TRIM nicht weiter.',trim_error:'TRIM auf {m} fehlgeschlagen: {e}',
     btn_smart_title:'SMART-Werte anzeigen',modal_smart_title:'SMART-Status',modal_close:'Schließen',
     stat_smart:'Laufwerks-Gesundheit',smart_refresh:'Aktualisieren',smart_on_demand:'SMART-Werte werden nur auf Anforderung abgefragt.',
     smart_passed_short:'OK',smart_failed_short:'FEHLER',smart_n_a:'k. A.',
@@ -1549,6 +1552,9 @@ const T={
     title_copy:'Copy',title_move:'Move',date_locale:'en-US',logout_title:'Logout',
     dblclick_open:'Double-click to open',
     // SMART
+    btn_trim:'TRIM',btn_trim_title:'Tell the SSD which space is free (fstrim). Only useful for SSDs.',
+    trim_started:'TRIM running on {m} …',trim_ok:'TRIM on {m} finished: {s} reported',trim_ok_nosize:'TRIM on {m} finished',
+    trim_unsupported:'TRIM is not available on {m}: the drive, file system or USB adapter does not support it. This is not an error; many USB adapters do not pass TRIM through.',trim_error:'TRIM on {m} failed: {e}',
     btn_smart_title:'Show SMART data',modal_smart_title:'SMART status',modal_close:'Close',
     smart_unavailable:'SMART data not available',
     smart_unavailable_hint:'Some USB enclosures do not forward SMART commands. Internal drives work reliably.',
@@ -1764,6 +1770,23 @@ async function loadDrives(){
   }
   catch(e){list.innerHTML='<div class="empty"><p style="color:var(--danger)">'+e.message+'</p></div>';}
 }
+async function startTrim(mp){
+  try{await api('POST','/drives/trim',{mountpoint:mp});}
+  catch(e){toast(e.message,true);return;}
+  toast(t('trim_started').replace('{m}',mp));
+  const started=Date.now();
+  while(Date.now()-started<3600000){
+    await new Promise(r=>setTimeout(r,2000));
+    let s;
+    try{s=await api('GET','/drives/trim');}catch(e){continue;}
+    if(s.running.includes(mp)) continue;
+    const r=s.results[mp]||{};
+    if(r.status==='ok') toast((r.bytes==null?t('trim_ok_nosize'):t('trim_ok').replace('{s}',fmtSize(r.bytes)||'0 B')).replace('{m}',mp),false,6000);
+    else if(r.status==='unsupported') toast(t('trim_unsupported').replace('{m}',mp),true,9000);
+    else toast(t('trim_error').replace('{m}',mp).replace('{e}',r.message||''),true,9000);
+    return;
+  }
+}
 function driveCard(d, partChildCount){
   const mounted=!!d.mountpoint, isDisk=d.type==='disk';
   partChildCount = partChildCount || 0;
@@ -1790,8 +1813,10 @@ function driveCard(d, partChildCount){
   // SMART button: shown for every drive, queries parent disk
   const smartBtn = !parentDisk ? '' :
     '<button class="btn btn-ghost btn-sm btn-icon" title="'+t('btn_smart_title')+'" onclick="openSmartModal(\''+(isDisk?d.name:parentDisk)+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></button>';
+  const trimBtn = d.system_device ? '' :
+    '<button class="btn btn-ghost btn-sm" title="'+t('btn_trim_title')+'" onclick="startTrim(\''+d.mountpoint+'\')">'+t('btn_trim')+'</button>';
   const btn=isDisk?(smartBtn+diskBtn):(mounted
-    ?'<button class="btn btn-ghost btn-sm" onclick="openUnmountModal(\''+d.path+'\',\''+d.mountpoint+'\','+!!d.system_device+')">'+t('btn_unmount')+'</button>'+smartBtn+diskBtn
+    ?'<button class="btn btn-ghost btn-sm" onclick="openUnmountModal(\''+d.path+'\',\''+d.mountpoint+'\','+!!d.system_device+')">'+t('btn_unmount')+'</button>'+trimBtn+smartBtn+diskBtn
     :'<button class="btn btn-primary btn-sm" onclick="openMountModal('+mountArgAttr+',\''+(d.fstype||'')+'\','+!!d.system_device+')">'+t('btn_mount')+'</button>'+smartBtn+diskBtn);
   const model=d.model?'<span>'+d.model.trim()+'</span>':'';
   // Disk icon: clickable toggle when this disk has partition children

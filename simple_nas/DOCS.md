@@ -54,6 +54,7 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 | `ftp_port` | port | `21` | Port for FTP |
 | `ftp_passive_ports` | string | `30000-30010` | Port range for passive FTP |
 | `hdd_idle_seconds` | int | `0` | Spin down mounted drives after this many seconds of inactivity (0 = disabled). See "Drive spindown / power saving" below |
+| `trim_interval_days` | int | `0` | Run TRIM on mounted drives every this many days, `0` = off (e.g. `30` for monthly). See [SSD TRIM](#ssd-trim). |
 | `file_allowed_roots` | list | `/media`, `/mnt`, `/share`, `/config`, `/addon_configs` | Directories the file manager may open |
 | `sharing_enabled` | bool | `false` | Start the public sharing site on its own port (requires an admin password). See "Sharing files on the internet" below |
 | `share_port` | port | `8101` | Port of the public sharing site |
@@ -168,6 +169,17 @@ Simple NAS automatically resolves `/dev/sdX` device names to their stable `/dev/
 > ⚠️ **Devices that back the HA system (`/`, `/boot`, …) are marked SYSTEM** in the GUI and require explicit confirmation before mounting/unmounting.
 
 **Supported filesystems:** what the Home Assistant OS kernel can read – ext2/3/4, FAT/vfat, NTFS (via ntfs-3g), exFAT and a few more. **XFS is not supported:** the Home Assistant OS kernel does not contain it, and an add-on cannot add kernel modules. Mounting such a drive ends with a clear message; copy the data off on another computer and format the drive as ext4 (Drives tab → Format). **Macs, iPhones and exFAT/FAT:** these drives cannot store extended attributes, where Samba normally keeps the Finder metadata and other named streams. Simple NAS keeps the named streams of such shares in a separate store instead (`streams_depot`), so the iOS Files app can write there (without named streams it opens every file read-only), and resource forks go to `._*` companion files next to the file. The store starts empty with every add-on start, because exFAT/FAT give files new inode numbers on every load: Finder metadata such as tags does not survive a restart on these drives. The `._*` files are visible to Windows/Linux users. ext4 keeps everything and the folders tidier.
+
+---
+
+## SSD TRIM
+
+TRIM tells an SSD which blocks are free, which helps it keep its speed and lifetime. Simple NAS mounts drives without the `discard` option, so run it from time to time:
+
+- **Manually:** the **TRIM** button on a mounted partition in the Drives tab runs `fstrim` and reports how much was passed to the drive.
+- **Scheduled:** set `trim_interval_days` (e.g. `30`). Only drives that report TRIM support are included; the check runs hourly. Results are written to the add-on log and survive restarts.
+
+The system disk is never touched. **Not every USB adapter passes TRIM through to the SSD.** In that case the button tells you so and nothing has happened to your data; many adapters simply do not support it. Hard disks do not use TRIM.
 
 ---
 

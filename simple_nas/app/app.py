@@ -29,6 +29,7 @@ import fileicons
 import wopi
 import remote_backup
 import services
+import trim
 from ratelimit import LIMITER, AUTHFAIL_IP, AUTHFAIL_LINK, LOCK_BASE, LOCK_CAP, Limiter
 
 # ── Admin-Login: Brute-Force-Schutz ─────────────────────────────────────────
@@ -1005,6 +1006,75 @@ def _helper_call(action, arg1="", arg2="", arg3="", timeout=20):
             except Exception: pass
         time.sleep(0.1)
     return 1, "Timeout"
+
+TRIMMER = trim.Trimmer(f"{DATA_DIR}/trim_results.json")
+TRIM_CHECK_INTERVAL = 3600   # seconds
+
+
+def _writable_mounts():
+    """Mountpoints that are mounted read-write in this container."""
+    found = set()
+    try:
+        with open("/proc/mounts") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 4 and "rw" in parts[3].split(","):
+                    found.add(parts[1].replace("\\040", " "))
+    except OSError:
+        pass
+    return found
+
+
+def _trim_targets():
+    """Mounted, writable partitions outside the system disk: {mountpoint: disk}."""
+    system_devs = get_system_devices()
+    writable = _writable_mounts()
+    targets = {}
+    for d in flatten_devices(list_block_devices()):
+        mountpoint = d.get("mountpoint")
+        if mountpoint and d.get("name") not in system_devs and mountpoint in writable:
+            targets[mountpoint] = d.get("parent") or d.get("name")
+    return targets
+
+
+@app.route("/api/drives/trim", methods=["GET"])
+def api_trim_status():
+    return jsonify(TRIMMER.status())
+
+
+@app.route("/api/drives/trim", methods=["POST"])
+def api_trim_start():
+    body = request.get_json(force=True) or {}
+    mountpoint = str(body.get("mountpoint", "")).strip()
+    if mountpoint not in _trim_targets():
+        return jsonify({"error": "not a mounted, writable drive"}), 400
+    if not TRIMMER.start(mountpoint):
+        return jsonify({"error": "TRIM is already running on this drive"}), 409
+    return jsonify({"started": True}), 202
+
+
+def start_trim_schedule():
+    """Option trim_interval_days: trim drives that report TRIM support."""
+    try:
+        days = int(_opt("trim_interval_days", 0))
+    except (TypeError, ValueError):
+        days = 0
+    if days <= 0:
+        return
+
+    def run():
+        time.sleep(300)   # let drives mount and start-up work finish
+        while True:
+            try:
+                for mountpoint, disk in _trim_targets().items():
+                    if trim.discard_supported(disk) and trim.is_due(TRIMMER.last_run(mountpoint), days, time.time()):
+                        TRIMMER.execute(mountpoint)
+            except Exception as e:
+                print(f"[TRIM] scheduled run failed: {e}", flush=True)
+            time.sleep(TRIM_CHECK_INTERVAL)
+    threading.Thread(target=run, daemon=True, name="trim-schedule").start()
+    print(f"[TRIM] Scheduled every {days} days for drives that support TRIM", flush=True)
+
 
 @app.route("/api/drives/mount", methods=["POST"])
 def api_mount():
@@ -3505,6 +3575,7 @@ if __name__ == "__main__":
             print(f"[SHARE] Start der oeffentlichen Seite fehlgeschlagen: {e}", flush=True)
     remote_backup.start()
     start_recycle_purge()
+    start_trim_schedule()
     publish_timemachine()
     if _opt("webdav_enabled", False):
         start_webdav()

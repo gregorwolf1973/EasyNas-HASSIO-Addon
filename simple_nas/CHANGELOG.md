@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.18.0
+- **SSD-TRIM** (Issue #18): Im Laufwerke-Tab startet der Knopf **TRIM** bei eingehaengten Partitionen `fstrim` und meldet, wie viel Speicher an das Laufwerk weitergegeben wurde. Mit `trim_interval_days` (z. B. `30`) laeuft es automatisch auf allen Laufwerken, die TRIM melden; Standard ist aus. Die System-Festplatte bleibt unberuehrt. Viele USB-Adapter geben TRIM nicht weiter; dann sagt die Oberflaeche das deutlich, an den Daten aendert sich nichts.
+
 ## 3.17.0
 - **Festplatten-Standby im Log nachvollziehbar** (Issue #19): Jeder Spindown und Spinup von `hd-idle` steht jetzt mit Datum und Uhrzeit im Add-on-Log, dazu die Dauer der vorigen Phase und die Summen je Platte (Laufzeit, Standby, Anzahl Spindowns). Die Summen liegen in `/data/hdd_stats.json`, ueberstehen Neustarts und werden beim Start von hd-idle einmal ausgegeben. Eine eigene Option ist nicht noetig; es entstehen nicht mehr Log-Zeilen als bisher.
 
