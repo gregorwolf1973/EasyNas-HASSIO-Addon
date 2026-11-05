@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.17.0
+- **Festplatten-Standby im Log nachvollziehbar** (Issue #19): Jeder Spindown und Spinup von `hd-idle` steht jetzt mit Datum und Uhrzeit im Add-on-Log, dazu die Dauer der vorigen Phase und die Summen je Platte (Laufzeit, Standby, Anzahl Spindowns). Die Summen liegen in `/data/hdd_stats.json`, ueberstehen Neustarts und werden beim Start von hd-idle einmal ausgegeben. Eine eigene Option ist nicht noetig; es entstehen nicht mehr Log-Zeilen als bisher.
+
 ## 3.16.0
 - **Dienste je Freigabe:** Im Freigabe-Dialog legt "Dienste" fest, ob eine Freigabe ueber SMB, WebDAV und FTP erreichbar ist. Bisher galt der Schalter fuer WebDAV und FTP fuer alle Freigaben auf einmal. Eine Freigabe ohne SMB erscheint nicht mehr im Windows- und Mac-Netzwerk, zum Beispiel ein Ordner, in den nur eine Kamera per FTP schreibt. In der Freigaben-Liste zeigen Schilder, welche Dienste an sind.
 - Standard: SMB und WebDAV an wie bisher, **FTP aus**. FTP ist unverschluesselt und soll nur dort laufen, wo ein Geraet es braucht. **Wer FTP seit 3.15.0 nutzt, muss bei der Freigabe des Geraets einmal FTP anklicken.** Die FTP-Karte im Einstellungen-Tab weist darauf hin, solange keine Freigabe FTP hat.

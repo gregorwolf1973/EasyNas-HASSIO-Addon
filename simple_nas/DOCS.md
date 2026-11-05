@@ -180,6 +180,17 @@ Set `hdd_idle_seconds` to a value greater than `0` (e.g. `1800` for 30 minutes) 
 - Uses `hd-idle`, which monitors actual disk I/O via `/proc/diskstats` and issues the standby command when a drive has been idle long enough. This is the robust approach for **USB drives**, where the drive's built-in `hdparm -S` standby timer often does not work because USB-SATA bridges do not pass the ATA standby command through.
 - **Only the drives you mounted in Simple NAS are affected.** hd-idle is started with a global default of `-i 0` (never spin down) and is then explicitly pointed only at the base disks of the devices listed in `mounts.json`. **The HA system disk is never spun down**, because it is never part of your mounts.
 
+**Checking that it works:**
+
+The add-on log shows every spin event with its timestamp, how long the previous period lasted, and running totals per disk:
+
+```text
+2026-11-05 14:33:12 sda spindown after running for 2h 13m (total: running 120h 5m, standby 300h 2m, 41 spindowns)
+2026-11-05 19:02:40 sda spinup after standby for 4h 29m (total: running 120h 5m, standby 304h 31m, 41 spindowns)
+```
+
+The totals are kept in `/data/hdd_stats.json` and survive restarts; delete the file to start over. They are listed once when hd-idle starts. A period that is still open when the add-on stops is not counted, and the totals are tied to the disk name (`sda`), so they follow the name if Linux reassigns it to another drive. A spinup is logged when hd-idle next checks the disk, so its time can be a little late.
+
 **Important caveats:**
 
 - Spindown only happens when **nothing** touches the drive. On a Home Assistant system many processes may poll the disk periodically:

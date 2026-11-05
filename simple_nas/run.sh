@@ -256,7 +256,7 @@ if [ "${HDD_IDLE_SECONDS:-0}" -gt 0 ] 2>/dev/null; then
     if command -v hd-idle > /dev/null 2>&1; then
         HD_IDLE_ARGS=$(python3 /app/hd_idle_args.py "${HDD_IDLE_SECONDS}")
         if [ -n "${HD_IDLE_ARGS}" ]; then
-            hd-idle -i 0 ${HD_IDLE_ARGS} &
+            hd-idle -i 0 ${HD_IDLE_ARGS} 2>&1 | python3 -u /app/hd_idle_log.py &
             bashio::log.info "hd-idle started: spin down mounted drives after ${HDD_IDLE_SECONDS}s idle (${HD_IDLE_ARGS})"
         else
             bashio::log.info "hd-idle: no user-mounted drives found — not starting"
