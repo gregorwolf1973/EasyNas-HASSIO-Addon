@@ -138,5 +138,110 @@ class TrimmerTest(unittest.TestCase):
         self.assertEqual(trimmer.status()["running"], [])
 
 
+def fake_disk(root, name="sda", usb=True, mode="full", lbpu=True, max_unmap=4194240, discard=0):
+    """A minimal /sys/block/<name> as the kernel shows a USB bridge."""
+    bus = "usb2/2-1/2-1:1.0" if usb else "ata1"
+    real = os.path.join(root, "devices", "pci0000:00", bus, "host1", "target1:0:0", "1:0:0:0", "block", name)
+    device = os.path.join(os.path.dirname(os.path.dirname(real)))
+    os.makedirs(os.path.join(real, "queue"))
+    os.makedirs(os.path.join(device, "scsi_disk", "1:0:0:0"))
+    os.symlink(device, os.path.join(real, "device"))
+    os.makedirs(os.path.join(root, "block"), exist_ok=True)
+    os.symlink(real, os.path.join(root, "block", name))
+    with open(os.path.join(device, "scsi_disk", "1:0:0:0", "provisioning_mode"), "w") as fh:
+        fh.write(mode + "\n")
+    with open(os.path.join(real, "queue", "discard_max_bytes"), "w") as fh:
+        fh.write(f"{discard}\n")
+    with open(os.path.join(device, "vpd_pgb2"), "wb") as fh:
+        fh.write(bytes([0, 0xB2, 0, 4, 0, 0x80 if lbpu else 0, 0, 0]))
+    pgb0 = bytearray(64)
+    pgb0[1] = 0xB0
+    pgb0[20:24] = max_unmap.to_bytes(4, "big")
+    with open(os.path.join(device, "vpd_pgb0"), "wb") as fh:
+        fh.write(bytes(pgb0))
+    return os.path.join(device, "scsi_disk", "1:0:0:0", "provisioning_mode")
+
+
+class UnmapTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = self.tmp.name
+        self.block = os.path.join(self.root, "block")
+        self.rw = os.path.join(self.root, "rw")
+        self.mounts = []
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def mount(self, target):
+        # the private read-write sysfs shows the same tree
+        os.makedirs(target, exist_ok=True)
+        os.symlink(self.block, os.path.join(target, "block"))
+        self.mounts.append(target)
+
+    def umount(self, target):
+        os.unlink(os.path.join(target, "block"))
+        self.mounts.remove(target)
+
+    def test_reads_what_an_rtl9210_reports(self):
+        fake_disk(self.root)
+        info = trim.unmap_info("sda", self.block)
+        self.assertEqual(info, {"usb": True, "mode": "full", "lbpu": True, "max_unmap": 4194240})
+        self.assertTrue(trim.unmap_possible("sda", self.block))
+
+    def test_not_possible_without_lbpu_or_usb_or_when_already_on(self):
+        for kwargs in ({"lbpu": False}, {"usb": False}, {"mode": "unmap"}, {"max_unmap": 0}):
+            with self.subTest(**kwargs):
+                root = tempfile.mkdtemp(dir=self.root)
+                fake_disk(root, **kwargs)
+                self.assertFalse(trim.unmap_possible("sda", os.path.join(root, "block")))
+
+    def test_missing_files_mean_not_possible(self):
+        os.makedirs(os.path.join(self.block, "sdz"))
+        self.assertFalse(trim.unmap_possible("sdz", self.block))
+
+    def test_enable_writes_unmap_and_unmounts(self):
+        mode = fake_disk(self.root)
+        msg = trim.enable_unmap("sda", self.block, self.rw, mount=self.mount, umount=self.umount)
+        with open(mode) as fh:
+            self.assertEqual(fh.read(), "unmap")
+        self.assertEqual(self.mounts, [])
+        self.assertIn("still reports no discard", msg)   # the fake kernel does not react
+
+    def test_enable_reports_success_when_kernel_accepts(self):
+        fake_disk(self.root)
+        discard = os.path.join(self.block, "sda", "queue", "discard_max_bytes")
+
+        def umount(target):
+            self.umount(target)
+            with open(discard, "w") as fh:
+                fh.write("2147450880\n")
+        msg = trim.enable_unmap("sda", self.block, self.rw, mount=self.mount, umount=umount)
+        self.assertEqual(msg, "TRIM enabled on sda (provisioning_mode unmap)")
+
+    def test_enable_leaves_other_disks_alone(self):
+        mode = fake_disk(self.root, usb=False)
+        self.assertIsNone(trim.enable_unmap("sda", self.block, self.rw, mount=self.mount, umount=self.umount))
+        with open(mode) as fh:
+            self.assertEqual(fh.read().strip(), "full")
+        self.assertEqual(self.mounts, [])
+
+    def test_enable_reports_mount_failure(self):
+        fake_disk(self.root)
+
+        def mount(target):
+            raise subprocess.CalledProcessError(32, "mount")
+        msg = trim.enable_unmap("sda", self.block, self.rw, mount=mount, umount=self.umount)
+        self.assertTrue(msg.startswith("cannot enable TRIM on sda"))
+
+    def test_prepare_hook_adds_fields_to_result(self):
+        path = os.path.join(self.root, "results.json")
+        trimmer = trim.Trimmer(path, run=lambda m: {"status": "unsupported", "bytes": None, "message": "x"},
+                               prepare=lambda m: {"unmap_possible": True})
+        result = trimmer.execute("/mnt/a")
+        self.assertTrue(result["unmap_possible"])
+        self.assertEqual(result["status"], "unsupported")
+
+
 if __name__ == "__main__":
     unittest.main()

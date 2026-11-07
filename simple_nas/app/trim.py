@@ -47,6 +47,106 @@ def discard_supported(disk, sys_block="/sys/block"):
         return False
 
 
+# --- USB adapters that can TRIM but are not enabled by Linux -----------------
+#
+# Many USB-SATA/NVMe bridges (e.g. Realtek RTL9210, ASMedia) answer the SCSI
+# "Logical Block Provisioning" VPD page with LBPU=1 (UNMAP supported), but the
+# kernel leaves such disks in provisioning_mode "full", so fstrim says "not
+# supported". Writing "unmap" there enables TRIM until the disk is reconnected.
+# /sys is mounted read-only in the add-on, so a private read-write sysfs mount
+# is used for that single write. Opt-in (option trim_usb_unmap), because a few
+# bridges claim UNMAP support and then mishandle it.
+
+SYSFS_RW = "/run/simple-nas-sysfs"
+
+
+def _read_bytes(path):
+    try:
+        with open(path, "rb") as fh:
+            return fh.read()
+    except OSError:
+        return b""
+
+
+def provisioning_file(disk, sys_block="/sys/block"):
+    """Path of the disk's provisioning_mode below sys_block, or None."""
+    base = os.path.join(sys_block, disk, "device", "scsi_disk")
+    try:
+        names = sorted(os.listdir(base))
+    except OSError:
+        return None
+    for name in names:
+        path = os.path.join(base, name, "provisioning_mode")
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def unmap_info(disk, sys_block="/sys/block"):
+    """What the disk reports about UNMAP: dict with usb, mode, lbpu, max_unmap."""
+    real = os.path.realpath(os.path.join(sys_block, disk))
+    pgb2 = _read_bytes(os.path.join(sys_block, disk, "device", "vpd_pgb2"))
+    pgb0 = _read_bytes(os.path.join(sys_block, disk, "device", "vpd_pgb0"))
+    path = provisioning_file(disk, sys_block)
+    mode = ""
+    if path:
+        mode = _read_bytes(path).decode("ascii", "replace").strip()
+    return {
+        "usb": "/usb" in real,
+        "mode": mode,
+        # page B2 (Logical Block Provisioning), byte 5 bit 7 = LBPU
+        "lbpu": len(pgb2) >= 6 and pgb2[1] == 0xB2 and bool(pgb2[5] & 0x80),
+        # page B0 (Block Limits), bytes 20-23 = maximum UNMAP LBA count
+        "max_unmap": int.from_bytes(pgb0[20:24], "big") if len(pgb0) >= 24 and pgb0[1] == 0xB0 else 0,
+    }
+
+
+def unmap_possible(disk, sys_block="/sys/block"):
+    """True for a USB disk that reports UNMAP support but has it switched off."""
+    info = unmap_info(disk, sys_block)
+    return info["usb"] and info["mode"] == "full" and info["lbpu"] and info["max_unmap"] > 0
+
+
+def _mount_sysfs(target):
+    os.makedirs(target, exist_ok=True)
+    subprocess.run(["mount", "-t", "sysfs", "sysfs", target], check=True, capture_output=True, timeout=20)
+
+
+def _umount(target):
+    subprocess.run(["umount", target], capture_output=True, timeout=20)
+    try:
+        os.rmdir(target)
+    except OSError:
+        pass
+
+
+def enable_unmap(disk, sys_block="/sys/block", rw_root=SYSFS_RW, mount=_mount_sysfs, umount=_umount):
+    """Switch a USB disk to provisioning_mode "unmap". Returns a short message.
+
+    Only touches disks for which unmap_possible() is true; everything else is
+    left alone.
+    """
+    if not unmap_possible(disk, sys_block):
+        return None
+    try:
+        mount(rw_root)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"cannot enable TRIM on {disk}: {exc}"
+    try:
+        path = provisioning_file(disk, os.path.join(rw_root, "block"))
+        if not path:
+            return f"cannot enable TRIM on {disk}: provisioning_mode not found"
+        with open(path, "w") as fh:
+            fh.write("unmap")
+    except OSError as exc:
+        return f"cannot enable TRIM on {disk}: {exc}"
+    finally:
+        umount(rw_root)
+    if discard_supported(disk, sys_block):
+        return f"TRIM enabled on {disk} (provisioning_mode unmap)"
+    return f"TRIM switched on for {disk}, but the kernel still reports no discard support"
+
+
 def is_due(last_run, days, now):
     return days > 0 and (last_run is None or now - last_run >= days * 86400)
 
@@ -54,9 +154,10 @@ def is_due(last_run, days, now):
 class Trimmer:
     """Runs one fstrim per mountpoint and keeps the last result in a JSON file."""
 
-    def __init__(self, path, run=run_fstrim, clock=time.time):
+    def __init__(self, path, run=run_fstrim, clock=time.time, prepare=None):
         self.path = path
         self.run = run
+        self.prepare = prepare   # called with the mountpoint before fstrim; may return extra result fields
         self.clock = clock
         self.lock = threading.Lock()
         self.running = set()
@@ -94,7 +195,9 @@ class Trimmer:
             self.running.add(mountpoint)
         result = {"status": "error", "bytes": None, "message": "fstrim failed"}
         try:
+            extra = (self.prepare(mountpoint) if self.prepare else None) or {}
             result = dict(self.run(mountpoint))
+            result.update(extra)
         finally:
             result["time"] = self.clock()
             with self.lock:

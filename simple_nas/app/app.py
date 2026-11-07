@@ -1007,7 +1007,24 @@ def _helper_call(action, arg1="", arg2="", arg3="", timeout=20):
         time.sleep(0.1)
     return 1, "Timeout"
 
-TRIMMER = trim.Trimmer(f"{DATA_DIR}/trim_results.json")
+def _trim_prepare(mountpoint):
+    """Before fstrim: enable TRIM on USB adapters that support it (option trim_usb_unmap).
+
+    Returns extra fields for the result: unmap_possible tells the web interface
+    that the option would probably help on this drive.
+    """
+    disk = _trim_targets().get(mountpoint)
+    if not disk:
+        return {}
+    if bool(_opt("trim_usb_unmap", False)):
+        msg = trim.enable_unmap(disk)
+        if msg:
+            print(f"[TRIM] {msg}", flush=True)
+        return {}
+    return {"unmap_possible": trim.unmap_possible(disk)}
+
+
+TRIMMER = trim.Trimmer(f"{DATA_DIR}/trim_results.json", prepare=_trim_prepare)
 TRIM_CHECK_INTERVAL = 3600   # seconds
 
 
@@ -1067,7 +1084,9 @@ def start_trim_schedule():
         while True:
             try:
                 for mountpoint, disk in _trim_targets().items():
-                    if trim.discard_supported(disk) and trim.is_due(TRIMMER.last_run(mountpoint), days, time.time()):
+                    usable = trim.discard_supported(disk) or (
+                        bool(_opt("trim_usb_unmap", False)) and trim.unmap_possible(disk))
+                    if usable and trim.is_due(TRIMMER.last_run(mountpoint), days, time.time()):
                         TRIMMER.execute(mountpoint)
             except Exception as e:
                 print(f"[TRIM] scheduled run failed: {e}", flush=True)

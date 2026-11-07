@@ -50,6 +50,9 @@ configuration:
   trim_interval_days:
     name: Automatic SSD TRIM (days)
     description: Run TRIM on mounted drives every this many days (0 = off, 30 = monthly). Only drives that report TRIM support are included.
+  trim_usb_unmap:
+    name: Enable TRIM on USB adapters
+    description: Many USB enclosures (e.g. with Realtek RTL9210 or ASMedia chips) support TRIM, but Linux does not enable it. With this option, Simple NAS turns TRIM on before each TRIM run for USB drives that report UNMAP support. Use at your own risk - a few adapters report TRIM but handle it incorrectly. Make a backup first. The system disk is never touched.
   file_allowed_roots:
     name: Allowed folders
     description: Directories the file manager may open. Anything outside is refused. Only change this if you need to manage files outside the default folders.

@@ -115,6 +115,7 @@ admin_password: ""            # Admin login password (stored as a hash)
 web_gui_enabled: true         # Set to false to run Samba only, without web interface
 hdd_idle_seconds: 0           # Spin down mounted drives after this many idle seconds (0 = disabled)
 trim_interval_days: 0         # Run TRIM on mounted SSDs every this many days (0 = disabled)
+trim_usb_unmap: false         # Turn TRIM on for USB adapters that support it but are not enabled by Linux
 file_allowed_roots:           # Folders the file manager may open
   - /media
   - /mnt

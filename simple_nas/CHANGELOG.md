@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.19.0
+- **TRIM bei USB-Adaptern freischalten** (Issue #18): Viele USB-Gehaeuse, etwa mit Realtek RTL9210B oder ASMedia-Chip, koennen TRIM, Linux laesst es bei USB-Laufwerken aber aus; der TRIM-Knopf meldete dann "nicht moeglich". Die neue Option `trim_usb_unmap` (Standard aus) schaltet vor jedem TRIM-Lauf fuer USB-Laufwerke, die UNMAP melden, `provisioning_mode = unmap` ein und startet dann `fstrim`. Das gilt bis zum Abstecken oder Neustart und wird beim naechsten Lauf erneut gesetzt. Auf eigenes Risiko: einige wenige Adapter melden TRIM und verarbeiten es fehlerhaft. Ohne die Option sagt die Meldung jetzt, wenn das Laufwerk TRIM eigentlich kann. Die System-Festplatte bleibt unberuehrt.
+
 ## 3.18.0
 - **SSD-TRIM** (Issue #18): Im Laufwerke-Tab startet der Knopf **TRIM** bei eingehaengten Partitionen `fstrim` und meldet, wie viel Speicher an das Laufwerk weitergegeben wurde. Mit `trim_interval_days` (z. B. `30`) laeuft es automatisch auf allen Laufwerken, die TRIM melden; Standard ist aus. Die System-Festplatte bleibt unberuehrt. Viele USB-Adapter geben TRIM nicht weiter; dann sagt die Oberflaeche das deutlich, an den Daten aendert sich nichts.
 

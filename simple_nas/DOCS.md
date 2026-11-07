@@ -55,6 +55,7 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 | `ftp_passive_ports` | string | `30000-30010` | Port range for passive FTP |
 | `hdd_idle_seconds` | int | `0` | Spin down mounted drives after this many seconds of inactivity (0 = disabled). See "Drive spindown / power saving" below |
 | `trim_interval_days` | int | `0` | Run TRIM on mounted drives every this many days, `0` = off (e.g. `30` for monthly). See [SSD TRIM](#ssd-trim). |
+| `trim_usb_unmap` | bool | `false` | Turn TRIM on for USB adapters that report UNMAP support but are left without TRIM by Linux. At your own risk. See [SSD TRIM](#ssd-trim). |
 | `file_allowed_roots` | list | `/media`, `/mnt`, `/share`, `/config`, `/addon_configs` | Directories the file manager may open |
 | `sharing_enabled` | bool | `false` | Start the public sharing site on its own port (requires an admin password). See "Sharing files on the internet" below |
 | `share_port` | port | `8101` | Port of the public sharing site |
@@ -180,6 +181,8 @@ TRIM tells an SSD which blocks are free, which helps it keep its speed and lifet
 - **Scheduled:** set `trim_interval_days` (e.g. `30`). Only drives that report TRIM support are included; the check runs hourly. Results are written to the add-on log and survive restarts.
 
 The system disk is never touched. **Not every USB adapter passes TRIM through to the SSD.** In that case the button tells you so and nothing has happened to your data; many adapters simply do not support it. Hard disks do not use TRIM.
+
+**USB adapters that support TRIM but are not enabled:** Many enclosures (for example with Realtek RTL9210/RTL9210B or ASMedia chips) report UNMAP support, but Linux leaves TRIM switched off for USB drives (`provisioning_mode` stays `full`). If the TRIM button says it is not available and the drive reports UNMAP support, the message suggests enabling the `trim_usb_unmap` option. With the option on, Simple NAS switches such drives to `provisioning_mode = unmap` right before each TRIM run, then runs `fstrim`. The setting lasts until the drive is reconnected or HA restarts and is applied again on the next run. Use it at your own risk and make a backup first; a few adapters claim UNMAP support but handle it incorrectly. The add-on log shows `TRIM enabled on sdX` when it worked.
 
 ---
 
