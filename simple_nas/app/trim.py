@@ -6,6 +6,8 @@ the web interface polls for the result. Not every USB-SATA bridge passes TRIM
 through to the SSD; fstrim then fails with "not supported", which is reported
 as a normal result rather than as an error.
 """
+import ctypes
+import fcntl
 import json
 import os
 import re
@@ -82,29 +84,125 @@ def provisioning_file(disk, sys_block="/sys/block"):
     return None
 
 
-def unmap_info(disk, sys_block="/sys/block"):
-    """What the disk reports about UNMAP: dict with usb, mode, lbpu, max_unmap."""
+def usb_driver(disk, sys_block="/sys/block"):
+    """Kernel driver of the USB bridge ("uas", "usb-storage") or ""."""
+    path = os.path.realpath(os.path.join(sys_block, disk, "device"))
+    while path and path != os.path.dirname(path):
+        drv = os.path.join(path, "driver")
+        if os.path.islink(drv):
+            name = os.path.basename(os.readlink(drv))
+            if name in ("uas", "usb-storage"):
+                return name
+        path = os.path.dirname(path)
+    return ""
+
+
+# SCSI INQUIRY for a VPD page via the SG_IO ioctl. usb-storage tells the kernel
+# to skip VPD pages, so /sys has no vpd_pgb0/vpd_pgb2 for such bridges even
+# when they support UNMAP. Asking the drive directly is a read-only command;
+# it is only sent when the user enabled trim_usb_unmap.
+
+class _SgIoHdr(ctypes.Structure):
+    _fields_ = [
+        ("interface_id", ctypes.c_int), ("dxfer_direction", ctypes.c_int),
+        ("cmd_len", ctypes.c_ubyte), ("mx_sb_len", ctypes.c_ubyte), ("iovec_count", ctypes.c_ushort),
+        ("dxfer_len", ctypes.c_uint), ("dxferp", ctypes.c_void_p), ("cmdp", ctypes.c_void_p),
+        ("sbp", ctypes.c_void_p), ("timeout", ctypes.c_uint), ("flags", ctypes.c_uint),
+        ("pack_id", ctypes.c_int), ("usr_ptr", ctypes.c_void_p),
+        ("status", ctypes.c_ubyte), ("masked_status", ctypes.c_ubyte), ("msg_status", ctypes.c_ubyte),
+        ("sb_len_wr", ctypes.c_ubyte), ("host_status", ctypes.c_ushort), ("driver_status", ctypes.c_ushort),
+        ("resid", ctypes.c_int), ("duration", ctypes.c_uint), ("info", ctypes.c_uint),
+    ]
+
+
+SG_IO = 0x2285
+SG_DXFER_FROM_DEV = -3
+
+
+def scsi_vpd(disk, page, dev="/dev"):
+    """Read one VPD page from /dev/<disk> with INQUIRY; b"" if that fails."""
+    size = 252
+    data = ctypes.create_string_buffer(size)
+    sense = ctypes.create_string_buffer(32)
+    cdb = (ctypes.c_ubyte * 6)(0x12, 0x01, page, 0, size, 0)
+    hdr = _SgIoHdr(interface_id=ord("S"), dxfer_direction=SG_DXFER_FROM_DEV, cmd_len=6,
+                   mx_sb_len=len(sense), dxfer_len=size, dxferp=ctypes.addressof(data),
+                   cmdp=ctypes.addressof(cdb), sbp=ctypes.addressof(sense), timeout=5000)
+    try:
+        fd = os.open(os.path.join(dev, disk), os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        return b""
+    try:
+        fcntl.ioctl(fd, SG_IO, hdr)
+    except OSError:
+        return b""
+    finally:
+        os.close(fd)
+    if hdr.status or hdr.host_status:
+        return b""
+    got = data.raw[:max(0, size - hdr.resid)]
+    return got if len(got) >= 4 and got[1] == page else b""
+
+
+def unmap_info(disk, sys_block="/sys/block", ask_device=None):
+    """What the disk reports about UNMAP: dict with usb, driver, mode, lbpu, max_unmap, vpd.
+
+    vpd says where the VPD pages came from: "sysfs", "device" (asked with
+    ask_device, a function like scsi_vpd, because /sys has none) or "none".
+    """
     real = os.path.realpath(os.path.join(sys_block, disk))
     pgb2 = _read_bytes(os.path.join(sys_block, disk, "device", "vpd_pgb2"))
     pgb0 = _read_bytes(os.path.join(sys_block, disk, "device", "vpd_pgb0"))
+    source = "sysfs" if pgb2 else "none"
+    if not pgb2 and ask_device is not None:
+        pgb2 = ask_device(disk, 0xB2)
+        if pgb2:
+            pgb0 = pgb0 or ask_device(disk, 0xB0)
+            source = "device"
     path = provisioning_file(disk, sys_block)
     mode = ""
     if path:
         mode = _read_bytes(path).decode("ascii", "replace").strip()
     return {
         "usb": "/usb" in real,
+        "driver": usb_driver(disk, sys_block),
         "mode": mode,
         # page B2 (Logical Block Provisioning), byte 5 bit 7 = LBPU
         "lbpu": len(pgb2) >= 6 and pgb2[1] == 0xB2 and bool(pgb2[5] & 0x80),
         # page B0 (Block Limits), bytes 20-23 = maximum UNMAP LBA count
         "max_unmap": int.from_bytes(pgb0[20:24], "big") if len(pgb0) >= 24 and pgb0[1] == 0xB0 else 0,
+        "vpd": source,
     }
 
 
-def unmap_possible(disk, sys_block="/sys/block"):
+def possible(info):
+    """True if unmap_info() describes a USB disk whose TRIM can be switched on."""
+    # Without the Block Limits page (usb-storage) the kernel uses its own
+    # maximum, so a missing max_unmap only counts against VPD read from /sys.
+    return (info["usb"] and info["mode"] == "full" and info["lbpu"]
+            and (info["max_unmap"] > 0 or info["vpd"] == "device"))
+
+
+def unmap_possible(disk, sys_block="/sys/block", ask_device=None):
     """True for a USB disk that reports UNMAP support but has it switched off."""
-    info = unmap_info(disk, sys_block)
-    return info["usb"] and info["mode"] == "full" and info["lbpu"] and info["max_unmap"] > 0
+    return possible(unmap_info(disk, sys_block, ask_device))
+
+
+def describe(disk, info):
+    """One log line saying why TRIM was not switched on."""
+    if not info["usb"]:
+        why = "not a USB drive"
+    elif info["mode"] != "full":
+        why = f"provisioning_mode is '{info['mode'] or 'missing'}', not 'full'"
+    elif info["vpd"] == "none":
+        why = "the adapter answers no VPD pages, so UNMAP support is unknown"
+    elif not info["lbpu"]:
+        why = "the drive does not report UNMAP support (LBPU=0)"
+    else:
+        why = "the drive reports a maximum UNMAP size of 0"
+    return (f"TRIM not switched on for {disk}: {why} "
+            f"(driver {info['driver'] or 'unknown'}, mode {info['mode'] or '-'}, "
+            f"LBPU {int(info['lbpu'])}, max_unmap {info['max_unmap']}, VPD from {info['vpd']})")
 
 
 def _mount_sysfs(target):
@@ -120,14 +218,20 @@ def _umount(target):
         pass
 
 
-def enable_unmap(disk, sys_block="/sys/block", rw_root=SYSFS_RW, mount=_mount_sysfs, umount=_umount):
+def enable_unmap(disk, sys_block="/sys/block", rw_root=SYSFS_RW, mount=_mount_sysfs, umount=_umount,
+                 ask_device=scsi_vpd):
     """Switch a USB disk to provisioning_mode "unmap". Returns a short message.
 
-    Only touches disks for which unmap_possible() is true; everything else is
-    left alone.
+    Only touches disks for which unmap_possible() is true; for everything else
+    it returns the reason and leaves the disk alone.
     """
-    if not unmap_possible(disk, sys_block):
+    if discard_supported(disk, sys_block):
         return None
+    info = unmap_info(disk, sys_block, ask_device)
+    if not info["usb"]:
+        return None
+    if not possible(info):
+        return describe(disk, info)
     try:
         mount(rw_root)
     except (OSError, subprocess.SubprocessError) as exc:

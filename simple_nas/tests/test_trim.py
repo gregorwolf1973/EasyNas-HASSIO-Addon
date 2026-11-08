@@ -138,8 +138,13 @@ class TrimmerTest(unittest.TestCase):
         self.assertEqual(trimmer.status()["running"], [])
 
 
-def fake_disk(root, name="sda", usb=True, mode="full", lbpu=True, max_unmap=4194240, discard=0):
-    """A minimal /sys/block/<name> as the kernel shows a USB bridge."""
+def fake_disk(root, name="sda", usb=True, mode="full", lbpu=True, max_unmap=4194240, discard=0,
+              vpd=True, driver=None):
+    """A minimal /sys/block/<name> as the kernel shows a USB bridge.
+
+    vpd=False leaves out the VPD pages, as usb-storage does; driver adds a
+    driver link on the USB interface.
+    """
     bus = "usb2/2-1/2-1:1.0" if usb else "ata1"
     real = os.path.join(root, "devices", "pci0000:00", bus, "host1", "target1:0:0", "1:0:0:0", "block", name)
     device = os.path.join(os.path.dirname(os.path.dirname(real)))
@@ -152,6 +157,12 @@ def fake_disk(root, name="sda", usb=True, mode="full", lbpu=True, max_unmap=4194
         fh.write(mode + "\n")
     with open(os.path.join(real, "queue", "discard_max_bytes"), "w") as fh:
         fh.write(f"{discard}\n")
+    if driver:
+        interface = os.path.join(root, "devices", "pci0000:00", bus)
+        os.makedirs(os.path.join(root, "bus", driver), exist_ok=True)
+        os.symlink(os.path.join(root, "bus", driver), os.path.join(interface, "driver"))
+    if not vpd:
+        return os.path.join(device, "scsi_disk", "1:0:0:0", "provisioning_mode")
     with open(os.path.join(device, "vpd_pgb2"), "wb") as fh:
         fh.write(bytes([0, 0xB2, 0, 4, 0, 0x80 if lbpu else 0, 0, 0]))
     pgb0 = bytearray(64)
@@ -186,8 +197,48 @@ class UnmapTest(unittest.TestCase):
     def test_reads_what_an_rtl9210_reports(self):
         fake_disk(self.root)
         info = trim.unmap_info("sda", self.block)
-        self.assertEqual(info, {"usb": True, "mode": "full", "lbpu": True, "max_unmap": 4194240})
+        self.assertEqual(info, {"usb": True, "driver": "", "mode": "full", "lbpu": True,
+                                "max_unmap": 4194240, "vpd": "sysfs"})
         self.assertTrue(trim.unmap_possible("sda", self.block))
+
+    def test_finds_the_usb_driver(self):
+        fake_disk(self.root, driver="usb-storage")
+        self.assertEqual(trim.unmap_info("sda", self.block)["driver"], "usb-storage")
+
+    def test_usb_storage_without_vpd_asks_the_drive(self):
+        fake_disk(self.root, vpd=False, driver="usb-storage")
+        asked = []
+
+        def ask(disk, page):
+            asked.append((disk, page))
+            if page == 0xB2:
+                return bytes([0, 0xB2, 0, 4, 0, 0x80, 0, 0])
+            return b""   # no Block Limits page: the kernel uses its own maximum
+        info = trim.unmap_info("sda", self.block, ask)
+        self.assertEqual(asked, [("sda", 0xB2), ("sda", 0xB0)])
+        self.assertEqual((info["lbpu"], info["max_unmap"], info["vpd"]), (True, 0, "device"))
+        self.assertTrue(trim.unmap_possible("sda", self.block, ask))
+
+    def test_without_vpd_and_without_asking_support_is_unknown(self):
+        fake_disk(self.root, vpd=False, driver="usb-storage")
+        info = trim.unmap_info("sda", self.block)
+        self.assertEqual(info["vpd"], "none")
+        self.assertFalse(trim.unmap_possible("sda", self.block))
+        self.assertIn("answers no VPD pages", trim.describe("sda", info))
+        self.assertIn("driver usb-storage", trim.describe("sda", info))
+
+    def test_drive_without_unmap_support_stays_off(self):
+        fake_disk(self.root, vpd=False)
+        ask = lambda disk, page: bytes([0, 0xB2, 0, 4, 0, 0, 0, 0]) if page == 0xB2 else b""
+        self.assertFalse(trim.unmap_possible("sda", self.block, ask))
+
+    def test_sysfs_vpd_wins_over_asking(self):
+        fake_disk(self.root)
+        info = trim.unmap_info("sda", self.block, lambda disk, page: self.fail("must not ask"))
+        self.assertEqual(info["vpd"], "sysfs")
+
+    def test_scsi_vpd_without_device_is_empty(self):
+        self.assertEqual(trim.scsi_vpd("sdz", 0xB2, dev=self.root), b"")
 
     def test_not_possible_without_lbpu_or_usb_or_when_already_on(self):
         for kwargs in ({"lbpu": False}, {"usb": False}, {"mode": "unmap"}, {"max_unmap": 0}):
@@ -202,7 +253,8 @@ class UnmapTest(unittest.TestCase):
 
     def test_enable_writes_unmap_and_unmounts(self):
         mode = fake_disk(self.root)
-        msg = trim.enable_unmap("sda", self.block, self.rw, mount=self.mount, umount=self.umount)
+        msg = trim.enable_unmap("sda", self.block, self.rw, mount=self.mount, umount=self.umount,
+                                ask_device=None)
         with open(mode) as fh:
             self.assertEqual(fh.read(), "unmap")
         self.assertEqual(self.mounts, [])
@@ -218,6 +270,27 @@ class UnmapTest(unittest.TestCase):
                 fh.write("2147450880\n")
         msg = trim.enable_unmap("sda", self.block, self.rw, mount=self.mount, umount=umount)
         self.assertEqual(msg, "TRIM enabled on sda (provisioning_mode unmap)")
+
+    def test_enable_on_usb_storage_after_asking_the_drive(self):
+        mode = fake_disk(self.root, vpd=False, driver="usb-storage")
+        ask = lambda disk, page: bytes([0, 0xB2, 0, 4, 0, 0x80, 0, 0]) if page == 0xB2 else b""
+        trim.enable_unmap("sda", self.block, self.rw, mount=self.mount, umount=self.umount, ask_device=ask)
+        with open(mode) as fh:
+            self.assertEqual(fh.read(), "unmap")
+
+    def test_enable_explains_why_it_did_nothing(self):
+        mode = fake_disk(self.root, lbpu=False)
+        msg = trim.enable_unmap("sda", self.block, self.rw, mount=self.mount, umount=self.umount,
+                                ask_device=None)
+        self.assertIn("does not report UNMAP support", msg)
+        with open(mode) as fh:
+            self.assertEqual(fh.read().strip(), "full")
+        self.assertEqual(self.mounts, [])
+
+    def test_enable_is_silent_when_trim_already_works(self):
+        fake_disk(self.root, discard=2147450880)
+        self.assertIsNone(trim.enable_unmap("sda", self.block, self.rw, mount=self.mount,
+                                            umount=self.umount, ask_device=None))
 
     def test_enable_leaves_other_disks_alone(self):
         mode = fake_disk(self.root, usb=False)

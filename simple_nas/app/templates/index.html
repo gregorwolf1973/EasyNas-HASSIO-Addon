@@ -1382,6 +1382,7 @@ const T={
     trim_started:'TRIM läuft auf {m} …',trim_ok:'TRIM auf {m} fertig: {s} gemeldet',trim_ok_nosize:'TRIM auf {m} fertig',
     trim_unsupported:'TRIM geht auf {m} nicht: Laufwerk, Dateisystem oder USB-Adapter unterstützen es nicht. Das ist kein Fehler; viele USB-Adapter geben TRIM nicht weiter.',trim_error:'TRIM auf {m} fehlgeschlagen: {e}',
     trim_unmap_hint:' Das Laufwerk meldet aber, dass es TRIM kann. Die Option „TRIM bei USB-Adaptern freischalten“ (trim_usb_unmap) in der Add-on-Konfiguration schaltet es ein – auf eigenes Risiko, vorher sichern.',
+    trim_unmap_unknown:' Der USB-Adapter verrät nicht, ob er TRIM kann. Mit der Option „TRIM bei USB-Adaptern freischalten“ (trim_usb_unmap) fragt Simple NAS das Laufwerk direkt und schaltet TRIM ein, wenn es UNMAP meldet – auf eigenes Risiko, vorher sichern.',
     btn_smart_title:'SMART-Werte anzeigen',modal_smart_title:'SMART-Status',modal_close:'Schließen',
     stat_smart:'Laufwerks-Gesundheit',smart_refresh:'Aktualisieren',smart_on_demand:'SMART-Werte werden nur auf Anforderung abgefragt.',
     smart_passed_short:'OK',smart_failed_short:'FEHLER',smart_n_a:'k. A.',
@@ -1557,6 +1558,7 @@ const T={
     trim_started:'TRIM running on {m} …',trim_ok:'TRIM on {m} finished: {s} reported',trim_ok_nosize:'TRIM on {m} finished',
     trim_unsupported:'TRIM is not available on {m}: the drive, file system or USB adapter does not support it. This is not an error; many USB adapters do not pass TRIM through.',trim_error:'TRIM on {m} failed: {e}',
     trim_unmap_hint:' The drive reports that it can TRIM, though. The option “Enable TRIM on USB adapters” (trim_usb_unmap) in the add-on configuration turns it on - use it at your own risk and make a backup first.',
+    trim_unmap_unknown:' The USB adapter does not say whether it can TRIM. With the option “Enable TRIM on USB adapters” (trim_usb_unmap), Simple NAS asks the drive directly and turns TRIM on if it reports UNMAP support - use it at your own risk and make a backup first.',
     btn_smart_title:'Show SMART data',modal_smart_title:'SMART status',modal_close:'Close',
     smart_unavailable:'SMART data not available',
     smart_unavailable_hint:'Some USB enclosures do not forward SMART commands. Internal drives work reliably.',
@@ -1784,7 +1786,7 @@ async function startTrim(mp){
     if(s.running.includes(mp)) continue;
     const r=s.results[mp]||{};
     if(r.status==='ok') toast((r.bytes==null?t('trim_ok_nosize'):t('trim_ok').replace('{s}',fmtSize(r.bytes)||'0 B')).replace('{m}',mp),false,6000);
-    else if(r.status==='unsupported') toast(t('trim_unsupported').replace('{m}',mp)+(r.unmap_possible?t('trim_unmap_hint'):''),true,r.unmap_possible?15000:9000);
+    else if(r.status==='unsupported') toast(t('trim_unsupported').replace('{m}',mp)+(r.unmap_possible?t('trim_unmap_hint'):r.unmap_unknown?t('trim_unmap_unknown'):''),true,(r.unmap_possible||r.unmap_unknown)?15000:9000);
     else toast(t('trim_error').replace('{m}',mp).replace('{e}',r.message||''),true,9000);
     return;
   }

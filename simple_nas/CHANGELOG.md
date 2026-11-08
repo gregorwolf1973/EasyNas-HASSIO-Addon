@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.19.1
+- **TRIM bei USB-Adaptern mit `usb-storage`-Treiber** (Issue #18): Laeuft ein Gehaeuse mit dem aelteren Treiber `usb-storage` statt `uas`, liest Linux die VPD-Seiten des Laufwerks nicht; 3.19.0 hielt TRIM dann fuer unmoeglich und meldete nur "unsupported". Mit `trim_usb_unmap` fragt Simple NAS solche Laufwerke jetzt vor dem TRIM-Lauf selbst per SCSI-INQUIRY (nur lesend) und schaltet TRIM ein, wenn sie UNMAP melden. Wird TRIM nicht eingeschaltet, steht der Grund im Add-on-Protokoll (Treiber, provisioning_mode, LBPU, max_unmap, Herkunft der VPD-Daten). Ohne die Option sagt die TRIM-Meldung bei solchen Adaptern, dass die Faehigkeit unbekannt ist und die Option helfen kann. Die Abfrage wurde an zwei echten USB-Laufwerken (Ugreen-Gehaeuse mit ASMedia-Chip, `uas`) mit den Daten aus /sys verglichen; ein Gehaeuse mit `usb-storage` hatte ich nicht zur Hand.
+
 ## 3.19.0
 - **TRIM bei USB-Adaptern freischalten** (Issue #18): Viele USB-Gehaeuse, etwa mit Realtek RTL9210B oder ASMedia-Chip, koennen TRIM, Linux laesst es bei USB-Laufwerken aber aus; der TRIM-Knopf meldete dann "nicht moeglich". Die neue Option `trim_usb_unmap` (Standard aus) schaltet vor jedem TRIM-Lauf fuer USB-Laufwerke, die UNMAP melden, `provisioning_mode = unmap` ein und startet dann `fstrim`. Das gilt bis zum Abstecken oder Neustart und wird beim naechsten Lauf erneut gesetzt. Auf eigenes Risiko: einige wenige Adapter melden TRIM und verarbeiten es fehlerhaft. Ohne die Option sagt die Meldung jetzt, wenn das Laufwerk TRIM eigentlich kann. Die System-Festplatte bleibt unberuehrt.
 

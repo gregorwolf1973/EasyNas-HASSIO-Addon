@@ -1011,7 +1011,8 @@ def _trim_prepare(mountpoint):
     """Before fstrim: enable TRIM on USB adapters that support it (option trim_usb_unmap).
 
     Returns extra fields for the result: unmap_possible tells the web interface
-    that the option would probably help on this drive.
+    that the option would probably help on this drive, unmap_unknown that the
+    adapter hides whether it can (usb-storage) and the option may help.
     """
     disk = _trim_targets().get(mountpoint)
     if not disk:
@@ -1021,7 +1022,12 @@ def _trim_prepare(mountpoint):
         if msg:
             print(f"[TRIM] {msg}", flush=True)
         return {}
-    return {"unmap_possible": trim.unmap_possible(disk)}
+    if trim.discard_supported(disk):
+        return {}
+    info = trim.unmap_info(disk)
+    # usb-storage bridges show no VPD pages, so support is unknown until asked
+    unknown = info["usb"] and info["mode"] == "full" and info["vpd"] == "none"
+    return {"unmap_possible": trim.possible(info), "unmap_unknown": unknown}
 
 
 TRIMMER = trim.Trimmer(f"{DATA_DIR}/trim_results.json", prepare=_trim_prepare)
@@ -1085,7 +1091,7 @@ def start_trim_schedule():
             try:
                 for mountpoint, disk in _trim_targets().items():
                     usable = trim.discard_supported(disk) or (
-                        bool(_opt("trim_usb_unmap", False)) and trim.unmap_possible(disk))
+                        bool(_opt("trim_usb_unmap", False)) and trim.unmap_possible(disk, ask_device=trim.scsi_vpd))
                     if usable and trim.is_due(TRIMMER.last_run(mountpoint), days, time.time()):
                         TRIMMER.execute(mountpoint)
             except Exception as e:

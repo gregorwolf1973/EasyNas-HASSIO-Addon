@@ -184,6 +184,14 @@ The system disk is never touched. **Not every USB adapter passes TRIM through to
 
 **USB adapters that support TRIM but are not enabled:** Many enclosures (for example with Realtek RTL9210/RTL9210B or ASMedia chips) report UNMAP support, but Linux leaves TRIM switched off for USB drives (`provisioning_mode` stays `full`). If the TRIM button says it is not available and the drive reports UNMAP support, the message suggests enabling the `trim_usb_unmap` option. With the option on, Simple NAS switches such drives to `provisioning_mode = unmap` right before each TRIM run, then runs `fstrim`. The setting lasts until the drive is reconnected or HA restarts and is applied again on the next run. Use it at your own risk and make a backup first; a few adapters claim UNMAP support but handle it incorrectly. The add-on log shows `TRIM enabled on sdX` when it worked.
 
+**Adapters that hide whether they can TRIM:** Some adapters run with the older `usb-storage` driver instead of `uas`. Linux then does not read the drive's VPD pages, so it cannot tell whether the drive supports UNMAP, and the TRIM message says so. With `trim_usb_unmap` on, Simple NAS asks the drive directly with a read-only SCSI INQUIRY before each TRIM run and switches TRIM on if the drive reports UNMAP support. If TRIM is not switched on, the add-on log explains why, for example:
+
+```
+TRIM not switched on for sdb: the drive does not report UNMAP support (LBPU=0) (driver usb-storage, mode full, LBPU 0, max_unmap 0, VPD from device)
+```
+
+Please include that line when you report a problem.
+
 ---
 
 ## Drive spindown / power saving
