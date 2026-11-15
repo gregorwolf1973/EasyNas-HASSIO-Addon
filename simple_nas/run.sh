@@ -286,16 +286,39 @@ if [ ! -S /var/run/dbus/system_bus_socket ]; then
     bashio::log.info "DBus started"
 fi
 
-# 2) Avahi – mDNS/DNS-SD (Linux Nautilus/Dolphin, macOS Finder)
-if command -v avahi-daemon > /dev/null 2>&1; then
+# LAN interface = the one with the default route. Home Assistant OS also has lo, hassio, docker0 and one
+# veth per container; discovery services announce only on the LAN interface (issues #13 and #20).
+LAN_IFACE="$(ip route show default 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "dev") {print $(i + 1); exit}}')"
+
+# 2) Avahi – mDNS/DNS-SD (Linux Nautilus/Dolphin, macOS Finder, Time Machine)
+#    Only one Avahi daemon can work per host: a second one (e.g. in another app with host network) claims
+#    the same IP address and loops with "Host name conflict" whatever its host name (issue #20). The option
+#    mdns_enabled: false leaves mDNS to the other app.
+AVAHI_CONF=/etc/avahi/avahi-daemon.conf
+if bashio::config.false 'mdns_enabled'; then
+    bashio::log.info "Avahi mDNS disabled (mdns_enabled: false) - NAS is not announced via Bonjour; reach it by IP or DNS name"
+elif command -v avahi-daemon > /dev/null 2>&1; then
     # Fix avahi config for container environment
-    sed -i 's/^#*enable-dbus=.*/enable-dbus=yes/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
-    sed -i 's/^#*use-ipv6=.*/use-ipv6=no/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
-    sed -i 's/^rlimit-nproc=.*/#rlimit-nproc=3/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
+    sed -i 's/^#*enable-dbus=.*/enable-dbus=yes/' "${AVAHI_CONF}" 2>/dev/null || true
+    sed -i 's/^#*use-ipv6=.*/use-ipv6=no/' "${AVAHI_CONF}" 2>/dev/null || true
+    sed -i 's/^rlimit-nproc=.*/#rlimit-nproc=3/' "${AVAHI_CONF}" 2>/dev/null || true
+    # Announce only on the LAN interface; otherwise clients also get 127.0.0.1 and Docker addresses
+    if [ -n "${LAN_IFACE}" ]; then
+        sed -i "s/^#*allow-interfaces=.*/allow-interfaces=${LAN_IFACE}/" "${AVAHI_CONF}" 2>/dev/null || true
+    else
+        sed -i 's/^allow-interfaces=/#allow-interfaces=/' "${AVAHI_CONF}" 2>/dev/null || true
+    fi
+    # Host name from nas_name (SimpleNAS.local) instead of the container name (cfa7a29e-simple-nas.local)
+    AVAHI_HOST="$(printf '%s' "${NAS_NAME}" | tr -c 'A-Za-z0-9-' '-' | sed 's/^-*//; s/-*$//' | cut -c1-63)"
+    if [ -n "${AVAHI_HOST}" ]; then
+        sed -i "s/^#*host-name=.*/host-name=${AVAHI_HOST}/" "${AVAHI_CONF}" 2>/dev/null || true
+    fi
+    # The image's default service files announce SSH, which this app does not offer
+    rm -f /etc/avahi/services/ssh.service /etc/avahi/services/sftp-ssh.service
 
     AVAHI_ERR=$(avahi-daemon --daemonize --no-chroot 2>&1)
     if [ $? -eq 0 ]; then
-        bashio::log.info "Avahi daemon started"
+        bashio::log.info "Avahi daemon started (host name ${AVAHI_HOST:-default}.local, interface ${LAN_IFACE:-all})"
         sleep 1
         # Explicitly publish SMB service with friendly name (container hostname is ugly)
         avahi-publish -s "${NAS_NAME}" _smb._tcp "${SMB_PORT}" &
@@ -315,10 +338,9 @@ fi
 #    veth interfaces besides the LAN one; bound to all of them, the multicast announcements never reached
 #    the LAN and the NAS did not show up in the Windows "Network" folder (issue #13, fix by @mirican).
 if command -v wsdd > /dev/null 2>&1; then
-    WSDD_IFACE="$(ip route show default 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "dev") {print $(i + 1); exit}}')"
-    if [ -n "${WSDD_IFACE}" ]; then
-        python3 /usr/local/bin/wsdd --workgroup "${WORKGROUP}" --hostname "${NAS_NAME}" --interface "${WSDD_IFACE}" &
-        bashio::log.info "WSDD started (WS-Discovery for Windows 10/11, interface=${WSDD_IFACE}, hostname=${NAS_NAME})"
+    if [ -n "${LAN_IFACE}" ]; then
+        python3 /usr/local/bin/wsdd --workgroup "${WORKGROUP}" --hostname "${NAS_NAME}" --interface "${LAN_IFACE}" &
+        bashio::log.info "WSDD started (WS-Discovery for Windows 10/11, interface=${LAN_IFACE}, hostname=${NAS_NAME})"
     else
         python3 /usr/local/bin/wsdd --workgroup "${WORKGROUP}" --hostname "${NAS_NAME}" &
         bashio::log.warning "WSDD started on all interfaces (no default route found)"

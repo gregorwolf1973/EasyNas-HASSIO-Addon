@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.20.0
+- **mDNS/Bonjour abschaltbar** (Issue #20): Die neue Option `mdns_enabled` (Standard an) laesst Avahi ungestartet. Auf einem Host funktioniert nur ein Avahi: Startet eine andere App mit Host-Netzwerk ihr eigenes Avahi, beanspruchen beide dieselbe IP-Adresse, und das zweite haengt in "Host name conflict, retrying with ...-2, -3, ..." - auch mit anderem Host-Namen oder auf eine Schnittstelle beschraenkt (auf Home Assistant OS nachgestellt). Ohne mDNS erscheint das NAS nicht mehr im Finder und in Linux-Dateimanagern, und Time Machine findet es nicht von selbst; die Windows-Erkennung (WSDD und LLMNR) bleibt.
+- **Avahi kuendigt nur noch im Heimnetz an:** Es arbeitet wie WSDD seit 3.13.0 nur auf der Schnittstelle mit der Standardroute. Bisher bekamen Clients zusaetzlich 127.0.0.1 und die Docker-Adressen 172.30.x.x angeboten.
+- **Host-Name aus `nas_name`:** Das NAS ist per mDNS jetzt als `SimpleNAS.local` erreichbar (bzw. dem eigenen `nas_name`) statt als `cfa7a29e-simple-nas.local`. Die Diensteintraege von Avahi fuer SSH, das Simple NAS nicht anbietet, und eine veraltete feste SMB-Dienstdatei sind entfernt.
+
 ## 3.19.1
 - **TRIM bei USB-Adaptern mit `usb-storage`-Treiber** (Issue #18): Laeuft ein Gehaeuse mit dem aelteren Treiber `usb-storage` statt `uas`, liest Linux die VPD-Seiten des Laufwerks nicht; 3.19.0 hielt TRIM dann fuer unmoeglich und meldete nur "unsupported". Mit `trim_usb_unmap` fragt Simple NAS solche Laufwerke jetzt vor dem TRIM-Lauf selbst per SCSI-INQUIRY (nur lesend) und schaltet TRIM ein, wenn sie UNMAP melden. Wird TRIM nicht eingeschaltet, steht der Grund im Add-on-Protokoll (Treiber, provisioning_mode, LBPU, max_unmap, Herkunft der VPD-Daten). Ohne die Option sagt die TRIM-Meldung bei solchen Adaptern, dass die Faehigkeit unbekannt ist und die Option helfen kann. Die Abfrage wurde an zwei echten USB-Laufwerken (Ugreen-Gehaeuse mit ASMedia-Chip, `uas`) mit den Daten aus /sys verglichen; ein Gehaeuse mit `usb-storage` hatte ich nicht zur Hand.
 

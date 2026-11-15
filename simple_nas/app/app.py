@@ -582,6 +582,8 @@ def timemachine_size(value):
 
 def publish_timemachine():
     """Bonjour-Eintrag für Time Machine an die aktuellen Freigaben anpassen (avahi-publish läuft weiter)."""
+    if _opt("mdns_enabled", True) is False:
+        return                              # mDNS abgeschaltet (Issue #20): kein Avahi, nichts anzukuendigen
     txt = timemachine_txt(load_json(SHARES_FILE, []))
     proc = _ADISK["proc"]
     running = proc is not None and proc.poll() is None

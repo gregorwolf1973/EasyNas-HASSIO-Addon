@@ -26,6 +26,9 @@ configuration:
   smb_port:
     name: SMB Port
     description: SMB port (default 445). Change to e.g. 4445 if the official Samba add-on is also running.
+  mdns_enabled:
+    name: mDNS / Bonjour (Avahi)
+    description: "Announce the NAS via mDNS/Bonjour (macOS Finder, Linux file managers, Time Machine) and make it reachable as NASNAME.local. Turn it off if another app with host network also runs Avahi: only one Avahi can work per host, the second one loops with \"Host name conflict\". Windows discovery (WSDD) keeps working."
   webdav_enabled:
     name: WebDAV
     description: "Also offer the shares over WebDAV (http://YOUR-HA-IP:webdav_port/), e.g. for phone apps, Windows, macOS and access on the go. Log in with the Samba users; same permissions as Samba. For the internet, publish it only through a reverse proxy with HTTPS."

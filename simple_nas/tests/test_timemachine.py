@@ -97,6 +97,19 @@ class TimeMachineTest(unittest.TestCase):
         self.assertTrue(started[0].stopped)
         self.assertIsNone(nas._ADISK["proc"])
 
+    def test_no_bonjour_when_mdns_is_off(self):
+        """Issue #20: mdns_enabled: false startet kein Avahi, also auch kein avahi-publish."""
+        started = []
+        nas.subprocess.Popen = lambda args, **_kw: started.append(args)
+        nas._ADISK.update(proc=None, txt=None)
+        nas.save_json(nas.SHARES_FILE, [{"name": "Mac", "timemachine": True}])
+        nas._OPTIONS = {"mdns_enabled": False}
+        nas.publish_timemachine()
+        self.assertEqual(started, [])
+        nas._OPTIONS = {}
+        nas.publish_timemachine()
+        self.assertEqual(len(started), 1, "ohne Option (ältere options.json) bleibt mDNS an")
+
     def test_recycle_overview_marks_time_machine(self):
         path = os.path.join(self.tmp, "mac")
         os.makedirs(path)

@@ -43,6 +43,7 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 | `nas_name` | string | `SimpleNAS` | NetBIOS / mDNS hostname shown in network browsers |
 | `web_port` | port | `8100` | Port for direct access to the web GUI; the **Open** button in Home Assistant has its own port |
 | `smb_port` | port | `445` | SMB port. Change to e.g. `4445` if the official Samba add-on is also running |
+| `mdns_enabled` | bool | `true` | Announce the NAS via mDNS/Bonjour (Avahi) and as `NASNAME.local`. Turn off if another app with host network runs its own Avahi. See [Network discovery](#network-discovery) |
 | `log_level` | list | `info` | Log level: `trace` / `debug` / `info` / `notice` / `warning` / `error` / `fatal` |
 | `admin_password_enabled` | bool | `false` | Enable web GUI password protection |
 | `admin_username` | string | `admin` | Web GUI username |
@@ -88,6 +89,15 @@ A full-featured NAS add-on for Home Assistant with Samba file sharing, a web-bas
 | `collabora_verify_proof` | bool | `true` | Verify the proof-key signature of WOPI calls |
 
 ---
+
+## Network discovery
+
+Simple NAS announces itself on the LAN interface (the one with the default route) so that clients find it without typing an address:
+
+- **Windows 10/11:** WS-Discovery (wsdd) shows the NAS under *Network*; LLMNR answers `\\SimpleNAS`.
+- **macOS and Linux:** mDNS/Bonjour (Avahi) shows it in Finder, Nautilus and Dolphin, makes it reachable as `SimpleNAS.local` (your `nas_name`) and lets Time Machine find backup shares.
+
+Only one Avahi daemon can work per host. If another app with host network starts its own Avahi, both claim the same IP address and the one that starts second loops with `Host name conflict, retrying with <name>-2`. Simple NAS starts early, so the other app is usually the one that loops. In that case set `mdns_enabled: false` here (or switch off Avahi in the other app). The NAS then stays reachable by IP address or by a DNS name from your router, and Windows discovery keeps working, but Finder, Linux file managers and Time Machine no longer find it on their own.
 
 ## Recycle bin for network shares
 

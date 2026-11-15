@@ -26,6 +26,9 @@ configuration:
   smb_port:
     name: SMB-Port
     description: SMB-Port (Standard 445). Ändere auf z.B. 4445 falls das offizielle Samba-Add-on parallel läuft.
+  mdns_enabled:
+    name: mDNS / Bonjour (Avahi)
+    description: "Kündigt das NAS per mDNS/Bonjour an (macOS-Finder, Linux-Dateimanager, Time Machine) und macht es als NASNAME.local erreichbar. Ausschalten, wenn eine andere App mit Host-Netzwerk ebenfalls Avahi startet: Pro Host funktioniert nur ein Avahi, das zweite hängt in \"Host name conflict\". Die Windows-Erkennung (WSDD) läuft weiter."
   webdav_enabled:
     name: WebDAV
     description: "Die Freigaben zusätzlich über WebDAV anbieten (http://DEINE-HA-IP:webdav_port/), z. B. für Handy-Apps, Windows, macOS und den Zugriff von unterwegs. Anmeldung mit den Samba-Benutzern; gleiche Rechte wie bei Samba. Fürs Internet nur über einen Reverse Proxy mit HTTPS veröffentlichen."

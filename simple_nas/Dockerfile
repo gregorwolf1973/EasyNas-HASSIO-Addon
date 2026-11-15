@@ -57,11 +57,8 @@ RUN curl -sSL https://raw.githubusercontent.com/christgau/wsdd/master/src/wsdd.p
 RUN mkdir -p /etc/samba /var/log/samba /var/run/samba /data/shares /data/mounts \
     /var/run/dbus /var/run/avahi-daemon /etc/avahi/services
 
-# Copy avahi service definition (mDNS discovery for Linux & macOS)
-COPY smb.service /etc/avahi/services/smb.service
-
-# Avahi config: allow running in container without chroot
-# Do not restrict to a single interface so it works regardless of HA network setup
+# Avahi config: allow running in container without chroot.
+# run.sh restricts it to the LAN interface and publishes _smb._tcp with the configured port.
 RUN sed -i 's/#enable-dbus=yes/enable-dbus=yes/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
 
 # Copy application files and set permissions
