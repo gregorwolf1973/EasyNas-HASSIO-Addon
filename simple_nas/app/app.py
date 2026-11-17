@@ -30,6 +30,7 @@ import wopi
 import remote_backup
 import services
 import trim
+import devuuid
 from ratelimit import LIMITER, AUTHFAIL_IP, AUTHFAIL_LINK, LOCK_BASE, LOCK_CAP, Limiter
 
 # ── Admin-Login: Brute-Force-Schutz ─────────────────────────────────────────
@@ -1167,6 +1168,8 @@ def api_mount():
         "mountpoint":     mountpoint,
         "fstype":         fstype,
         "resolved_fstype": resolved_fs,
+        # Second key: survives swapping the USB adapter (its serial is in the by-id name)
+        "uuid":           devuuid.uuid_of(stable_dev),
     })
     save_json(MOUNTS_FILE, mounts)
     reload_samba()

@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.21.0
+- **Laufwerke nach Adapter- oder Gehaeusetausch wiederfinden:** Simple NAS merkte sich USB-Laufwerke unter einem Namen, der die Seriennummer des USB-Adapters enthaelt (`/dev/disk/by-id/usb-...`), nicht die der Festplatte. Nach dem Tausch von Adapter oder Gehaeuse fand es die Platte deshalb nicht mehr, obwohl sich auf ihr nichts geaendert hatte; die Freigaben blieben leer, im Log stand "ist kein Block-Device". Jetzt speichert Simple NAS zusaetzlich die UUID des Dateisystems. Fehlt der gespeicherte Pfad beim Start, sucht es das Laufwerk ueber die UUID, haengt es ein und merkt sich den neuen Pfad; das Log nennt den Grund. Bereits eingerichtete Laufwerke bekommen ihre UUID beim ersten Start mit dieser Version, solange sie angeschlossen sind. War der Adapter schon vorher getauscht, das Laufwerk einmal aus- und wieder einhaengen.
+
 ## 3.20.0
 - **mDNS/Bonjour abschaltbar** (Issue #20): Die neue Option `mdns_enabled` (Standard an) laesst Avahi ungestartet. Auf einem Host funktioniert nur ein Avahi: Startet eine andere App mit Host-Netzwerk ihr eigenes Avahi, beanspruchen beide dieselbe IP-Adresse, und das zweite haengt in "Host name conflict, retrying with ...-2, -3, ..." - auch mit anderem Host-Namen oder auf eine Schnittstelle beschraenkt (auf Home Assistant OS nachgestellt). Ohne mDNS erscheint das NAS nicht mehr im Finder und in Linux-Dateimanagern, und Time Machine findet es nicht von selbst; die Windows-Erkennung (WSDD und LLMNR) bleibt.
 - **Avahi kuendigt nur noch im Heimnetz an:** Es arbeitet wie WSDD seit 3.13.0 nur auf der Schnittstelle mit der Standardroute. Bisher bekamen Clients zusaetzlich 127.0.0.1 und die Docker-Adressen 172.30.x.x angeboten.

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Restore saved mounts via the mount_helper FIFO daemon."""
-import json, os, time
+import json, os, sys, time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import devuuid  # noqa: E402
 
 MOUNTS_FILE  = "/data/mounts.json"
 MOUNT_FIFO   = "/tmp/mount_cmd"
@@ -42,6 +45,7 @@ try:
 except Exception:
     pass
 
+changed = False
 for m in mounts:
     device     = m.get("device")
     mountpoint = m.get("mountpoint")
@@ -53,9 +57,13 @@ for m in mounts:
     helper_call("MKDIR", mountpoint)
     os.makedirs(mountpoint, exist_ok=True)
 
-    rc, out = 1, "not started"
+    rc, out, how, path = 1, "not started", None, device
     for attempt in range(1, MOUNT_RETRIES + 1):
-        rc, out = helper_call("MOUNT", device, mountpoint, fstype)
+        # The saved by-id path names the USB adapter; after swapping it the
+        # drive is found again by its file system UUID (if one was saved).
+        found, how = devuuid.resolve(m)
+        path = found or device
+        rc, out = helper_call("MOUNT", path, mountpoint, fstype)
         if rc == 0:
             break
         # USB devices may not be ready immediately at boot — retry
@@ -70,6 +78,25 @@ for m in mounts:
         break  # non-retryable error
 
     if rc == 0:
-        print(f"Mounted {device} -> {mountpoint}")
+        print(f"Mounted {path} -> {mountpoint}")
+        if how == "uuid":
+            print(f"[MOUNT] {device} nicht mehr vorhanden (Adapter oder Gehaeuse getauscht?) - "
+                  f"Laufwerk ueber die UUID gefunden, gespeichert als {path}")
+            m["device"] = path
+            changed = True
+        if not m.get("uuid"):
+            uuid = devuuid.uuid_of(path)
+            if uuid:
+                m["uuid"] = uuid
+                changed = True
     else:
         print(f"Failed to mount {device}: {out}")
+
+if changed:
+    try:
+        with open(MOUNTS_FILE + ".tmp", "w") as f:
+            json.dump(mounts, f, indent=2)
+        os.replace(MOUNTS_FILE + ".tmp", MOUNTS_FILE)
+        print("[MOUNT] mounts.json aktualisiert (UUID gespeichert)")
+    except Exception as e:
+        print(f"[MOUNT] mounts.json nicht gespeichert: {e}")
