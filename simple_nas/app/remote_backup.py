@@ -17,10 +17,13 @@ Everything secret - provider passwords, keys, the archive password - lives in
 /data/remote_backup/, which the share sandbox masks (sharesandbox.JAIL_MASK_DIRS).
 Only one job runs at a time; scheduled and manual runs share one queue.
 """
+import base64
+import binascii
 import collections
 import copy
 import ctypes
 import datetime
+import hashlib
 import json
 import os
 import platform
@@ -361,6 +364,10 @@ def _conn_key(job):
     return json.dumps([job.get("engine"), t, job.get("remote_path"), job.get("encrypt")], sort_keys=True)
 
 
+def _host_id(t):
+    return (t.get("provider"), t.get("host"), str(t.get("port") or 22))
+
+
 def normalize(body, existing=None, require_sources=True):
     """Validate a job from the UI. existing: the stored job when editing."""
     if not isinstance(body, dict):
@@ -449,6 +456,10 @@ def normalize(body, existing=None, require_sources=True):
 
     if ex and _conn_key(job) != _conn_key(ex):
         job["initialized"] = False
+    # Learned SSH host key: kept unless the server changed or the user asks to learn it again
+    if (ex.get("host_keys") and not body.get("forget_host_key")
+            and _host_id(target) == _host_id(ex.get("target") or {})):
+        job["host_keys"] = ex["host_keys"]
     pw = _text(body.get("password"), "Passwort", 200, strip=False)
     if not pw:
         pw = ex.get("password", "")
@@ -475,6 +486,7 @@ def public(job):
             t[f] = ""
     j["has_password"] = bool(j.get("password"))
     j["password"] = ""
+    j["host_key_fps"] = [f for f in (fingerprint(k) for k in j.pop("host_keys", None) or []) if f]
     st = dict(_state.get(j.get("id")) or {})   # copy first: the worker adds keys while we read
     j["state"] = {k: v for k, v in st.items() if k not in ("cancel", "summary")} or None
     nxt = next_slot(j.get("schedule") or {}, datetime.datetime.now())
@@ -625,7 +637,64 @@ def _join(root, *parts):
     return root + sep + "/".join(parts)
 
 
-def build_rclone_conf(job, obscure=_obscure):
+# ─────────────────────────── SSH host keys ──────────────────────
+# rclone's sftp backend trusts any server unless it gets a known_hosts file.
+# Trust on first use: the key is fetched once with ssh-keyscan, stored in the
+# job and checked on every later connect. A changed key stops the run.
+SSH_PROVIDERS = ("hetzner", "sftp")
+_KEY_TYPES = ("ssh-ed25519", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384",
+              "ecdsa-sha2-nistp521", "rsa-sha2-512", "rsa-sha2-256", "ssh-rsa")
+
+
+def keyscan(host, port, run=subprocess.run):
+    """known_hosts lines of a server (empty list when it cannot be reached)."""
+    try:
+        r = run(["ssh-keyscan", "-T", "10", "-p", str(int(port)), host],
+                capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return []
+    out = []
+    for line in (r.stdout or "").splitlines():
+        parts = line.split()
+        if len(parts) == 3 and not line.startswith("#") and parts[1] in _KEY_TYPES:
+            if line not in out:
+                out.append(line)
+    return out
+
+
+def fingerprint(line):
+    """'ED25519 SHA256:...' like ssh-keygen -lf prints it."""
+    try:
+        _, ktype, blob = line.split()[:3]
+        digest = hashlib.sha256(base64.b64decode(blob)).digest()
+    except (ValueError, binascii.Error):
+        return ""
+    name = {"ssh-ed25519": "ED25519", "ssh-rsa": "RSA"}.get(ktype, ktype.split("-")[0].upper())
+    return f"{name} SHA256:" + base64.b64encode(digest).decode().rstrip("=")
+
+
+def _known_hosts(job, scan=None):
+    """Path of the known_hosts file for this run, None for non-SSH targets.
+    Learns the server key on the first connect."""
+    t = job["target"]
+    if t["provider"] not in SSH_PROVIDERS:
+        return None
+    keys = job.get("host_keys") or []
+    if not keys:
+        keys = (scan or keyscan)(t["host"], t.get("port") or 22)
+        if not keys:
+            raise RunError(f"Serverschlüssel von {t['host']} nicht abrufbar - Server und Port prüfen. "
+                           "Ohne Schlüssel wird nicht verbunden, damit sich niemand dazwischenschalten kann.")
+        job["host_keys"] = keys
+        if _update_job(job["id"], host_keys=keys):
+            print(f"[BACKUP] {job.get('name')}: Serverschlüssel von {t['host']} gespeichert: "
+                  + ", ".join(fingerprint(k) for k in keys), flush=True)
+    path = _dir("run", f"{job['id']}.known_hosts")
+    _write_private(path, "\n".join(keys) + "\n")
+    return path
+
+
+def build_rclone_conf(job, obscure=_obscure, known_hosts=None):
     t = job["target"]
     prov = t["provider"]
     name = f"t_{job['id']}"
@@ -633,12 +702,16 @@ def build_rclone_conf(job, obscure=_obscure):
     if prov == "hetzner":
         sections.append((name, [("type", "sftp"), ("host", t["host"]), ("user", t["user"]),
                                 ("port", str(t.get("port") or 22)), ("pass", obscure(t["password"]))]))
+        if known_hosts:
+            sections[-1][1].append(("known_hosts_file", known_hosts))
     elif prov == "sftp":
         opts = [("type", "sftp"), ("host", t["host"]), ("user", t["user"]), ("port", str(t.get("port") or 22))]
         if t.get("password"):
             opts.append(("pass", obscure(t["password"])))
         if t.get("key_pem"):
             opts.append(("key_pem", t["key_pem"].replace("\n", "\\n")))
+        if known_hosts:
+            opts.append(("known_hosts_file", known_hosts))
         sections.append((name, opts))
     elif prov == "s3":
         opts = [("type", "s3"), ("provider", t.get("s3_provider") or "Other"),
@@ -683,7 +756,7 @@ def build_rclone_conf(job, obscure=_obscure):
 def _prepare(job):
     """Write this job's rclone config and password file; return the env."""
     conf = _dir("run", f"{job['id']}.conf")
-    _write_private(conf, build_rclone_conf(job))
+    _write_private(conf, build_rclone_conf(job, known_hosts=_known_hosts(job)))
     env = dict(os.environ)
     env["RCLONE_CONFIG"] = conf
     env["GOMAXPROCS"] = str(BACKUP_CPU_CORES)
@@ -699,7 +772,7 @@ def _prepare(job):
 
 
 def _cleanup_run_files(jid):
-    for ext in ("conf", "pw"):
+    for ext in ("conf", "pw", "known_hosts"):
         try:
             os.remove(_dir("run", f"{jid}.{ext}"))
         except OSError:
@@ -775,6 +848,10 @@ def rclone_sync_cmds(job, ts):
 # rclone prints this NOTICE on every SFTP connect; it only buries the real error.
 _NOISE_RE = re.compile(r"host key validation|known_hosts_file|#host-key-validation", re.I)
 _EXPLAIN = (
+    (re.compile(r"knownhosts: key mismatch|host key mismatch|REMOTE HOST IDENTIFICATION HAS CHANGED", re.I),
+     "Der Server zeigt einen anderen Schlüssel als beim ersten Verbinden - abgebrochen. Das kann ein Angriff "
+     "sein oder der Anbieter hat den Schlüssel erneuert. Nur wenn Letzteres sicher ist: im Auftrag unter "
+     "\"Erweitert\" \"Serverschlüssel neu lernen\" anhaken und speichern."),
     (re.compile(r"unable to authenticate|permission denied|auth(entication)? failed|401 unauthorized", re.I),
      "Anmeldung abgelehnt - Benutzer und Passwort prüfen. Hetzner Storage Box: Port 22 nehmen "
      "oder für Port 23 in der Hetzner Console \"SSH-Support\" einschalten."),

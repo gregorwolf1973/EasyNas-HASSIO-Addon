@@ -946,6 +946,11 @@
     <div class="form-group"><label data-i18n="rb_bw">Upload-Limit (Mbit/s, 0 = ohne)</label><input type="number" id="rb-bw" min="0" step="0.5"></div>
     <div class="form-group"><label data-i18n="rb_conns">Parallele Verbindungen</label><input type="number" id="rb-conns" min="1" max="16" step="1"></div>
     <div class="rb-hint" data-i18n="rb_conns_hint">Mehr Verbindungen nutzen die Leitung besser aus.</div>
+    <div id="rb-hostkey-g" style="display:none">
+      <div class="form-group"><label data-i18n="rb_hostkey">Serverschlüssel</label><div id="rb-hostkey" style="font-family:monospace;font-size:12px;word-break:break-all"></div></div>
+      <div class="toggle-row"><div><div class="toggle-label" data-i18n="rb_hostkey_forget">Serverschlüssel neu lernen</div><div class="toggle-sub" data-i18n="rb_hostkey_forget_sub">Nur anhaken, wenn der Anbieter seinen Schlüssel erneuert hat.</div></div>
+        <label class="toggle" id="rb-hkf-t"><input type="checkbox" id="rb-hkf" onchange="updateToggle('rb-hkf-t',this)"><div class="toggle-knob"></div></label></div>
+    </div>
     <div class="toggle-row"><div><div class="toggle-label" data-i18n="rb_notify">Bei Fehler benachrichtigen</div><div class="toggle-sub" data-i18n="rb_notify_sub">Meldung in Home Assistant, wenn ein Backup fehlschlägt</div></div>
       <label class="toggle" id="rb-notify-t"><input type="checkbox" id="rb-notify" onchange="updateToggle('rb-notify-t',this)"><div class="toggle-knob"></div></label></div>
   </details>
@@ -1274,6 +1279,10 @@ const T={
     rb_advanced:'Erweitert',rb_excludes:'Ausschließen',rb_excludes_hint:'Ein Muster pro Zeile, z. B. <code>*.tmp</code>, <code>.Trash-*</code> oder <code>@Recycle</code>.',
     rb_conns:'Parallele Verbindungen',
     rb_conns_hint:'Mehr Verbindungen nutzen die Leitung besser aus (Standard 8). Hetzner Storage Box: höchstens 8, die Box erlaubt 10 gleichzeitig. Bei Abbrüchen oder Fehlern wie „too many connections“ verringern.',
+    rb_hostkey:'Serverschlüssel (beim ersten Verbinden gespeichert)',
+    rb_hostkey_none:'Noch nicht gespeichert - wird beim ersten Verbinden gelernt und danach bei jeder Verbindung geprüft.',
+    rb_hostkey_forget:'Serverschlüssel neu lernen',
+    rb_hostkey_forget_sub:'Nur anhaken, wenn der Anbieter seinen Schlüssel nachweislich erneuert hat. Sonst schützt die Prüfung davor, dass sich jemand zwischen NAS und Server schaltet.',
     rb_lock_text:'Backup-Programm, Ziel und Ordner sind fixiert, weil hier schon gesichert wurde.',rb_lock_btn:'Ziel ändern …',
     rb_unlock_ok:'Verstanden, entsperren',
     rb_unlock_html:'<b>Erst die Daten verschieben, dann hier ändern.</b> Die gesicherten Daten bleiben am bisherigen Ort. Änderst du nur diesen Eintrag, beginnt das nächste Backup am neuen Ort von vorn und lädt alles noch einmal hoch – das alte Archiv bliebe ungenutzt liegen.'
@@ -1450,6 +1459,10 @@ const T={
     rb_advanced:'Advanced',rb_excludes:'Exclude',rb_excludes_hint:'One pattern per line, e.g. <code>*.tmp</code>, <code>.Trash-*</code> or <code>@Recycle</code>.',
     rb_conns:'Parallel connections',
     rb_conns_hint:'More connections make better use of the line (default 8). Hetzner Storage Box: at most 8, the box allows 10 at a time. Lower it if runs break off or report "too many connections".',
+    rb_hostkey:'Server key (saved on first connect)',
+    rb_hostkey_none:'Not saved yet - learned on the first connect and checked on every connection after that.',
+    rb_hostkey_forget:'Learn server key again',
+    rb_hostkey_forget_sub:'Only tick this if the provider has verifiably renewed its key. Otherwise the check protects against someone getting between the NAS and the server.',
     rb_lock_text:'Backup program, destination and folder are locked because backups already exist here.',rb_lock_btn:'Change destination …',
     rb_unlock_ok:'Understood, unlock',
     rb_unlock_html:'<b>Move the data first, then change it here.</b> The backed-up data stays where it is. If you only change this entry, the next backup starts from scratch at the new place and uploads everything again – the old archive would be left unused.'
@@ -3326,6 +3339,10 @@ function openRbModal(id){
   document.getElementById('rb-bw').value=j?(j.bwlimit_mbit||0):0;
   document.getElementById('rb-conns').value=(j&&j.connections)||8;
   const nt=document.getElementById('rb-notify');nt.checked=j?j.notify!==false:true;updateToggle('rb-notify-t',nt);
+  const hk=j&&j.host_key_fps||[];
+  document.getElementById('rb-hostkey-g').style.display=j&&['hetzner','sftp'].includes(j.target.provider)?'':'none';
+  document.getElementById('rb-hostkey').innerHTML=hk.length?hk.map(esc).join('<br>'):esc(t('rb_hostkey_none'));
+  const hkf=document.getElementById('rb-hkf');hkf.checked=false;updateToggle('rb-hkf-t',hkf);
   rbSetEngine(j?j.engine:'restic');rbSchedVis();
   // After the first backup the location is fixed: changing it only here
   // would start a second archive from scratch. Unlocking explains the order.
@@ -3375,7 +3392,8 @@ function rbCollect(){
     schedule:{type:rbVal('rb-sched'),time:rbVal('rb-time')||'03:00',weekday:rbVal('rb-weekday')},
     excludes:rbVal('rb-excludes'),bwlimit_mbit:parseFloat(rbVal('rb-bw'))||0,
     connections:parseInt(rbVal('rb-conns'),10)||8,
-    notify:document.getElementById('rb-notify').checked};
+    notify:document.getElementById('rb-notify').checked,
+    forget_host_key:document.getElementById('rb-hkf').checked};
 }
 async function rbSave(){
   const body=rbCollect();

@@ -25,7 +25,8 @@ RUN apk add --no-cache \
     avahi-tools \
     dbus \
     rsync \
-    smartmontools
+    smartmontools \
+    openssh-client-common
 
 # hd-idle for optional HDD spindown (hdd_idle_seconds).
 # Kept in a separate, NON-FATAL step so the add-on still builds even if the

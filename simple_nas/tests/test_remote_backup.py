@@ -20,8 +20,16 @@ sys.path.insert(0, os.path.join(HERE, "..", "app"))
 
 import app as nas  # noqa: E402
 import remote_backup as rb  # noqa: E402
+
+REAL_KEYSCAN = rb.keyscan
 import safepath  # noqa: E402
 import sharesandbox  # noqa: E402
+
+
+HOST_KEY = ("u123.your-storagebox.de ssh-ed25519 "
+            "AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl")
+
+FP = "+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU"   # ssh-keygen -lf
 
 
 def fake_obscure(secret):
@@ -44,6 +52,10 @@ class _Base(unittest.TestCase):
         self._saved_cfg = dict(rb._cfg)
         rb.init(self.data, lambda p: safepath.resolve_in_roots(roots, p, deny=()))
         rb._state.clear()
+        # No network on the test box: every SSH target "answers" with this key
+        kp = mock.patch.object(rb, "keyscan", return_value=[HOST_KEY])
+        kp.start()
+        self.addCleanup(kp.stop)
         self.media = safepath.real(self.media)
         self.share = safepath.real(self.share)
 
@@ -341,6 +353,79 @@ class ConfigAndCommandTest(_Base):
         job = rb.normalize(body)
         job["id"] = "abcd1234"
         self.assertNotIn("-o", rb.restic_backup_cmd(job))
+
+
+class HostKeyTest(_Base):
+    def job(self, **kw):
+        j = rb.normalize(self.hetzner(**kw))
+        j["id"] = "abcd1234"
+        return j
+
+    def test_keyscan_parses_and_filters(self):
+        out = ("# u123.your-storagebox.de:22 SSH-2.0-mod_sftp\n"
+               + HOST_KEY + "\n" + HOST_KEY + "\n"
+               "u123.your-storagebox.de ssh-dss AAAAB3NzaC1kc3MAAACBAP\n")
+        run = mock.Mock(return_value=mock.Mock(stdout=out))
+        self.assertEqual(REAL_KEYSCAN("u123.your-storagebox.de", 23, run=run), [HOST_KEY])
+        self.assertEqual(run.call_args[0][0], ["ssh-keyscan", "-T", "10", "-p", "23", "u123.your-storagebox.de"])
+
+    def test_unreachable_server_gives_no_keys(self):
+        run = mock.Mock(side_effect=OSError("kein ssh-keyscan"))
+        self.assertEqual(REAL_KEYSCAN("h", 22, run=run), [])
+
+    def test_fingerprint_like_ssh_keygen(self):
+        self.assertEqual(rb.fingerprint(HOST_KEY), "ED25519 SHA256:" + FP)
+        self.assertEqual(rb.fingerprint("kaputt"), "")
+
+    def test_conf_has_known_hosts_file(self):
+        conf = rb.build_rclone_conf(self.job(), obscure=fake_obscure, known_hosts="/data/kh")
+        self.assertIn("known_hosts_file = /data/kh", conf)
+        sftp = self.job(target={"provider": "sftp", "host": "nas.example", "user": "u", "password": "p"})
+        self.assertIn("known_hosts_file = /data/kh", rb.build_rclone_conf(sftp, obscure=fake_obscure, known_hosts="/data/kh"))
+
+    def test_first_connect_learns_and_saves_key(self):
+        job = self.job()
+        rb.save_jobs([job])
+        path = rb._known_hosts(job)
+        with open(path) as f:
+            self.assertEqual(f.read(), HOST_KEY + "\n")
+        self.assertEqual(rb.get_job("abcd1234")["host_keys"], [HOST_KEY])
+
+    def test_saved_key_is_not_scanned_again(self):
+        job = self.job()
+        job["host_keys"] = ["u123.your-storagebox.de ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ=="]
+        scan = mock.Mock()
+        rb._known_hosts(job, scan=scan)
+        scan.assert_not_called()
+
+    def test_no_key_no_connection(self):
+        with self.assertRaises(rb.RunError):
+            rb._known_hosts(self.job(), scan=lambda h, p: [])
+
+    def test_other_providers_untouched(self):
+        t = {"provider": "b2", "b2_account": "id", "b2_key": "k", "bucket": "nas"}
+        self.assertIsNone(rb._known_hosts(self.job(target=t)))
+
+    def test_edit_keeps_key_unless_server_changes_or_forget(self):
+        ex = self.job()
+        ex["host_keys"] = [HOST_KEY]
+        self.assertEqual(rb.normalize(self.hetzner(), ex).get("host_keys"), [HOST_KEY])
+        self.assertNotIn("host_keys", rb.normalize(self.hetzner(forget_host_key=True), ex))
+        other = self.hetzner(target={"provider": "hetzner", "host": "u999.your-storagebox.de",
+                                     "user": "u999", "password": "x"})
+        self.assertNotIn("host_keys", rb.normalize(other, ex))
+
+    def test_public_shows_fingerprint_only(self):
+        job = self.job()
+        job["host_keys"] = [HOST_KEY]
+        pub = rb.public(job)
+        self.assertNotIn("host_keys", pub)
+        self.assertEqual(pub["host_key_fps"], ["ED25519 SHA256:" + FP])
+
+    def test_changed_key_is_explained(self):
+        msg = rb._tail("Failed: couldn't connect SSH: ssh: handshake failed: knownhosts: key mismatch")
+        self.assertIn("anderen Schlüssel", msg)
+        self.assertIn("neu lernen", msg)
 
 
 class PriorityTest(_Base):
