@@ -153,6 +153,7 @@ Some devices can only upload over FTP, for example IP cameras that store snapsho
 - Active and passive mode both work. Passive mode uses the ports in `ftp_passive_ports` (default 30000–30010).
 - Deleting moves files into the share's recycle bin (`.recycle`) when it is on, like over Samba. Symlinks pointing outside a share are refused.
 - Wrong passwords lock the IP address and the user name like WebDAV does (shared lock list). The Settings tab → FTP shows the state, the server address and the locks; click a lock to lift it.
+- **FTP log:** every login, download and upload (with size and duration), deletion, rename and refused command is written to `/data/ftp.log`, plus one summary per session. The Settings tab → FTP shows how much each device moved in the last 24 hours and the latest entries. The file is kept at about 2 MB; older entries are dropped. The add-on log only gets the session summary, and only when a session had errors or moved more than 100 MB – a camera uploading pictures does not fill it. Passwords are never logged.
 
 **FTP is unencrypted** – user name, password and files travel in plain text. Use it in the home network only and never forward the port in your router. Best to create a Samba user just for the device and allow it only the one share it writes to.
 

@@ -8,6 +8,7 @@ import shutil
 import socket
 import sys
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -61,7 +62,11 @@ class FtpServerTest(unittest.TestCase):
         auth = ftp.SambaAuthorizer(share_set, webdav.SambaPasswords(lambda: users), limiter=self.limiter,
                                    log=lambda e, **k: self.events.append((e, k)),
                                    recycle_on=lambda: self.recycle[0])
-        handler = ftp.make_handler(auth, list(range(free_port(), free_port() + 1)))
+        self.log_file = os.path.join(self.tmp, "ftp.log")
+        self.transfer_log = ftp.TransferLog(self.log_file)
+        self.addon_lines = []
+        handler = ftp.make_handler(auth, list(range(free_port(), free_port() + 1)),
+                                   transfer_log=self.transfer_log, session_log=self.addon_lines.append)
         handler.auth_failed_timeout = 0.01
         self.port = free_port()
         self.server = ftp.serve(handler, self.port, host="127.0.0.1")
@@ -172,6 +177,96 @@ class FtpServerTest(unittest.TestCase):
             json.dump(self.shares, f)
         os.utime(self.shares_file, ns=(1, 1))   # a new mtime even within the same clock tick
         self.assertIn("neu", self.client("anna").nlst("/"))
+
+    def wait_for_session(self, count=1):
+        """on_disconnect runs a moment after the client has gone."""
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            sessions = [e for e in self.transfer_log.entries() if e["ev"] == "session"]
+            if len(sessions) >= count:
+                return sessions
+            time.sleep(0.05)
+        self.fail("no session summary in the FTP log")
+
+    def test_activity_log(self):
+        c = self.client("anna")
+        self.upload(c, "/medien/a.jpg", b"x" * 1000)
+        c.retrbinary("RETR /docs/readme.txt", lambda b: None)
+        c.mkd("/medien/neu")
+        with self.assertRaises(ftplib.error_perm):
+            c.mkd("/medien/neu")                # exists: a probe, not an error
+        with self.assertRaises(ftplib.error_perm):
+            c.cwd("/medien/gibtsnicht")         # a real error
+        c.delete("/medien/a.jpg")
+        c.quit()
+        session = self.wait_for_session()[0]
+        events = self.transfer_log.entries()
+        kinds = [e["ev"] for e in events]
+        self.assertEqual(kinds[0], "login")
+        self.assertEqual(events[0]["user"], "anna")
+        self.assertEqual(events[0]["ip"], "127.0.0.1")
+        up = next(e for e in events if e["ev"] == "upload")
+        self.assertEqual((up["bytes"], up["ok"]), (1000, True))
+        self.assertTrue(up["path"].endswith("/media/a.jpg"))
+        down = next(e for e in events if e["ev"] == "download")
+        self.assertEqual(down["bytes"], 5)
+        self.assertIn("mkdir", kinds)
+        self.assertIn("delete", kinds)
+        errors = [e for e in events if e["ev"] == "error"]
+        self.assertEqual(sorted(e["cmd"] for e in errors), ["CWD", "MKD"])
+        self.assertTrue(all(e["code"] == 550 for e in errors))
+        self.assertEqual((session["up_n"], session["up_bytes"], session["down_n"], session["down_bytes"]),
+                         (1, 1000, 1, 5))
+        self.assertEqual(session["errors"], 1)  # the existing folder does not count
+        self.assertEqual(len(self.addon_lines), 1)
+        self.assertIn("anna@127.0.0.1", self.addon_lines[0])
+        with open(self.log_file) as f:
+            self.assertNotIn("anna-pw", f.read())   # never the password
+
+    def test_camera_session_stays_out_of_the_addon_log(self):
+        os.makedirs(os.path.join(self.tmp, "media", "camera", "20261122"))
+        c = self.client("cam")
+        with self.assertRaises(ftplib.error_perm):
+            c.mkd("/kamera/20261122")           # the camera creates its folder every time
+        self.upload(c, "/kamera/20261122/1_person.jpg")
+        c.quit()
+        session = self.wait_for_session()[0]
+        self.assertEqual((session["up_n"], session["errors"]), (1, 0))
+        self.assertEqual(self.addon_lines, [])
+        summary = self.transfer_log.summary(0)
+        self.assertEqual([(r["user"], r["up_n"], r["up_bytes"], r["logins"]) for r in summary], [("cam", 1, 3, 1)])
+
+    def test_failed_login_writes_no_password(self):
+        with self.assertRaises(ftplib.error_perm):
+            self.client("anna", "geheim123")
+        time.sleep(0.3)
+        text = open(self.log_file).read() if os.path.exists(self.log_file) else ""
+        self.assertNotIn("geheim123", text)
+
+
+class TransferLogTest(unittest.TestCase):
+    def test_rotation_summary_and_clear(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        log = ftp.TransferLog(os.path.join(tmp, "ftp.log"), max_bytes=300)
+        for i in range(10):
+            log.write(ev="download", ip="192.168.178.50", user="gregor", path=f"/media/film{i}.mkv", bytes=1000)
+        log.write(ev="upload", ip="192.168.178.118", user="kamera", path="/media/camera/x.jpg", bytes=10)
+        self.assertTrue(os.path.exists(os.path.join(tmp, "ftp.log.1")))
+        self.assertLess(len(log.entries()), 11)         # the oldest are gone
+        self.assertEqual(log.tail(1)[0]["user"], "kamera")
+        self.assertEqual(log.tail(5, event="upload")[0]["bytes"], 10)
+        top = log.summary(0)[0]
+        self.assertEqual((top["ip"], top["user"]), ("192.168.178.50", "gregor"))
+        self.assertEqual(top["down_bytes"], 1000 * top["down_n"])
+        self.assertEqual(log.summary(time.time() + 60), [])
+        log.clear()
+        self.assertEqual(log.entries(), [])
+
+    def test_human_bytes(self):
+        self.assertEqual(ftp.human_bytes(0), "0 B")
+        self.assertEqual(ftp.human_bytes(1536), "1.5 KB")
+        self.assertEqual(ftp.human_bytes(5 * 1024 ** 3), "5.0 GB")
 
 
 class PassivePortsTest(unittest.TestCase):

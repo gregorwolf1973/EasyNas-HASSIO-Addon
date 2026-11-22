@@ -512,7 +512,8 @@ def api_webdav_unlock():
 # ── FTP ──
 # Fuer Geraete, die nur FTP koennen (IP-Kameras, Scanner): die Freigaben mit pyftpdlib auf eigenem Port,
 # Anmeldung und Rechte wie bei WebDAV (ftp.py). Unverschluesselt - nur im Heimnetz.
-_FTP = {"server": None, "shares": None, "port": None, "error": None, "passwords": None}
+_FTP = {"server": None, "shares": None, "port": None, "error": None, "passwords": None, "log": None}
+FTP_LOG_FILE = f"{DATA_DIR}/ftp.log"
 
 
 def _ftp_log(event, **fields):
@@ -535,8 +536,11 @@ def start_ftp():
     authorizer = ftp.SambaAuthorizer(shares, passwords, log=_ftp_log,
                                      recycle_on=lambda: recycle_settings()["enabled"], recycle_dir=RECYCLE_DIR)
     passive = ftp.parse_passive_ports(_opt("ftp_passive_ports", ftp.DEFAULT_PASSIVE))
+    _FTP["log"] = ftp.TransferLog(FTP_LOG_FILE)
+    handler = ftp.make_handler(authorizer, passive, transfer_log=_FTP["log"],
+                               session_log=lambda msg: print(f"[FTP] {msg}", flush=True))
     try:
-        server = ftp.serve(ftp.make_handler(authorizer, passive), port)
+        server = ftp.serve(handler, port)
     except OSError as e:
         _FTP["error"] = f"Port {port} ist belegt ({e}) - ftp_port aendern oder das andere FTP-Add-on stoppen"
         print(f"[FTP] FEHLER: {_FTP['error']}", flush=True)
@@ -557,6 +561,40 @@ def api_get_ftp():
                     "shares": _FTP["shares"].names() if _FTP["shares"] is not None else [],
                     "locks": snap["locks"], "authfail": snap["counters"],
                     "authfail_limit": AUTHFAIL_IP[0], "authfail_window_min": AUTHFAIL_IP[1] // 60})
+
+
+def _ftp_transfer_log():
+    if _FTP["log"] is None:                  # FTP off: still show what an earlier run wrote
+        try:
+            import ftp
+        except ImportError:
+            return None
+        _FTP["log"] = ftp.TransferLog(FTP_LOG_FILE)
+    return _FTP["log"]
+
+
+@app.route("/api/settings/ftp/log", methods=["GET"])
+def api_ftp_log():
+    """FTP-Protokoll: die neuesten Eintraege und die Datenmenge je Geraet/Benutzer (Standard: 24 h)."""
+    try:
+        limit = max(1, min(int(request.args.get("limit", 200)), 2000))
+        hours = max(1, min(int(request.args.get("hours", 24)), 24 * 31))
+    except ValueError:
+        return jsonify({"error": "limit und hours muessen Zahlen sein"}), 400
+    log = _ftp_transfer_log()
+    if log is None:
+        return jsonify({"entries": [], "summary": [], "hours": hours})
+    return jsonify({"entries": log.tail(limit, request.args.get("event") or None),
+                    "summary": log.summary(time.time() - hours * 3600), "hours": hours})
+
+
+@app.route("/api/settings/ftp/log", methods=["DELETE"])
+def api_ftp_log_clear():
+    log = _ftp_transfer_log()
+    if log is not None:
+        log.clear()
+    print("[FTP] Protokoll geleert", flush=True)
+    return jsonify({"ok": True})
 
 
 # ── Time Machine (Issue #11) ──

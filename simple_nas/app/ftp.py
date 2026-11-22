@@ -10,8 +10,13 @@
   anonymous FTP does not exist here. Failed logins count in the same limiter as WebDAV.
 - Deleting moves into the share's .recycle folder when the recycle bin is on, like Samba does.
 - Symlinks pointing outside the share are refused, as in WebDAV.
+- Activity log (TransferLog): logins, every download and upload with size and duration, deletes and
+  renames, refused commands and one summary per session go to /data/ftp.log (JSON lines, rotated).
+  The add-on log only gets the session summary, and only for sessions with real errors or a lot of
+  data, so a camera uploading every few minutes does not flood it.
 """
 
+import json
 import logging
 import os
 import random
@@ -33,6 +38,94 @@ ROOT_DIR = "/run/simple-nas-ftp"         # empty stand-in for "/", the list of s
 READ_PERMS = "elr"                      # cd, list, download
 WRITE_PERMS = "adfmwMT"                 # append, delete, mkdir/rmdir, rename, upload, chmod, mtime
 DEFAULT_PASSIVE = "30000-30010"
+
+LOG_MAX_BYTES = 1_000_000               # ftp.log is moved to ftp.log.1 at this size
+ADDON_LOG_MIN_BYTES = 100 * 1024 * 1024  # sessions moving this much get a line in the add-on log
+MAX_ERRORS_LOGGED = 20                  # refused commands written per session; the rest only counted
+CHANGE_CMDS = {"DELE": "delete", "RNTO": "rename", "MKD": "mkdir", "XMKD": "mkdir", "RMD": "rmdir",
+               "XRMD": "rmdir"}
+# Refusals clients cause on purpose: probing a file before an upload, creating a folder that exists
+# (the camera does that for every picture). Written to ftp.log, but no reason for the add-on log.
+PROBE_CMDS = {"SIZE", "MDTM", "MLST"}
+
+
+class TransferLog:
+    """FTP activity as JSON lines in a file; at LOG_MAX_BYTES the file becomes <file>.1 (one old file)."""
+
+    def __init__(self, path, max_bytes=LOG_MAX_BYTES):
+        self.path = path
+        self.max_bytes = max_bytes
+        self._lock = threading.Lock()
+
+    def write(self, **entry):
+        entry = {"ts": round(time.time(), 3), **{k: v for k, v in entry.items() if v is not None and v != ""}}
+        line = json.dumps(entry, ensure_ascii=False) + "\n"
+        with self._lock:
+            try:
+                if os.path.getsize(self.path) >= self.max_bytes:
+                    os.replace(self.path, self.path + ".1")
+            except OSError:
+                pass
+            try:
+                with open(self.path, "a", encoding="utf-8") as f:
+                    f.write(line)
+            except OSError:
+                pass
+
+    def entries(self):
+        """All entries, oldest first."""
+        out = []
+        with self._lock:
+            for path in (self.path + ".1", self.path):
+                try:
+                    with open(path, encoding="utf-8", errors="replace") as f:
+                        for line in f:
+                            try:
+                                out.append(json.loads(line))
+                            except ValueError:
+                                pass
+                except OSError:
+                    pass
+        return out
+
+    def tail(self, limit=200, event=None):
+        """The newest entries first, optionally only one kind (ev)."""
+        rows = [e for e in self.entries() if event is None or e.get("ev") == event]
+        return rows[::-1][:limit]
+
+    def summary(self, since):
+        """Data moved since `since` (epoch) per device and user, the busiest first."""
+        totals = {}
+        for e in self.entries():
+            if e.get("ts", 0) < since or e.get("ev") not in ("download", "upload", "login"):
+                continue
+            row = totals.setdefault((e.get("ip", ""), e.get("user", "")), {
+                "ip": e.get("ip", ""), "user": e.get("user", ""), "logins": 0, "down_n": 0, "down_bytes": 0,
+                "up_n": 0, "up_bytes": 0, "last": 0})
+            row["last"] = max(row["last"], e.get("ts", 0))
+            if e["ev"] == "login":
+                row["logins"] += 1
+            else:
+                kind = "down" if e["ev"] == "download" else "up"
+                row[kind + "_n"] += 1
+                row[kind + "_bytes"] += int(e.get("bytes") or 0)
+        return sorted(totals.values(), key=lambda r: r["down_bytes"] + r["up_bytes"], reverse=True)
+
+    def clear(self):
+        with self._lock:
+            for path in (self.path, self.path + ".1"):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
+
+def human_bytes(n):
+    n = float(n or 0)
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
 
 
 def parse_passive_ports(text):
@@ -305,12 +398,68 @@ class _Handler(FTPHandler):
     permit_privileged_ports = False
     timeout = 300
     use_sendfile = False
+    transfer_log = None                      # TransferLog or None
+    session_log = None                       # callable(str) for the add-on log, or None
+
+    # --- activity log; pyftpdlib's own logging stays at WARNING (see serve())
+
+    def _session(self):
+        s = self.__dict__.get("_nas_session")
+        if s is None:
+            s = self._nas_session = {"start": time.time(), "down_n": 0, "down_bytes": 0, "up_n": 0,
+                                     "up_bytes": 0, "errors": 0, "logged": 0}
+        return s
+
+    def _write(self, ev, **fields):
+        if self.transfer_log is not None:
+            self.transfer_log.write(ev=ev, ip=self.remote_ip, user=self.username or None, **fields)
+
+    def on_login(self, username):
+        self._session()
+        self._write("login")
+
+    def log_transfer(self, cmd, filename, receive, completed, elapsed, bytes):
+        s = self._session()
+        kind = "up" if receive else "down"
+        s[kind + "_n"] += 1
+        s[kind + "_bytes"] += bytes or 0
+        self._write("upload" if receive else "download", path=filename, bytes=bytes or 0, secs=elapsed,
+                    ok=bool(completed))
+
+    def log_cmd(self, cmd, arg, respcode, respstr):
+        if cmd in ("USER", "PASS"):          # logins: on_login and SambaAuthorizer; PASS carries the password
+            return
+        s = self._session()
+        if respcode >= 400:
+            probe = cmd in PROBE_CMDS or (cmd in ("MKD", "XMKD") and os.path.isdir(arg or ""))
+            if not probe:
+                s["errors"] += 1
+            if s["logged"] < MAX_ERRORS_LOGGED:
+                s["logged"] += 1
+                self._write("error", cmd=cmd, path=arg, code=respcode, msg=respstr)
+        elif cmd in CHANGE_CMDS:
+            self._write(CHANGE_CMDS[cmd], path=arg)
+
+    def on_disconnect(self):
+        s = self.__dict__.get("_nas_session")
+        if s is None:                        # connected and left without a single command
+            return
+        secs = round(time.time() - s["start"], 1)
+        self._write("session", secs=secs, down_n=s["down_n"], down_bytes=s["down_bytes"], up_n=s["up_n"],
+                    up_bytes=s["up_bytes"], errors=s["errors"])
+        if self.session_log is not None and (s["errors"] or s["down_bytes"] + s["up_bytes"] >= ADDON_LOG_MIN_BYTES):
+            who = (self.username or "-") + "@" + (self.remote_ip or "?")
+            self.session_log(f"Sitzung {who}: {secs:.0f} s, geladen {s['down_n']} Dateien "
+                             f"({human_bytes(s['down_bytes'])}), hochgeladen {s['up_n']} "
+                             f"({human_bytes(s['up_bytes'])}), {s['errors']} Fehler - Einzelheiten im FTP-Protokoll")
 
 
-def make_handler(authorizer, passive_ports=None, masquerade_address=None):
+def make_handler(authorizer, passive_ports=None, masquerade_address=None, transfer_log=None, session_log=None):
     handler = type("SimpleNasFTPHandler", (_Handler,), {})
     handler.authorizer = authorizer
     handler.passive_ports = passive_ports or parse_passive_ports(None)
+    handler.transfer_log = transfer_log
+    handler.session_log = staticmethod(session_log) if session_log is not None else None
     if masquerade_address:
         handler.masquerade_address = masquerade_address
     return handler
