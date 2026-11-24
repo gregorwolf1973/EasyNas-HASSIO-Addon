@@ -426,17 +426,28 @@ class _Handler(FTPHandler):
         self._write("upload" if receive else "download", path=filename, bytes=bytes or 0, secs=elapsed,
                     ok=bool(completed))
 
+    def _error(self, cmd, arg, respcode, respstr, probe=False):
+        s = self._session()
+        if not probe:
+            s["errors"] += 1
+        if s["logged"] < MAX_ERRORS_LOGGED:
+            s["logged"] += 1
+            self._write("error", cmd=cmd, path=arg, code=respcode, msg=respstr)
+
     def log_cmd(self, cmd, arg, respcode, respstr):
         if cmd in ("USER", "PASS"):          # logins: on_login and SambaAuthorizer; PASS carries the password
             return
         s = self._session()
-        if respcode >= 400:
-            probe = cmd in PROBE_CMDS or (cmd in ("MKD", "XMKD") and os.path.isdir(arg or ""))
-            if not probe:
-                s["errors"] += 1
-            if s["logged"] < MAX_ERRORS_LOGGED:
-                s["logged"] += 1
-                self._write("error", cmd=cmd, path=arg, code=respcode, msg=respstr)
+        # A refused CWD that the client answers by creating exactly that folder is how cameras open a new
+        # day folder ("CWD 20261124" -> 550 -> "MKD 20261124"). Hold it back and drop it in that case.
+        pending = s.pop("cwd_550", None)
+        if pending is not None and not (cmd in ("MKD", "XMKD") and respcode < 400 and arg == pending[1]):
+            self._error(*pending)
+        if cmd in ("CWD", "XCWD") and respcode == 550:
+            s["cwd_550"] = (cmd, arg, respcode, respstr)
+        elif respcode >= 400:
+            self._error(cmd, arg, respcode, respstr,
+                        probe=cmd in PROBE_CMDS or (cmd in ("MKD", "XMKD") and os.path.isdir(arg or "")))
         elif cmd in CHANGE_CMDS:
             self._write(CHANGE_CMDS[cmd], path=arg)
 
@@ -444,6 +455,9 @@ class _Handler(FTPHandler):
         s = self.__dict__.get("_nas_session")
         if s is None:                        # connected and left without a single command
             return
+        pending = s.pop("cwd_550", None)
+        if pending is not None:              # refused CWD as the last command: a real error
+            self._error(*pending)
         secs = round(time.time() - s["start"], 1)
         self._write("session", secs=secs, down_n=s["down_n"], down_bytes=s["down_bytes"], up_n=s["up_n"],
                     up_bytes=s["up_bytes"], errors=s["errors"])

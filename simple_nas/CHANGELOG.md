@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.23.1
+- **FTP-Protokoll: neuer Tagesordner der Kamera ist kein Fehler mehr.** Kameras wechseln jeden Morgen zuerst in den Ordner des neuen Tages, bekommen "Ordner nicht gefunden" und legen ihn dann an. Das stand bisher als Fehler im FTP-Protokoll und brachte die Sitzung ins Add-on-Log. Jetzt haelt Simple NAS einen abgelehnten Ordnerwechsel kurz zurueck und verwirft ihn, wenn das Geraet genau diesen Ordner gleich danach anlegt. Ein Ordnerwechsel ins Leere ohne anschliessendes Anlegen zaehlt weiter als Fehler.
+
 ## 3.23.0
 - **FTP-Protokoll:** Bisher schrieb der FTP-Server nur Fehlanmeldungen und Sperren ins Log. Wer wann welche Dateien geladen oder hochgeladen hatte, war nicht zu sehen, auch nicht, warum ein Geraet mit einem Pfad scheiterte. Jetzt landen jede Anmeldung, jeder Download und Upload (mit Groesse und Dauer), Loeschen, Umbenennen, abgelehnte Befehle und eine Zusammenfassung je Sitzung in `/data/ftp.log`. Unter Einstellungen > FTP zeigt Simple NAS die Datenmenge je Geraet der letzten 24 Stunden und die neuesten Eintraege; dort laesst sich das Protokoll auch leeren. Die Datei bleibt bei etwa 2 MB, aeltere Eintraege fallen weg. Ins Add-on-Log kommt nur die Zusammenfassung einer Sitzung, und nur bei Fehlern oder mehr als 100 MB - eine Kamera, die alle paar Minuten ein Bild hochlaedt, fuellt es also nicht. Ordner, die es schon gibt, und Dateiproben vor dem Hochladen zaehlen dabei nicht als Fehler. Passwoerter werden nie protokolliert.
 

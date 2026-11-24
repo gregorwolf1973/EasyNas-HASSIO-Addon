@@ -233,6 +233,23 @@ class FtpServerTest(unittest.TestCase):
         session = self.wait_for_session()[0]
         self.assertEqual((session["up_n"], session["errors"]), (1, 0))
         self.assertEqual(self.addon_lines, [])
+
+    def test_camera_new_day_folder_is_no_error(self):
+        c = self.client("cam")
+        with self.assertRaises(ftplib.error_perm):
+            c.cwd("/kamera/20261124")           # the new day folder does not exist yet ...
+        c.mkd("/kamera/20261124")               # ... so the camera creates it
+        with self.assertRaises(ftplib.error_perm):
+            c.cwd("/kamera/20261124/0434D164")
+        c.mkd("/kamera/20261124/0434D164")
+        self.upload(c, "/kamera/20261124/0434D164/1_person.jpg")
+        with self.assertRaises(ftplib.error_perm):
+            c.cwd("/kamera/gibtsnicht")         # not followed by MKD: still an error
+        c.quit()
+        session = self.wait_for_session()[0]
+        errors = [e for e in self.transfer_log.entries() if e["ev"] == "error"]
+        self.assertEqual([e["path"].rsplit("/", 1)[-1] for e in errors], ["gibtsnicht"])
+        self.assertEqual((session["up_n"], session["errors"]), (1, 1))
         summary = self.transfer_log.summary(0)
         self.assertEqual([(r["user"], r["up_n"], r["up_bytes"], r["logins"]) for r in summary], [("cam", 1, 3, 1)])
 
