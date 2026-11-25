@@ -1,0 +1,13 @@
+name: Build
+on:
+  push:
+    branches: [main]
+    paths: ["simple_nas/**"]
+  workflow_dispatch:
+jobs:
+  build:
+    permissions: {contents: read, packages: write}
+    uses: gregorwolf1973/ha-addons/.github/workflows/build-addon.yaml@main
+    with:
+      addon: "simple_nas"
+      image: "ghcr.io/gregorwolf1973/{arch}-addon-simple_nas"

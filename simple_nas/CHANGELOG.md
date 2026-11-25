@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.23.2
+- Prebuilt images from GitHub Container Registry: installs and updates no
+  longer build locally.
+
 ## 3.23.1
 - **FTP-Protokoll: neuer Tagesordner der Kamera ist kein Fehler mehr.** Kameras wechseln jeden Morgen zuerst in den Ordner des neuen Tages, bekommen "Ordner nicht gefunden" und legen ihn dann an. Das stand bisher als Fehler im FTP-Protokoll und brachte die Sitzung ins Add-on-Log. Jetzt haelt Simple NAS einen abgelehnten Ordnerwechsel kurz zurueck und verwirft ihn, wenn das Geraet genau diesen Ordner gleich danach anlegt. Ein Ordnerwechsel ins Leere ohne anschliessendes Anlegen zaehlt weiter als Fehler.
 
